@@ -1,0 +1,15 @@
+[
+  {
+    "id": "767a83c3-8e14-4f5b-9758-44ac5a602f70",
+    "email": "customer1@example.com",
+    "password": "$2a$10$lYZJ5x4K/bDyuf05W8yk.eo3dVN/L.DpDXmGKOMTNYvBo5fY.6Sza",
+    "userType": "customer",
+    "profile": {
+      "fullName": "Test Customer One",
+      "location": "Customer City"
+    },
+    "createdAt": "2025-06-05T15:01:15.521Z",
+    "updatedAt": "2025-06-05T15:01:15.521Z",
+    "isActive": true
+  }
+]
