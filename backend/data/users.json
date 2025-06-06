@@ -11,5 +11,32 @@
     "createdAt": "2025-06-05T15:01:15.521Z",
     "updatedAt": "2025-06-05T15:01:15.521Z",
     "isActive": true
+  },
+  {
+    "id": "8e2cc294-3422-417b-9c92-83962fb96799",
+    "email": "guser400420@example.com",
+    "googleId": "google1749223400420",
+    "userType": "customer",
+    "profile": {
+      "fullName": "Mock Google User",
+      "avatarUrl": "/hero/Tabby Cat Construction Worker.png"
+    },
+    "createdAt": "2025-06-06T15:23:20.565Z",
+    "updatedAt": "2025-06-06T15:23:20.565Z",
+    "isActive": true
+  },
+  {
+    "id": "e5e240c1-b103-49a3-b494-9d3643f51cbd",
+    "email": "abc@abc.com",
+    "password": "$2a$10$hkB3U1qubA/v6hjdoOqF5.FaQ2uKScXhCj2vfiQ0XYQLyds78EPju",
+    "userType": "customer",
+    "profile": {
+      "fullName": "Ahammed",
+      "phoneNumber": "8714281780",
+      "location": "Malappuram"
+    },
+    "createdAt": "2025-06-06T15:53:16.108Z",
+    "updatedAt": "2025-06-06T15:53:16.108Z",
+    "isActive": true
   }
 ]
