@@ -38,5 +38,46 @@
     "createdAt": "2025-06-06T15:53:16.108Z",
     "updatedAt": "2025-06-06T15:53:16.108Z",
     "isActive": true
+  },
+  {
+    "id": "edf8d251-d64d-4b60-9543-9906517131b6",
+    "email": "ahammed@gmail.com",
+    "password": "$2a$10$00FdojMJ4Vnl52C.GFVwAuzW0KYCNbR/pFSWNdmae9DM8Knx2tphm",
+    "userType": "customer",
+    "profile": {
+      "fullName": "Rahees",
+      "phoneNumber": "8714281780",
+      "location": "Karathodu"
+    },
+    "createdAt": "2025-06-07T11:04:17.877Z",
+    "updatedAt": "2025-06-07T11:04:17.877Z",
+    "isActive": true
+  },
+  {
+    "id": "33300fa3-9586-4660-b640-69f7c5dad9df",
+    "email": "guser631555@example.com",
+    "googleId": "google1749295631555",
+    "userType": "customer",
+    "profile": {
+      "fullName": "Mock Google User",
+      "avatarUrl": "/hero/Tabby Cat Construction Worker.png"
+    },
+    "createdAt": "2025-06-07T11:27:11.600Z",
+    "updatedAt": "2025-06-07T11:27:11.600Z",
+    "isActive": true
+  },
+  {
+    "id": "3f527ebf-9534-4975-93d3-d9185822f831",
+    "email": "rahees@gmail.com",
+    "password": "$2a$10$WgiRHahPMcvPbCByoMj7JO/BG1taaxvhne3bYezjZZE2ByKKSK5W.",
+    "userType": "customer",
+    "profile": {
+      "fullName": "Rahees",
+      "phoneNumber": "12345678",
+      "location": "mlm"
+    },
+    "createdAt": "2025-06-07T14:23:05.857Z",
+    "updatedAt": "2025-06-07T14:23:05.857Z",
+    "isActive": true
   }
 ]
