@@ -1,1 +1,48 @@
-[]
+[
+  {
+    "id": "59cd6e25-513d-4677-8d49-0d83b7dc1cf6",
+    "chatId": "af381c5c-542b-414e-a46c-7873b41fd02e",
+    "senderId": "2c1901e0-a0b3-42cf-b69b-a9128527c1b7",
+    "content": "Hi, I saw your work request \"Out House construction\" and I'm interested in discussing it further.",
+    "timestamp": "2025-06-10T09:57:28.499Z"
+  },
+  {
+    "id": "d48f3bda-6caa-4eab-9995-b85b0445764c",
+    "chatId": "af381c5c-542b-414e-a46c-7873b41fd02e",
+    "senderId": "2c1901e0-a0b3-42cf-b69b-a9128527c1b7",
+    "content": "Hello",
+    "images": [],
+    "timestamp": "2025-06-10T10:48:04.553Z"
+  },
+  {
+    "id": "547cd2b3-8043-49d8-ac94-78febd73a360",
+    "chatId": "af381c5c-542b-414e-a46c-7873b41fd02e",
+    "senderId": "e5e240c1-b103-49a3-b494-9d3643f51cbd",
+    "content": "yes",
+    "images": [],
+    "timestamp": "2025-06-10T10:48:12.546Z"
+  },
+  {
+    "id": "5347c834-ae2d-4507-a010-bf872bf1ae29",
+    "chatId": "af381c5c-542b-414e-a46c-7873b41fd02e",
+    "senderId": "e5e240c1-b103-49a3-b494-9d3643f51cbd",
+    "content": "hjhj",
+    "images": [],
+    "timestamp": "2025-06-10T10:49:27.847Z"
+  },
+  {
+    "id": "8b943342-9c43-403d-aa9e-c965762c2f86",
+    "chatId": "bc397a25-ff67-4583-915e-d5a496a5174b",
+    "senderId": "f10b701a-b3d4-467e-9fac-f8d7b6471f10",
+    "content": "Hi, I saw your work request \"Out House construction\" and I'm interested in discussing it further.",
+    "timestamp": "2025-06-10T14:51:30.820Z"
+  },
+  {
+    "id": "9333e2e4-53e5-4dbc-8341-341db93e6d38",
+    "chatId": "bc397a25-ff67-4583-915e-d5a496a5174b",
+    "senderId": "f10b701a-b3d4-467e-9fac-f8d7b6471f10",
+    "content": "send details",
+    "images": [],
+    "timestamp": "2025-06-10T14:52:06.449Z"
+  }
+]

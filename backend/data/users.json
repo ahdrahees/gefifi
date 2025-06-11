@@ -79,5 +79,37 @@
     "createdAt": "2025-06-07T14:23:05.857Z",
     "updatedAt": "2025-06-07T14:23:05.857Z",
     "isActive": true
+  },
+  {
+    "id": "2c1901e0-a0b3-42cf-b69b-a9128527c1b7",
+    "email": "expert1@mail.com",
+    "password": "$2a$10$4xXF7teqlF52Pquxvux2LO8eNvrxSBYtj/t3Q1AN4uG.o/b0GNc9a",
+    "userType": "expert",
+    "profile": {
+      "fullName": "Rajan",
+      "phoneNumber": "1212132323232",
+      "location": "Malppuram",
+      "expertise": "Wall maker",
+      "experience": "10"
+    },
+    "createdAt": "2025-06-10T09:56:55.245Z",
+    "updatedAt": "2025-06-10T09:56:55.245Z",
+    "isActive": true
+  },
+  {
+    "id": "f10b701a-b3d4-467e-9fac-f8d7b6471f10",
+    "email": "supply@mail.com",
+    "password": "$2a$10$revRK643zdtSlb5i92SeFux6hyvJUGqpd3v/SALTG.owa.HanyfLy",
+    "userType": "supplier",
+    "profile": {
+      "phoneNumber": "982121212121",
+      "location": "Malapparam",
+      "companyName": "Emarald Cement",
+      "category": "Cement",
+      "experience": "15"
+    },
+    "createdAt": "2025-06-10T14:51:05.423Z",
+    "updatedAt": "2025-06-10T14:51:05.423Z",
+    "isActive": true
   }
 ]
