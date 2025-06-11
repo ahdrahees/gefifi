@@ -281,7 +281,6 @@
 						d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
 					/>
 				</svg>
-				<span class="ml-2 hidden sm:inline">Send</span>
 			</button>
 		</form>
 	</div>
@@ -291,13 +290,13 @@
 	/* Define a variable for header height to be used in h-screen calculation if layout changes */
 	/* For example, if the (app) layout header is 64px, and this page's header is 68px */
 	/* :root {
-    --chat-page-header-height: 68px; 
+    --chat-page-header-height: 68px;
     --effective-screen-height: calc(100vh - var(--app-layout-header-height, 0px) - var(--chat-page-header-height));
   }
   .h-chat-area {
       height: var(--effective-screen-height);
   } */
-	/* For simplicity, using a fixed offset in h-[calc(...)] for now. 
+	/* For simplicity, using a fixed offset in h-[calc(...)] for now.
      Assumes parent layout header + this page header totals about 10rem (a rough estimate) for viewport height adjustment.
      This can be made more precise if needed, e.g. using a store for layout dimensions or CSS variables passed down. */
 </style>

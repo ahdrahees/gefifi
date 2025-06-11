@@ -46,34 +46,47 @@
 
 	function formatDisplayName(otherUser: UserProfile | undefined): string {
 		if (!otherUser) {
-			return 'Unknown User'; // Fallback if otherUser object itself is undefined
+			return 'Unknown User';
 		}
 
-		// Prepare a default ID string in case needed.
 		const idSuffix = otherUser.id ? `${otherUser.id.substring(0, 8)}...` : 'ID';
+		const userType = otherUser.userType; // userType is always available if otherUser exists
 
+		// If profile data is missing, handle display based on userType and ID
 		if (!otherUser.profile) {
-			// If profile data is missing, but we have a user object.
-			return `User ${idSuffix}`;
+			switch (userType) {
+				case 'customer':
+					return `Customer - ${idSuffix}`;
+				case 'expert':
+					return `Expert - ${idSuffix}`;
+				case 'supplier':
+					return `Supplier - ${idSuffix}`;
+				default:
+					// For 'admin' or other types without a profile, use capitalized type and ID
+					const typePrefixDefaultNoProfile = userType.charAt(0).toUpperCase() + userType.slice(1);
+					return `${typePrefixDefaultNoProfile} - ${idSuffix}`;
+			}
 		}
 
-		const { userType, profile } = otherUser;
-		const { fullName, companyName } = profile; // Extract potentially available names
+		// Profile exists, try to use names from it
+		const { fullName, companyName } = otherUser.profile;
 
 		switch (userType) {
 			case 'customer':
-				// For customers, prefer their full name.
-				return fullName || `Customer ${idSuffix}`;
+				// Prefer fullName for customers, prefixed with "Customer"
+				return `Customer - ${fullName || idSuffix}`;
 			case 'expert':
-				// For experts, prefer their full name.
-				return fullName || `Expert ${idSuffix}`;
+				// Prefer fullName for experts, prefixed with "Expert"
+				return `Expert - ${fullName || idSuffix}`;
 			case 'supplier':
-				// For suppliers, prefer their company name.
-				return companyName || `Supplier ${idSuffix}`;
+				// Prefer companyName for suppliers, prefixed with "Supplier"
+				return `Supplier - ${companyName || idSuffix}`;
 			default:
-				// For any other user type or if the specific type is unknown.
-				// Try fullName, then companyName, then fall back to a generic user identifier.
-				return fullName || companyName || `User ${idSuffix}`;
+				// For other types like 'admin', prefix with capitalized userType
+				const typePrefixDefaultWithProfile = userType.charAt(0).toUpperCase() + userType.slice(1);
+				if (fullName) return `${typePrefixDefaultWithProfile} - ${fullName}`;
+				if (companyName) return `${typePrefixDefaultWithProfile} - ${companyName}`; // e.g., an Admin might have a company or department name
+				return `${typePrefixDefaultWithProfile} - ${idSuffix}`;
 		}
 	}
 
@@ -361,7 +374,7 @@
 									title={`Chat with ${chat.displayName || 'user'}`}
 								>
 									<p class="truncate font-medium text-emerald-300">
-										Chat with {chat.displayName || 'Unknown User'}
+										{chat.displayName || 'Unknown User'}
 									</p>
 									<p class="text-xs text-slate-400">
 										Last updated: {formatDate(chat.updatedAt)}
@@ -423,7 +436,7 @@
 </div>
 
 <!-- Removed old placeholder content, added TODO -->
-<!-- TODO: 
+<!-- TODO:
   - Further refine UI/UX for each section.
   - Implement navigation to individual item details (e.g., specific work request, chat, contract). (Partially done with goto)
   - For chats, fetch participant names instead of IDs for better display.

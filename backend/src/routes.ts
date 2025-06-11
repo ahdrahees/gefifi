@@ -347,6 +347,31 @@ router.get('/users/suppliers', async (_req: Request, res: Response) => {
   }
 });
 
+// --- Get User by ID Endpoint ---
+router.get('/users/:userId', async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId;
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID parameter is required.' });
+    }
+    const user = await usersDB.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (!user.isActive) {
+      // Depending on policy, you might still show inactive users or treat as not found
+      return res.status(404).json({ message: 'User account is inactive.' });
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password, ...userToReturn } = user;
+    res.status(200).json(userToReturn);
+  } catch (error: unknown) {
+    console.error(`Error fetching user ${req.params.userId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+    res.status(500).json({ message: 'Failed to fetch user.', error: errorMessage });
+  }
+});
+
 // --- User Interest Endpoint (Creates Chat & Initial Message) ---
 router.post('/users/interest', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
