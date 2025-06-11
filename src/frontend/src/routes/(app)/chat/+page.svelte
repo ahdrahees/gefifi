@@ -12,8 +12,8 @@
 		profile?: {
 			fullName?: string;
 			companyName?: string;
-			mainExpertise?: string;
-			mainMaterial?: string;
+			expertise?: string; // Was mainExpertise
+			category?: string;  // Was mainMaterial
 			location?: string;
 			avatarUrl?: string;
 		};
@@ -54,31 +54,70 @@
 		return str.substring(0, maxLength) + '...';
 	}
 
-	function formatDisplayName(
-		otherUser: UserProfile | undefined,
-		currentUser: AuthUser | null
-	): string {
-		if (!otherUser || !otherUser.profile) {
-			return `User ${otherUser?.id?.substring(0, 8) || 'Unknown'}...`; // Fallback
+	function formatDisplayName(otherUser: UserProfile | undefined): string {
+		if (!otherUser) {
+			return 'Unknown | Details N/A | Location N/A';
 		}
 
-		const { userType, profile } = otherUser;
-		// Ensure profile is not undefined for destructuring
-		const { fullName, companyName, mainExpertise, mainMaterial, location } = profile || {};
-
-		if (userType === 'customer') {
-			return fullName || `Customer ${otherUser.id.substring(0, 4)}...`;
-		} else if (userType === 'expert') {
-			const expertisePart = trimString(mainExpertise, 12);
-			const parts = [fullName, expertisePart, location].filter(Boolean); // Filter out empty/null values
-			return parts.join(' | ') || `Expert ${otherUser.id.substring(0, 4)}...`;
-		} else if (userType === 'supplier') {
-			const materialPart = trimString(mainMaterial, 12);
-			const parts = [companyName, materialPart, location].filter(Boolean); // Filter out empty/null values
-			return parts.join(' | ') || `Supplier ${otherUser.id.substring(0, 4)}...`;
+		const idSuffix = otherUser.id ? otherUser.id.substring(0, 8) : 'UnknownID';
+		let typeDisplay = 'User';
+		if (otherUser.userType && typeof otherUser.userType === 'string' && otherUser.userType.length > 0) {
+			typeDisplay = otherUser.userType.charAt(0).toUpperCase() + otherUser.userType.slice(1);
 		}
-		// Default fallback if userType is unknown or profile details are missing
-		return fullName || companyName || `User ${otherUser.id.substring(0, 8)}...`;
+
+		const parts: string[] = [typeDisplay];
+		let nameSegment: string;
+		let detailSegment: string | null = null;
+		let locationSegment: string = 'Location N/A';
+
+		if (otherUser.profile) {
+			locationSegment = otherUser.profile.location || 'Location N/A';
+			const { fullName, companyName, expertise, category } = otherUser.profile; // Updated destructuring
+
+			switch (otherUser.userType) {
+				case 'customer':
+					nameSegment = fullName || `Customer ${idSuffix}`;
+					break;
+				case 'expert':
+					nameSegment = fullName || `Expert ${idSuffix}`;
+					detailSegment = expertise || 'Expertise N/A'; // Updated to use expertise
+					break;
+				case 'supplier':
+					nameSegment = companyName || `Supplier ${idSuffix}`;
+					detailSegment = category || 'Material N/A'; // Updated to use category
+					break;
+				default: // admin, unknown, etc.
+					nameSegment = fullName || companyName || `${typeDisplay} ${idSuffix}`;
+					break;
+			}
+		} else {
+			// No profile object
+			locationSegment = 'Location N/A';
+			switch (otherUser.userType) {
+				case 'customer':
+					nameSegment = `Customer ${idSuffix}`;
+					break;
+				case 'expert':
+					nameSegment = `Expert ${idSuffix}`;
+					detailSegment = 'Expertise N/A';
+					break;
+				case 'supplier':
+					nameSegment = `Supplier ${idSuffix}`;
+					detailSegment = 'Material N/A';
+					break;
+				default:
+					nameSegment = `${typeDisplay} ${idSuffix}`;
+					break;
+			}
+		}
+
+		parts.push(nameSegment);
+		if (detailSegment) {
+			parts.push(detailSegment);
+		}
+		parts.push(locationSegment);
+
+		return parts.join(' | ');
 	}
 
 	async function fetchChats() {
@@ -146,7 +185,7 @@
 					// For one-on-one chats, use the first other participant's ID
 					const otherPId = otherParticipantIds[0];
 					const otherUserProfile = fetchedUserProfiles.get(otherPId);
-					displayName = formatDisplayName(otherUserProfile, currentUser);
+					displayName = formatDisplayName(otherUserProfile);
 				} else if (
 					(chat.participants as string[]).length === 1 &&
 					chat.participants[0] === currentUser?.id
