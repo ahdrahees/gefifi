@@ -13,7 +13,7 @@
 			fullName?: string;
 			companyName?: string;
 			expertise?: string; // Was mainExpertise
-			category?: string;  // Was mainMaterial
+			category?: string; // Was mainMaterial
 			location?: string;
 			avatarUrl?: string;
 		};
@@ -61,7 +61,11 @@
 
 		const idSuffix = otherUser.id ? otherUser.id.substring(0, 8) : 'UnknownID';
 		let typeDisplay = 'User';
-		if (otherUser.userType && typeof otherUser.userType === 'string' && otherUser.userType.length > 0) {
+		if (
+			otherUser.userType &&
+			typeof otherUser.userType === 'string' &&
+			otherUser.userType.length > 0
+		) {
 			typeDisplay = otherUser.userType.charAt(0).toUpperCase() + otherUser.userType.slice(1);
 		}
 
@@ -221,13 +225,15 @@
 				currentUser = auth.user;
 				token = auth.token;
 				fetchChats();
-				unsubscribe();
 			} else if (!auth.isLoading && !auth.user) {
 				errorMessage = 'User not authenticated.';
 				isLoading = false;
-				unsubscribe();
 			}
 		});
+
+		return () => {
+			unsubscribe();
+		};
 	});
 
 	function formatDate(dateString: string): string {
@@ -325,7 +331,7 @@
 	{/if}
 </div>
 
-<!-- 
+<!--
   TODO for Chat List:
   - Implement fetching actual participant names (requires a /api/users/:id endpoint or similar).
   - Fetch actual last message snippet and unread counts from the backend (API needs to support this).

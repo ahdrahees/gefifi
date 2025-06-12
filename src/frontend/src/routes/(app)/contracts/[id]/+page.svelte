@@ -5,6 +5,29 @@
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
+	import type { Unsubscriber } from 'svelte/store';
+
+	// Define UserProfile, similar to other pages
+	type UserProfile = {
+		id: string;
+		email: string;
+		userType: 'customer' | 'expert' | 'supplier' | 'admin' | string;
+		profile?: {
+			// Profile is optional itself
+			fullName?: string;
+			companyName?: string;
+			expertise?: string;
+			category?: string;
+			location?: string;
+			avatarUrl?: string;
+		};
+	};
+
+	// Define WorkRequestInfo for fetching title
+	type WorkRequestInfo = {
+		id: string;
+		title: string;
+	};
 
 	type ContractStatus =
 		| 'draft'
@@ -71,12 +94,84 @@
 			}
 			const fetchedContract: ContractDetail = await response.json();
 
-			// TODO: Fetch related details - customer name, expert/supplier name, work request title
-			// This is simplified for now. In a real app, these might be separate calls or backend could embed them.
-			// Placeholder names:
-			fetchedContract.customerName = `Customer (${fetchedContract.customerId.substring(0, 8)}...)`;
-			fetchedContract.expertSupplierName = `Provider (${fetchedContract.expertSupplierId.substring(0, 8)}...)`;
-			fetchedContract.workRequestTitle = `Work Request (${fetchedContract.workRequestId.substring(0, 8)}...)`;
+			// Fetch related details - customer name, expert/supplier name, work request title
+			try {
+				// Fetch Customer Name
+				if (fetchedContract.customerId) {
+					const customerRes = await fetch(
+						`${API_BASE_URL}/api/users/${fetchedContract.customerId}`,
+						{ headers: { Authorization: `Bearer ${token}` } }
+					);
+					if (customerRes.ok) {
+						const customerData: UserProfile = await customerRes.json();
+						fetchedContract.customerName =
+							customerData.profile?.fullName ||
+							customerData.email.split('@')[0] ||
+							`Customer ${fetchedContract.customerId.substring(0, 8)}`;
+					} else {
+						console.warn(
+							`Failed to fetch customer profile ${fetchedContract.customerId}: ${customerRes.statusText}`
+						);
+						fetchedContract.customerName = `Customer ${fetchedContract.customerId.substring(0, 8)} (Details N/A)`;
+					}
+				}
+
+				// Fetch Expert/Supplier Name
+				if (fetchedContract.expertSupplierId) {
+					const providerRes = await fetch(
+						`${API_BASE_URL}/api/users/${fetchedContract.expertSupplierId}`,
+						{ headers: { Authorization: `Bearer ${token}` } }
+					);
+					if (providerRes.ok) {
+						const providerData: UserProfile = await providerRes.json();
+						if (providerData.userType === 'supplier' && providerData.profile?.companyName) {
+							fetchedContract.expertSupplierName = providerData.profile.companyName;
+						} else if (providerData.profile?.fullName) {
+							fetchedContract.expertSupplierName = providerData.profile.fullName;
+						} else {
+							fetchedContract.expertSupplierName =
+								providerData.email.split('@')[0] ||
+								`${providerData.userType.charAt(0).toUpperCase() + providerData.userType.slice(1)} ${fetchedContract.expertSupplierId.substring(0, 8)}`;
+						}
+					} else {
+						console.warn(
+							`Failed to fetch provider profile ${fetchedContract.expertSupplierId}: ${providerRes.statusText}`
+						);
+						fetchedContract.expertSupplierName = `Provider ${fetchedContract.expertSupplierId.substring(0, 8)} (Details N/A)`;
+					}
+				}
+
+				// Fetch Work Request Title
+				if (fetchedContract.workRequestId) {
+					const wrRes = await fetch(
+						`${API_BASE_URL}/api/work-requests/${fetchedContract.workRequestId}`,
+						{ headers: { Authorization: `Bearer ${token}` } }
+					);
+					if (wrRes.ok) {
+						const wrData: WorkRequestInfo = await wrRes.json();
+						fetchedContract.workRequestTitle =
+							wrData.title || `Work Request ${fetchedContract.workRequestId.substring(0, 8)}`;
+					} else {
+						console.warn(
+							`Failed to fetch work request ${fetchedContract.workRequestId}: ${wrRes.statusText}`
+						);
+						fetchedContract.workRequestTitle = `Work Request ${fetchedContract.workRequestId.substring(0, 8)} (Title N/A)`;
+					}
+				} else {
+					fetchedContract.workRequestTitle = 'N/A (No associated Work Request)';
+				}
+			} catch (detailError: any) {
+				console.error('Error fetching related contract details:', detailError);
+				// Set fallback names if related details fetching fails, preserving any already fetched
+				if (!fetchedContract.customerName)
+					fetchedContract.customerName = `Customer ${fetchedContract.customerId.substring(0, 8)} (Details Error)`;
+				if (!fetchedContract.expertSupplierName)
+					fetchedContract.expertSupplierName = `Provider ${fetchedContract.expertSupplierId.substring(0, 8)} (Details Error)`;
+				if (!fetchedContract.workRequestTitle && fetchedContract.workRequestId)
+					fetchedContract.workRequestTitle = `Work Request ${fetchedContract.workRequestId.substring(0, 8)} (Title Error)`;
+				else if (!fetchedContract.workRequestTitle)
+					fetchedContract.workRequestTitle = 'N/A (Error fetching Work Request)';
+			}
 
 			contract = fetchedContract;
 		} catch (err: any) {
@@ -138,23 +233,28 @@
 
 	onMount(() => {
 		contractIdFromUrl = $page.params.id;
+		let unsubscribe: Unsubscriber;
 		if (contractIdFromUrl) {
-			const unsubscribe = authStore.subscribe((auth) => {
+			unsubscribe = authStore.subscribe((auth) => {
 				if (auth.token && auth.user && !auth.isLoading) {
 					token = auth.token;
 					currentUser = auth.user;
 					fetchContractDetails(contractIdFromUrl!);
-					unsubscribe();
 				} else if (!auth.isLoading && (!auth.token || !auth.user)) {
 					errorMessage = 'User not authenticated. Cannot load details.';
 					isLoading = false;
-					unsubscribe();
 				}
 			});
 		} else {
 			errorMessage = 'Contract ID not found in URL.';
 			isLoading = false;
 		}
+
+		return () => {
+			if (unsubscribe) {
+				unsubscribe();
+			}
+		};
 	});
 
 	function getStatusClass(status: ContractStatus | undefined, type: 'badge' | 'text' = 'badge') {
@@ -302,7 +402,7 @@
 							disabled={isSigning}
 							class="rounded-lg bg-emerald-500 px-8 py-3 text-lg font-semibold text-white shadow-lg transition-all duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-xl disabled:bg-slate-500"
 						>
-							{isSigning ? 'Processing Signature...' : 'Digitally Sign Contract'}
+							{isSigning ? 'Processing Agreement...' : 'Agree & Sign Contract'}
 						</button>
 						{#if signMessage}
 							<p

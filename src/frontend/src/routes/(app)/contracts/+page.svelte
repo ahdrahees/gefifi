@@ -5,6 +5,29 @@
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 
+	// Define UserProfile, similar to other pages, ensure it matches backend structure
+	type UserProfile = {
+		id: string;
+		email: string;
+		userType: 'customer' | 'expert' | 'supplier' | 'admin' | string;
+		profile?: {
+			// Profile is optional itself
+			fullName?: string;
+			companyName?: string;
+			expertise?: string;
+			category?: string;
+			location?: string;
+			avatarUrl?: string;
+		};
+	};
+
+	// Define WorkRequestInfo for fetching title
+	type WorkRequestInfo = {
+		id: string;
+		title: string;
+		// Add other fields if needed for display later
+	};
+
 	type ContractStatus =
 		| 'draft'
 		| 'awaiting_signatures'
@@ -67,54 +90,66 @@
 			const enrichedContracts = await Promise.all(
 				rawContracts.map(async (contract) => {
 					let otherPartyName = 'Unknown Party';
-					let workRequestTitle = contract.workDetails.substring(0, 50) + '...'; // Default title from workDetails
+					let displayTitle = contract.workDetails.substring(0, 50) + '...'; // Default title from workDetails
 
-					// Determine the other party and fetch their name (simplified)
 					const otherPartyId =
 						contract.customerId === currentUser?.id
 							? contract.expertSupplierId
 							: contract.customerId;
 					try {
-						// Placeholder: Backend needs /api/users/:id to fetch user details
-						// For now, we'll use IDs or a generic name based on role
-						// const userRes = await fetch(`${API_BASE_URL}/api/users/${otherPartyId}`, { headers: { Authorization: `Bearer ${token}` } });
-						// if (userRes.ok) {
-						//   const userData = await userRes.json();
-						//   otherPartyName = userData.profile?.fullName || userData.email?.split('@')[0] || `User ${otherPartyId.substring(0,8)}`;
-						// } else {
-						otherPartyName = `Party ID: ${otherPartyId.substring(0, 8)}...`;
-						// }
+						const userRes = await fetch(`${API_BASE_URL}/api/users/${otherPartyId}`, {
+							headers: { Authorization: `Bearer ${token}` }
+						});
+						if (userRes.ok) {
+							const userData: UserProfile = await userRes.json();
+							if (userData.userType === 'supplier' && userData.profile?.companyName) {
+								otherPartyName = userData.profile.companyName;
+							} else if (userData.profile?.fullName) {
+								otherPartyName = userData.profile.fullName;
+							} else {
+								otherPartyName =
+									userData.email?.split('@')[0] || `User ${otherPartyId.substring(0, 8)}`;
+							}
+						} else {
+							console.warn(
+								`Failed to fetch profile for user ${otherPartyId}: ${userRes.statusText}`
+							);
+							otherPartyName = `Party ID: ${otherPartyId.substring(0, 8)}...`;
+						}
 					} catch (e) {
-						console.warn(
-							`Could not fetch name for other party ${otherPartyId} in contract ${contract.id}`,
+						console.error(
+							`Error fetching name for other party ${otherPartyId} in contract ${contract.id}:`,
 							e
 						);
-						otherPartyName = `Party ID ${otherPartyId.substring(0, 8)}... (Error fetching name)`;
+						otherPartyName = `Party ID ${otherPartyId.substring(0, 8)}... (Error fetching)`;
 					}
 
-					// Fetch work request title (optional, can be heavy)
 					if (contract.workRequestId) {
 						try {
-							// Placeholder: Backend needs /api/work-requests/:id
-							// const wrRes = await fetch(`${API_BASE_URL}/api/work-requests/${contract.workRequestId}`, { headers: { Authorization: `Bearer ${token}` } });
-							// if (wrRes.ok) {
-							//   const wrData = await wrRes.json();
-							//   workRequestTitle = wrData.title || workRequestTitle;
-							// }
-							// Using existing workDetails as a stand-in for title for now
-							workRequestTitle =
-								contract.workDetails.substring(0, 70) +
-								(contract.workDetails.length > 70 ? '...' : '');
+							const wrRes = await fetch(
+								`${API_BASE_URL}/api/work-requests/${contract.workRequestId}`,
+								{
+									headers: { Authorization: `Bearer ${token}` }
+								}
+							);
+							if (wrRes.ok) {
+								const wrData: WorkRequestInfo = await wrRes.json();
+								displayTitle = wrData.title || displayTitle; // Use fetched title if available
+							} else {
+								console.warn(
+									`Failed to fetch work request ${contract.workRequestId} title: ${wrRes.statusText}`
+								);
+							}
 						} catch (e) {
-							console.warn(`Could not fetch title for work request ${contract.workRequestId}`, e);
+							console.error(`Error fetching title for work request ${contract.workRequestId}:`, e);
 						}
 					}
 
 					return {
 						...contract,
-						title: workRequestTitle, // Use fetched/derived title
+						title: displayTitle,
 						otherPartyName: otherPartyName,
-						workRequestTitle: workRequestTitle
+						workRequestTitle: displayTitle // Keep this for consistency if used elsewhere, though 'title' is primary
 					};
 				})
 			);
@@ -136,13 +171,15 @@
 				currentUser = auth.user;
 				token = auth.token;
 				fetchContracts();
-				unsubscribe();
 			} else if (!auth.isLoading && !auth.user) {
 				errorMessage = 'User not authenticated.';
 				isLoading = false;
-				unsubscribe();
 			}
 		});
+
+		return () => {
+			unsubscribe();
+		};
 	});
 
 	function getStatusClasses(status: ContractStatus): string {
@@ -279,7 +316,7 @@
 	{/if}
 </div>
 
-<!-- 
+<!--
   TODO:
   - Fetch actual otherPartyName and workRequestTitle (requires API for user details and work request details by ID).
   - Implement "Create New Contract" flow (likely initiated from a work request detail page).

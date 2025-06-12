@@ -538,14 +538,24 @@ router.post('/chat/:chatId/messages', authenticateToken, async (req: Authenticat
     try {
         const user = req.user as JwtPayload;
         const chatId = req.params.chatId;
-        const { content, images } = req.body;
+        // Destructure content and optionally images from request body
+        const { content, images }: { content?: string; images?: string[] } = req.body;
 
-        if ((!content || typeof content !== 'string' || content.trim() === '') && (!images || !Array.isArray(images) || images.length === 0)) {
+        // Validate that either content or images are provided and correctly formatted
+        const hasValidContent = content && typeof content === 'string' && content.trim() !== '';
+        const hasValidImages = images && Array.isArray(images) && images.length > 0 && images.every(img => typeof img === 'string');
+
+        if (!hasValidContent && !hasValidImages) {
             return res.status(400).json({ message: 'Message content or images are required.' });
         }
-        if (images && (!Array.isArray(images) || !images.every(img => typeof img === 'string'))) {
-             return res.status(400).json({ message: 'Images must be an array of strings (file paths).' });
+        // If images are provided, but not in the correct format (e.g. not an array of strings)
+        if (images && Array.isArray(images) && images.length > 0 && !hasValidImages) {
+            return res.status(400).json({ message: 'Images must be an array of strings (file paths) and cannot be empty strings if the array is not empty.' });
         }
+        // Further check for empty strings within the images array if it's not empty.
+        // This is implicitly handled by `images.every(img => typeof img === 'string')` if we assume file paths must be non-empty.
+        // If paths can be empty strings and that's invalid, a more specific check might be needed,
+        // but typically file paths from an upload process won't be empty strings.
         const chat = await chatsDB.findById(chatId);
         if (!chat) {
             return res.status(404).json({ message: 'Chat not found.' });
@@ -559,8 +569,8 @@ router.post('/chat/:chatId/messages', authenticateToken, async (req: Authenticat
             id: messageId,
             chatId: chatId,
             senderId: user.id,
-            content: content || '', 
-            images: images || [],
+            content: content || '', // Use provided content, or empty string if only images are sent
+            images: images && hasValidImages ? images : [], // Use validated images, or an empty array
             timestamp: now,
         };
         const createdMessage = await messagesDB.create(newMessage);
@@ -613,6 +623,34 @@ router.get('/contracts', authenticateToken, async (req: AuthenticatedRequest, re
     }
 });
 
+// --- Get Single Contract by ID ---
+router.get('/contracts/:contractId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const user = req.user as JwtPayload;
+        const contractId = req.params.contractId;
+
+        if (!contractId) {
+            return res.status(400).json({ message: 'Contract ID parameter is required.' });
+        }
+
+        const contract = await contractsDB.findById(contractId);
+        if (!contract) {
+            return res.status(404).json({ message: 'Contract not found.' });
+        }
+
+        // Authorization: Ensure the current user is a party to this contract
+        if (contract.customerId !== user.id && contract.expertSupplierId !== user.id) {
+            return res.status(403).json({ message: 'Forbidden. You are not authorized to view this contract.' });
+        }
+
+        res.status(200).json(contract);
+    } catch (error: unknown) {
+        console.error(`Error fetching contract ${req.params.contractId}:`, error);
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+        res.status(500).json({ message: 'Failed to fetch contract details.', error: errorMessage });
+    }
+});
+
 router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const initiator = req.user as JwtPayload;
@@ -638,6 +676,26 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
         }
         const now = new Date().toISOString();
         const contractId = crypto.randomUUID();
+
+        let initialCustomerSigned = false;
+        let initialExpertSupplierSigned = false;
+        let customerSigTimestamp: string | undefined = undefined;
+        let expertSigTimestamp: string | undefined = undefined;
+        let initialStatus: Contract['status'] = 'draft';
+
+        if (initiator.id === customerId) {
+            initialCustomerSigned = true;
+            customerSigTimestamp = now;
+            initialStatus = 'awaiting_signatures';
+        } else if (initiator.id === expertSupplierId) {
+            initialExpertSupplierSigned = true;
+            expertSigTimestamp = now;
+            initialStatus = 'awaiting_signatures';
+        }
+        // If, hypothetically, initiator could be both (e.g. self-contract which isn't the model here)
+        // and both flags became true, status should be 'signed'.
+        // For current model, one party signing on creation moves it to 'awaiting_signatures'.
+
         const newContract: Contract = {
             id: contractId,
             workRequestId,
@@ -646,20 +704,27 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
             workDetails,
             agreementSummary,
             contractDate: contractDate || now,
-            customerSigned: false,
-            expertSupplierSigned: false,
-            status: 'draft',
+            customerSigned: initialCustomerSigned,
+            customerSignatureTimestamp: customerSigTimestamp,
+            expertSupplierSigned: initialExpertSupplierSigned,
+            expertSupplierSignatureTimestamp: expertSigTimestamp,
+            status: initialStatus,
             createdAt: now,
             updatedAt: now,
         };
+
+        console.log('[POST /api/contracts] Attempting to create contract with data:', JSON.stringify(newContract, null, 2));
         const createdContract = await contractsDB.create(newContract);
+        console.log('[POST /api/contracts] Successfully created contract in DB, ID:', createdContract.id);
+
         if (workRequest.status === 'in_discussion' || workRequest.status === 'open' || workRequest.status === 'awaiting_quotes') {
+            console.log(`[POST /api/contracts] Updating work request ${workRequest.id} status to 'contracted'.`);
             await workRequestsDB.update(workRequest.id, { status: 'contracted', updatedAt: now });
         }
         res.status(201).json(createdContract);
     } catch (error: unknown) {
-        console.error('Error creating contract:', error);
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+        console.error('Error in POST /api/contracts route:', error); // More specific error origin
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during contract creation.';
         if (errorMessage.includes('already exists')) {
             return res.status(409).json({ message: errorMessage });
         }
