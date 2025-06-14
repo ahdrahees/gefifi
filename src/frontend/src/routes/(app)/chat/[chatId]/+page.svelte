@@ -1,6 +1,6 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/chat/[chatId]/+page.svelte -->
 <script lang="ts">
-	import { onMount, afterUpdate } from 'svelte';
+	import { onMount, afterUpdate, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
@@ -74,12 +74,40 @@
 
 	// For auto-scrolling
 	let messagesContainer: HTMLElement;
-	let shouldScrollToBottom = false;
+	// let shouldScrollToBottom = false; // Replaced by more direct scrolling logic
+
+	// For handling image loads in the latest message to scroll correctly
+	let imagesLoadingInLastMessage = 0;
+	let lastMessageIdForImageLoadTracking: string | null = null;
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
 		token = auth.token;
 	});
+
+	function scrollToBottom() {
+		if (messagesContainer) {
+			// Adding a slight delay can sometimes help ensure all rendering is complete
+			// especially if images are involved, though onload should handle most of it.
+			setTimeout(() => {
+				if (messagesContainer) {
+					// Check again as it might be gone if component unmounted
+					messagesContainer.scrollTop = messagesContainer.scrollHeight;
+				}
+			}, 0);
+		}
+	}
+
+	function handleImageLoadOrError(messageId: string) {
+		if (newlyAddedMessageId === messageId) {
+			loadingImagesInNewMessageCount--;
+			if (loadingImagesInNewMessageCount <= 0) {
+				scrollToBottom();
+				newlyAddedMessageId = null;
+				loadingImagesInNewMessageCount = 0;
+			}
+		}
+	}
 
 	async function loadChatAndParticipantDetails(cId: string) {
 		if (!token || !currentUser) {
@@ -94,8 +122,8 @@
 			});
 			if (!chatsResponse.ok) throw new Error('Failed to fetch chat list to find current chat.');
 			const allUserChats: Chat[] = await chatsResponse.json();
-			
-			const foundChat = allUserChats.find(chat => chat.id === cId);
+
+			const foundChat = allUserChats.find((chat) => chat.id === cId);
 			if (!foundChat) {
 				errorMessage = 'Chat details not found.';
 				isLoading = false;
@@ -104,26 +132,78 @@
 			currentChatDetails = foundChat;
 
 			// 2. Identify other participant
-			const otherParticipantId = currentChatDetails.participants.find(pId => pId !== currentUser!.id);
+			const otherParticipantId = currentChatDetails.participants.find(
+				(pId) => pId !== currentUser!.id
+			);
 
 			if (otherParticipantId) {
 				// 3. Fetch other participant's profile
 				const userProfileResponse = await fetch(`${API_BASE_URL}/api/users/${otherParticipantId}`, {
 					headers: { Authorization: `Bearer ${token}` }
 				});
-				if (!userProfileResponse.ok) throw new Error(`Failed to fetch profile for participant ${otherParticipantId}.`);
+				if (!userProfileResponse.ok)
+					throw new Error(`Failed to fetch profile for participant ${otherParticipantId}.`);
 				otherParticipantProfile = await userProfileResponse.json();
-				
+
 				// 4. Set dynamic page title
-				if (otherParticipantProfile?.profile) {
-					chatPageTitle = `Chat with ${otherParticipantProfile.profile.fullName || otherParticipantProfile.profile.companyName || 'User'}`;
-				} else {
-					chatPageTitle = `Chat with User ${otherParticipantId.substring(0,6)}...`;
+				let nameDisplay: string;
+				let userTypeDisplay: string = 'User';
+				let detailDisplay: string | null = null;
+				let locationDisplay: string = 'Location N/A';
+
+				const idSuffix = otherParticipantId
+					? otherParticipantId.substring(0, 6) + '...'
+					: 'UnknownID';
+
+				if (otherParticipantProfile) {
+					userTypeDisplay = otherParticipantProfile.userType
+						? otherParticipantProfile.userType.charAt(0).toUpperCase() +
+							otherParticipantProfile.userType.slice(1)
+						: 'User';
+					const profile = otherParticipantProfile.profile;
+
+					if (profile) {
+						locationDisplay = profile.location || 'Location N/A';
+						if (otherParticipantProfile.userType === 'customer') {
+							nameDisplay = profile.fullName || `Customer ${idSuffix}`;
+						} else if (otherParticipantProfile.userType === 'expert') {
+							nameDisplay = profile.fullName || `Expert ${idSuffix}`;
+							detailDisplay = profile.expertise || 'Expertise N/A';
+						} else if (otherParticipantProfile.userType === 'supplier') {
+							nameDisplay = profile.companyName || `Supplier ${idSuffix}`;
+							detailDisplay = profile.category || 'Category N/A';
+						} else {
+							// For unknown or other types loaded from profile
+							nameDisplay =
+								profile.fullName || profile.companyName || `${userTypeDisplay} ${idSuffix}`;
+						}
+					} else {
+						// No profile data, but otherParticipantProfile object exists
+						nameDisplay = `${userTypeDisplay} ${idSuffix}`;
+						if (otherParticipantProfile.userType === 'expert') detailDisplay = 'Expertise N/A';
+						if (otherParticipantProfile.userType === 'supplier') detailDisplay = 'Category N/A';
+					}
+
+					const titleSegments: string[] = [nameDisplay, userTypeDisplay];
+					if (
+						detailDisplay &&
+						(otherParticipantProfile.userType === 'expert' ||
+							otherParticipantProfile.userType === 'supplier')
+					) {
+						titleSegments.push(detailDisplay);
+					}
+					titleSegments.push(locationDisplay);
+					chatPageTitle = titleSegments.filter(Boolean).join(' - ');
+				}
+				// Fallback if otherParticipantProfile itself is null (e.g. failed to fetch)
+				// but we identified an otherParticipantId
+				else {
+					chatPageTitle = `Chat with User ${idSuffix}`;
 				}
 			} else {
-				chatPageTitle = 'Chat (Personal Notes or Group)'; // Or handle as error if 1-on-1 expected
+				// No other participant ID found in the chat (e.g., self-chat, or potentially a group chat with no other active members listed first)
+				chatPageTitle = 'Chat (Personal Notes or Group)';
 			}
-
 		} catch (err: any) {
 			console.error('Error loading chat/participant details:', err);
 			// Keep existing errorMessage or update if more specific
@@ -153,7 +233,8 @@
 			// TODO: Enrich messages with sender details (name, avatar) by fetching user profiles based on senderId
 			// This is a common N+1 problem, so backend might ideally provide sender details with messages.
 			messages = fetchedMessages.map((msg: any) => ({ ...msg }));
-			shouldScrollToBottom = true; // Scroll after messages are loaded
+			await tick(); // Ensure DOM is updated with initial messages
+			attemptScrollToBottom(); // Scroll after initial messages are loaded
 		} catch (err: any) {
 			console.error('Fetch messages error:', err);
 			errorMessage = err.message;
@@ -163,58 +244,144 @@
 	}
 
 	async function handleSendMessage() {
-		if (!newMessageContent.trim() || !chatId || !token || !currentUser) return;
+		console.log('[Chat] handleSendMessage triggered. Preventing default...');
+		// Allow sending if there's text OR an uploaded image.
+		// Also ensure chatId, token, and currentUser are present.
+		if ((!newMessageContent.trim() && !uploadedImagePath) || !chatId || !token || !currentUser) {
+			console.log('[Chat] handleSendMessage: Aborting - missing content or auth details.');
+			return;
+		}
 		isSendingMessage = true;
+		console.log('[Chat] handleSendMessage: isSendingMessage = true');
 		try {
+			const payload = {
+				content: newMessageContent.trim(),
+				...(uploadedImagePath && { images: [uploadedImagePath] })
+			};
+			console.log('[Chat] handleSendMessage: Payload to send:', JSON.stringify(payload));
+
 			const response = await fetch(`${API_BASE_URL}/api/chat/${chatId}/messages`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 					Authorization: `Bearer ${token}`
 				},
-				body: JSON.stringify({ 
-					content: newMessageContent.trim(),
-					...(uploadedImagePath && { images: [uploadedImagePath] })
-				})
+				body: JSON.stringify(payload)
 			});
+			console.log('[Chat] handleSendMessage: Fetch response received, status:', response.status);
+
 			if (!response.ok) {
 				const errorData = await response
 					.json()
-					.catch(() => ({ message: 'Failed to send message.' }));
+					.catch(() => ({ message: 'Failed to send message. Server response not valid JSON.' }));
+				console.error('[Chat] handleSendMessage: Fetch response not OK.', errorData);
 				throw new Error(errorData.message);
 			}
 			const sentMessage = await response.json();
+			console.log(
+				'[Chat] handleSendMessage: Message sent successfully, response data:',
+				sentMessage
+			);
+
 			messages = [...messages, sentMessage];
+			console.log('[Chat] handleSendMessage: Messages array updated.');
 			newMessageContent = '';
 			uploadedImagePath = null; // Clear uploaded image path
 			selectedFile = null; // Clear selected file
 			if (fileInput) fileInput.value = ''; // Reset file input
-			shouldScrollToBottom = true; // Scroll after new message is added
+			console.log('[Chat] handleSendMessage: Inputs cleared.');
+
+			// New scroll logic for sent messages
+			lastMessageIdForImageLoadTracking = sentMessage.id;
+			await tick(); // Ensure DOM is updated with the new message
+			console.log('[Chat] handleSendMessage: Tick awaited after message add.');
+
+			if (sentMessage.images && sentMessage.images.length > 0) {
+				imagesLoadingInLastMessage = sentMessage.images.length;
+				console.log(
+					`[Chat] handleSendMessage: Message has ${imagesLoadingInLastMessage} image(s). Tracking load.`
+				);
+
+				// Check if images in the last message are already complete (e.g. cached)
+				const lastMessageElement = messagesContainer?.querySelector(
+					`[data-message-id="${sentMessage.id}"]`
+				);
+				let allInitiallyComplete = true;
+				let foundImageElementsCount = 0;
+
+				if (lastMessageElement) {
+					const imageElements = lastMessageElement.querySelectorAll('img');
+					foundImageElementsCount = imageElements.length;
+					console.log(
+						`[Chat] handleSendMessage: Found ${foundImageElementsCount} img tags in new message element.`
+					);
+
+					if (foundImageElementsCount === sentMessage.images.length) {
+						for (const img of imageElements) {
+							if (!img.complete) {
+								allInitiallyComplete = false;
+								console.log(`[Chat] handleSendMessage: Image ${img.src} not complete.`);
+								break;
+							}
+						}
+						if (allInitiallyComplete) {
+							imagesLoadingInLastMessage = 0; // All loaded from cache
+							console.log(
+								'[Chat] handleSendMessage: All images in new message were already complete (cached).'
+							);
+						}
+					} else {
+						console.warn(
+							'[Chat] handleSendMessage: Not all image tags found immediately after tick. Expected:',
+							sentMessage.images.length,
+							'Found:',
+							foundImageElementsCount
+						);
+					}
+				} else {
+					console.warn(
+						'[Chat] handleSendMessage: Last message element not found for image load check.'
+					);
+				}
+
+				if (imagesLoadingInLastMessage === 0) {
+					// All cached or no images (or couldn't verify)
+					attemptScrollToBottom();
+					console.log('[Chat] handleSendMessage: Scrolling (due to cached images or no images).');
+				}
+				// If imagesLoadingInLastMessage > 0, the on:load/on:error handlers on images will call attemptScrollToBottom
+			} else {
+				// No images, scroll immediately
+				imagesLoadingInLastMessage = 0;
+				attemptScrollToBottom();
+				console.log('[Chat] handleSendMessage: No images in message, scrolling.');
+			}
 		} catch (err: any) {
-			console.error('Send message error:', err);
-			// Display error to user, maybe a toast notification
-			alert(`Error sending message: ${err.message}`);
+			console.error('[Chat] Send message error in try-catch block:', err);
+			console.error(`[Chat] Error sending message details: ${err.message}`);
 		} finally {
 			isSendingMessage = false;
+			console.log('[Chat] handleSendMessage: isSendingMessage = false (finally block).');
 		}
 	}
 
 	onMount(() => {
 		chatId = $page.params.chatId;
 		if (chatId) {
-			const unsubscribeAuth = authStore.subscribe(async (auth) => { // Make callback async
+			const unsubscribeAuth = authStore.subscribe(async (auth) => {
+				// Make callback async
 				if (auth.token && auth.user && !auth.isLoading) {
 					token = auth.token;
 					currentUser = auth.user;
 					// Fetch messages and chat details
-					await fetchMessages(chatId!); // Keep this to load messages
-					await loadChatAndParticipantDetails(chatId!); // Load chat context
-					unsubscribeAuth(); 
+					await loadChatAndParticipantDetails(chatId!); // Load chat context first
+					await fetchMessages(chatId!); // Then messages, which will scroll on completion
+					unsubscribeAuth();
 					// TODO: Implement polling or WebSocket for real-time messages
 				} else if (!auth.isLoading && (!auth.token || !auth.user)) {
 					errorMessage = 'User not authenticated or details missing.';
 					isLoading = false;
-					unsubscribeAuth(); 
+					unsubscribeAuth();
 				}
 			});
 		} else {
@@ -224,11 +391,29 @@
 	});
 
 	afterUpdate(() => {
-		if (shouldScrollToBottom && messagesContainer) {
-			messagesContainer.scrollTop = messagesContainer.scrollHeight;
-			shouldScrollToBottom = false;
-		}
+		// This afterUpdate is now mostly for initial load or other reactive changes
+		// if (shouldScrollToBottom && messagesContainer) {
+		//  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+		//  shouldScrollToBottom = false;
+		// }
+		// For now, specific scrolling is handled by attemptScrollToBottom()
 	});
+
+	function attemptScrollToBottom() {
+		if (messagesContainer) {
+			messagesContainer.scrollTop = messagesContainer.scrollHeight;
+		}
+	}
+
+	function handleImageEventInLastMessage(messageId: string) {
+		if (messageId === lastMessageIdForImageLoadTracking && imagesLoadingInLastMessage > 0) {
+			imagesLoadingInLastMessage--;
+			if (imagesLoadingInLastMessage === 0) {
+				attemptScrollToBottom();
+				lastMessageIdForImageLoadTracking = null; // Reset tracker
+			}
+		}
+	}
 
 	function formatDate(timestamp: string) {
 		if (!timestamp) return '';
@@ -242,7 +427,11 @@
 		// For now, returning a generic name or part of ID
 		// Could be enhanced if `otherParticipantProfile` is used for non-current user's messages
 		if (otherParticipantProfile && senderId === otherParticipantProfile.id) {
-			return otherParticipantProfile.profile?.fullName || otherParticipantProfile.profile?.companyName || `Participant ${senderId.substring(0,6)}`;
+			return (
+				otherParticipantProfile.profile?.fullName ||
+				otherParticipantProfile.profile?.companyName ||
+				`Participant ${senderId.substring(0, 6)}`
+			);
 		}
 		return `User ${senderId.substring(0, 6)}...`;
 	}
@@ -278,7 +467,9 @@
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({ message: 'Failed to upload image.' }));
+				const errorData = await response
+					.json()
+					.catch(() => ({ message: 'Failed to upload image.' }));
 				throw new Error(errorData.message);
 			}
 			const result = await response.json();
@@ -288,7 +479,7 @@
 			errorMessage = `Image upload failed: ${err.message}`;
 			uploadedImagePath = null; // Clear path on error
 			selectedFile = null; // Clear selected file on error
-			if(fileInput) fileInput.value = ''; // Reset file input
+			if (fileInput) fileInput.value = ''; // Reset file input
 		} finally {
 			isUploadingImage = false;
 		}
@@ -309,10 +500,17 @@
 		let determinedCustomerId: string | null = null;
 		let determinedExpertSupplierId: string | null = null;
 
-		if (currentUser.userType === 'customer' && (otherParticipantProfile.userType === 'expert' || otherParticipantProfile.userType === 'supplier')) {
+		if (
+			currentUser.userType === 'customer' &&
+			(otherParticipantProfile.userType === 'expert' ||
+				otherParticipantProfile.userType === 'supplier')
+		) {
 			determinedCustomerId = currentUser.id;
 			determinedExpertSupplierId = otherParticipantProfile.id;
-		} else if (otherParticipantProfile.userType === 'customer' && (currentUser.userType === 'expert' || currentUser.userType === 'supplier')) {
+		} else if (
+			otherParticipantProfile.userType === 'customer' &&
+			(currentUser.userType === 'expert' || currentUser.userType === 'supplier')
+		) {
 			determinedCustomerId = otherParticipantProfile.id;
 			determinedExpertSupplierId = currentUser.id;
 		} else {
@@ -328,10 +526,15 @@
 		showContractModal = true;
 	}
 
-	$: canCreateContract = currentUser && otherParticipantProfile && currentChatDetails &&
-		( (currentUser.userType === 'customer' && (otherParticipantProfile.userType === 'expert' || otherParticipantProfile.userType === 'supplier')) ||
-		  (otherParticipantProfile.userType === 'customer' && (currentUser.userType === 'expert' || currentUser.userType === 'supplier')) );
-
+	$: canCreateContract =
+		currentUser &&
+		otherParticipantProfile &&
+		currentChatDetails &&
+		((currentUser.userType === 'customer' &&
+			(otherParticipantProfile.userType === 'expert' ||
+				otherParticipantProfile.userType === 'supplier')) ||
+			(otherParticipantProfile.userType === 'customer' &&
+				(currentUser.userType === 'expert' || currentUser.userType === 'supplier')));
 </script>
 
 <div
@@ -358,7 +561,9 @@
 			</button>
 			<h2 class="truncate text-xl font-semibold text-emerald-400">
 				{chatPageTitle}
-				{#if chatId && chatPageTitle === 'Chat'}<span class="ml-2 text-xs text-slate-500">ID: {chatId.substring(0, 8)}...</span>{/if}
+				{#if chatId && chatPageTitle === 'Chat'}<span class="ml-2 text-xs text-slate-500"
+						>ID: {chatId.substring(0, 8)}...</span
+					>{/if}
 			</h2>
 			<div class="ml-auto">
 				{#if canCreateContract}
@@ -368,8 +573,19 @@
 						title="Create a new contract with this user"
 					>
 						<!-- Three-dot Icon or Text -->
-						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="hidden h-5 w-5 sm:inline-block sm:mr-1">
-  							<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+							stroke="currentColor"
+							class="hidden h-5 w-5 sm:mr-1 sm:inline-block"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+							/>
 						</svg>
 						<span class="sm:inline">New Contract</span>
 						<!-- Or use a three-dot icon:
@@ -385,7 +601,7 @@
 	<!-- Messages Area -->
 	<div
 		bind:this={messagesContainer}
-		class="flex-1 space-y-4 overflow-y-auto bg-slate-800 p-4 sm:p-6"
+		class="messages-container flex-1 space-y-4 overflow-y-auto bg-slate-800 p-4 sm:p-6"
 	>
 		{#if isLoading}
 			<div class="flex h-full items-center justify-center">
@@ -433,6 +649,7 @@
 		{:else}
 			{#each messages as message (message.id)}
 				<div
+					data-message-id={message.id}
 					class="flex flex-col space-y-0.5 {message.senderId === currentUser?.id
 						? 'items-end'
 						: 'items-start'}"
@@ -446,18 +663,28 @@
 							<div class="mb-1.5 flex flex-wrap gap-2">
 								{#each message.images as imageSrc (imageSrc)}
 									<img
-										src={imageSrc.startsWith('http') ? imageSrc : API_BASE_URL.replace('/api', '') + imageSrc} 
+										src={imageSrc.startsWith('http')
+											? imageSrc
+											: API_BASE_URL.replace('/api', '') + imageSrc}
 										alt="Chat attachment"
 										class="max-h-48 max-w-xs cursor-pointer rounded-md border border-slate-500 object-contain"
-										on:click={() => window.open(imageSrc.startsWith('http') ? imageSrc : API_BASE_URL.replace('/api', '') + imageSrc, '_blank')}
-										loading="lazy"
+										on:click={() =>
+											window.open(
+												imageSrc.startsWith('http')
+													? imageSrc
+													: API_BASE_URL.replace('/api', '') + imageSrc,
+												'_blank'
+											)}
+										on:load={() => handleImageEventInLastMessage(message.id)}
+										on:error={() => handleImageEventInLastMessage(message.id)}
+										referrerpolicy="no-referrer"
 									/>
 								{/each}
 							</div>
 						{/if}
 						{#if message.content && message.content.trim()}
-						    <p class="break-words whitespace-pre-wrap">{message.content}</p>
-                        {/if}
+							<p class="break-words whitespace-pre-wrap">{message.content}</p>
+						{/if}
 					</div>
 					<div
 						class="px-1 text-xs {message.senderId === currentUser?.id
@@ -477,15 +704,29 @@
 		<!-- Image Preview and Remove Button -->
 		{#if uploadedImagePath && !isUploadingImage}
 			<div class="mb-2 flex items-center space-x-2 rounded-md bg-slate-600/80 p-2 shadow">
-				<img src={uploadedImagePath.startsWith('http') ? uploadedImagePath : API_BASE_URL.replace('/api', '') + uploadedImagePath} alt="Preview" class="h-12 w-12 rounded object-cover" />
-				<span class="truncate text-xs text-slate-300">{selectedFile?.name || 'Uploaded Image'}</span>
+				<img
+					src={uploadedImagePath.startsWith('http')
+						? uploadedImagePath
+						: API_BASE_URL.replace('/api', '') + uploadedImagePath}
+					alt="Preview"
+					class="h-12 w-12 rounded object-cover"
+				/>
+				<span class="truncate text-xs text-slate-300">{selectedFile?.name || 'Uploaded Image'}</span
+				>
 				<button
 					type="button"
 					on:click={removeSelectedImage}
 					class="ml-auto rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-500 hover:text-red-300"
 					title="Remove image"
 				>
-					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke-width="1.5"
+						stroke="currentColor"
+						class="h-5 w-5"
+					>
 						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 					</svg>
 				</button>
@@ -493,9 +734,19 @@
 		{/if}
 		{#if isUploadingImage}
 			<div class="mb-2 flex items-center space-x-2 rounded-md bg-slate-600/80 p-3 text-slate-300">
-				<svg class="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+				<svg
+					class="h-5 w-5 animate-spin"
+					xmlns="http://www.w3.org/2000/svg"
+					fill="none"
+					viewBox="0 0 24 24"
+				>
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+					></circle>
+					<path
+						class="opacity-75"
+						fill="currentColor"
+						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+					></path>
 				</svg>
 				<span>Uploading image: {selectedFile?.name || '...'}</span>
 			</div>
@@ -523,11 +774,22 @@
 				aria-label="Attach image"
 				title="Attach image"
 			>
-				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.122 2.122l7.81-7.81" />
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke-width="1.5"
+					stroke="currentColor"
+					class="h-5 w-5"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.122 2.122l7.81-7.81"
+					/>
 				</svg>
 			</button>
-			
+
 			<input
 				type="text"
 				bind:value={newMessageContent}
@@ -537,7 +799,9 @@
 			/>
 			<button
 				type="submit"
-				disabled={isUploadingImage || isSendingMessage || (!newMessageContent.trim() && !uploadedImagePath)}
+				disabled={isUploadingImage ||
+					isSendingMessage ||
+					(!newMessageContent.trim() && !uploadedImagePath)}
 				class="focus:ring-opacity-75 rounded-lg bg-emerald-500 p-2.5 font-semibold text-white shadow transition-colors duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-md focus:ring-2 focus:ring-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-500/70 sm:px-5 sm:py-2.5"
 				aria-label="Send message"
 			>
@@ -590,4 +854,20 @@
 	/* For simplicity, using a fixed offset in h-[calc(...)] for now.
      Assumes parent layout header + this page header totals about 10rem (a rough estimate) for viewport height adjustment.
      This can be made more precise if needed, e.g. using a store for layout dimensions or CSS variables passed down. */
+
+	/* Scrollbar styles for WebKit browsers (Chrome, Safari, Edge) */
+	.messages-container::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	.messages-container::-webkit-scrollbar-track {
+		background-color: #1e293b; /* Tailwind slate-800 */
+	}
+	.messages-container::-webkit-scrollbar-thumb {
+		background-color: #475569; /* Tailwind slate-600 */
+		border-radius: 4px;
+	}
+	.messages-container::-webkit-scrollbar-thumb:hover {
+		background-color: #10b981; /* Tailwind emerald-500 */
+	}
 </style>
