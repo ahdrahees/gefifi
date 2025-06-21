@@ -93,11 +93,9 @@ router.post('/auth/register', async (req: Request, res: Response) => {
 		}
 		const existingUsers = await usersDB.getAll();
 		if (existingUsers.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
-			return res
-				.status(409)
-				.json({
-					message: 'User with this email already exists. Please login or use a different email.'
-				});
+			return res.status(409).json({
+				message: 'User with this email already exists. Please login or use a different email.'
+			});
 		}
 		const hashedPassword = await hashPassword(password);
 		const userId = crypto.randomUUID();
@@ -489,30 +487,24 @@ router.post(
 					finalMessageContent = `Hi ${targetName}, I'm interested in your services.`;
 				} else if (predefinedMessageKey === 'PROVIDER_INTEREST_IN_WORK_REQUEST') {
 					if (!workRequest) {
-						return res
-							.status(400)
-							.json({
-								message:
-									'workRequestId is required when using the PROVIDER_INTEREST_IN_WORK_REQUEST key.'
-							});
+						return res.status(400).json({
+							message:
+								'workRequestId is required when using the PROVIDER_INTEREST_IN_WORK_REQUEST key.'
+						});
 					}
 					finalMessageContent = `Hi, I saw your work request "${workRequest.title}" and I'm interested in discussing it further.`;
 				} else {
 					// If predefinedMessageKey is provided but not recognized
-					return res
-						.status(400)
-						.json({
-							message: `Unknown or inapplicable predefinedMessageKey: ${predefinedMessageKey}`
-						});
+					return res.status(400).json({
+						message: `Unknown or inapplicable predefinedMessageKey: ${predefinedMessageKey}`
+					});
 				}
 			} else {
 				// If neither custom message nor a valid predefined key is provided
-				return res
-					.status(400)
-					.json({
-						message:
-							'Either initialMessageContent or a valid predefinedMessageKey is required to initiate interest.'
-					});
+				return res.status(400).json({
+					message:
+						'Either initialMessageContent or a valid predefinedMessageKey is required to initiate interest.'
+				});
 			}
 
 			const allChats = await chatsDB.getAll();
@@ -629,12 +621,10 @@ router.post('/chat', authenticateToken, async (req: AuthenticatedRequest, res: R
 				c.workRequestId === workRequestId
 		);
 		if (existingChat) {
-			return res
-				.status(200)
-				.json({
-					message: 'Chat with these participants (and work request, if specified) already exists.',
-					chat: existingChat
-				});
+			return res.status(200).json({
+				message: 'Chat with these participants (and work request, if specified) already exists.',
+				chat: existingChat
+			});
 		}
 		const now = new Date().toISOString();
 		const chatId = crypto.randomUUID();
@@ -692,12 +682,10 @@ router.post(
 			}
 			// If images are provided, but not in the correct format (e.g. not an array of strings)
 			if (images && Array.isArray(images) && images.length > 0 && !hasValidImages) {
-				return res
-					.status(400)
-					.json({
-						message:
-							'Images must be an array of strings (file paths) and cannot be empty strings if the array is not empty.'
-					});
+				return res.status(400).json({
+					message:
+						'Images must be an array of strings (file paths) and cannot be empty strings if the array is not empty.'
+				});
 			}
 			// Further check for empty strings within the images array if it's not empty.
 			// This is implicitly handled by `images.every(img => typeof img === 'string')` if we assume file paths must be non-empty.
@@ -826,12 +814,10 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		} = req.body;
 
 		if (!workRequestId || !customerId || !expertSupplierId || !workDetails || !agreementSummary) {
-			return res
-				.status(400)
-				.json({
-					message:
-						'workRequestId, customerId, expertSupplierId, workDetails, and agreementSummary are required.'
-				});
+			return res.status(400).json({
+				message:
+					'workRequestId, customerId, expertSupplierId, workDetails, and agreementSummary are required.'
+			});
 		}
 		const workRequest = await workRequestsDB.findById(workRequestId);
 		if (!workRequest)
@@ -857,12 +843,10 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 				.json({ message: 'expertSupplierId must belong to an expert or supplier user.' });
 		}
 		if (initiator.id !== customerId && initiator.id !== expertSupplierId) {
-			return res
-				.status(403)
-				.json({
-					message:
-						'Forbidden. Contract creator must be the customer or the designated expert/supplier.'
-				});
+			return res.status(403).json({
+				message:
+					'Forbidden. Contract creator must be the customer or the designated expert/supplier.'
+			});
 		}
 		const now = new Date().toISOString();
 		const contractId = crypto.randomUUID();
@@ -949,11 +933,9 @@ router.put(
 				return res.status(404).json({ message: 'Contract not found.' });
 			}
 			if (contract.status !== 'draft' && contract.status !== 'awaiting_signatures') {
-				return res
-					.status(400)
-					.json({
-						message: `Contract in status '${contract.status}' cannot be signed. Must be 'draft' or 'awaiting_signatures'.`
-					});
+				return res.status(400).json({
+					message: `Contract in status '${contract.status}' cannot be signed. Must be 'draft' or 'awaiting_signatures'.`
+				});
 			}
 			let signedByCurrentUser = false;
 			const now = new Date().toISOString();
@@ -991,17 +973,213 @@ router.put(
 				const updatedContract = await contractsDB.update(contractId, updates);
 				res.status(200).json(updatedContract);
 			} else {
-				res
-					.status(400)
-					.json({
-						message:
-							'No signature action was performed. User may have already signed or is not a party.'
-					});
+				res.status(400).json({
+					message:
+						'No signature action was performed. User may have already signed or is not a party.'
+				});
 			}
 		} catch (error: unknown) {
 			console.error('Error signing contract:', error);
 			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
 			res.status(500).json({ message: 'Failed to sign contract.', error: errorMessage });
+		}
+	}
+);
+
+router.put(
+	'/contracts/:contractId/status',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const { status: newStatus } = req.body;
+
+			// --- Validation ---
+			if (!newStatus) {
+				return res.status(400).json({ message: 'New status is required in the request body.' });
+			}
+			const validStatuses: Contract['status'][] = [
+				'draft',
+				'awaiting_signatures',
+				'signed',
+				'in_progress',
+				'completed',
+				'disputed',
+				'cancelled',
+				'terminated'
+			];
+			if (!validStatuses.includes(newStatus)) {
+				return res.status(400).json({
+					message: `Invalid status provided. Must be one of: ${validStatuses.join(', ')}`
+				});
+			}
+
+			const contract = await contractsDB.findById(contractId);
+			if (!contract) {
+				return res.status(404).json({ message: 'Contract not found.' });
+			}
+
+			// --- Authorization ---
+			if (user.id !== contract.customerId && user.id !== contract.expertSupplierId) {
+				return res
+					.status(403)
+					.json({ message: 'Forbidden. You are not a party to this contract.' });
+			}
+
+			// --- Update Logic ---
+			const now = new Date().toISOString();
+			const updates: Partial<Contract> = {
+				status: newStatus,
+				updatedAt: now
+			};
+			const updatedContract = await contractsDB.update(contractId, updates);
+
+			if (!updatedContract) {
+				return res.status(500).json({ message: 'Failed to update the contract in the database.' });
+			}
+
+			// --- Chat Notification Logic ---
+			try {
+				const allChats = await chatsDB.getAll();
+				// Find a chat that exclusively contains these two participants.
+				const relevantChat = allChats.find(
+					(chat) =>
+						chat.participants.length === 2 &&
+						chat.participants.includes(contract.customerId) &&
+						chat.participants.includes(contract.expertSupplierId)
+				);
+
+				if (relevantChat) {
+					const messageId = crypto.randomUUID();
+					const notificationMessage: Message = {
+						id: messageId,
+						chatId: relevantChat.id,
+						senderId: 'system', // Indicates a system-generated message
+						content: `[System] The project status was updated to: ${newStatus.replace(/_/g, ' ')}.`,
+						timestamp: now
+					};
+					await messagesDB.create(notificationMessage);
+					await chatsDB.update(relevantChat.id, { updatedAt: now });
+					console.log(
+						`[Status Update] Sent notification to chat ${relevantChat.id} for contract ${contract.id}`
+					);
+				} else {
+					console.warn(
+						`[Status Update] Could not find a chat between ${contract.customerId} and ${contract.expertSupplierId} to send notification for contract ${contract.id}`
+					);
+				}
+			} catch (chatError) {
+				console.error(
+					`[Status Update] Failed to send chat notification for contract ${contract.id}:`,
+					chatError
+				);
+			}
+
+			res.status(200).json(updatedContract);
+		} catch (error: unknown) {
+			console.error('Error updating contract status:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update contract status.', error: errorMessage });
+		}
+	}
+);
+
+router.put(
+	'/contracts/:contractId/status',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const { status: newStatus } = req.body;
+
+			// --- Validation ---
+			if (!newStatus) {
+				return res.status(400).json({ message: 'New status is required in the request body.' });
+			}
+			const validStatuses: Contract['status'][] = [
+				'draft',
+				'awaiting_signatures',
+				'signed',
+				'in_progress',
+				'completed',
+				'disputed',
+				'cancelled',
+				'terminated'
+			];
+			if (!validStatuses.includes(newStatus)) {
+				return res.status(400).json({
+					message: `Invalid status provided. Must be one of: ${validStatuses.join(', ')}`
+				});
+			}
+
+			const contract = await contractsDB.findById(contractId);
+			if (!contract) {
+				return res.status(404).json({ message: 'Contract not found.' });
+			}
+
+			// --- Authorization ---
+			if (user.id !== contract.customerId && user.id !== contract.expertSupplierId) {
+				return res
+					.status(403)
+					.json({ message: 'Forbidden. You are not a party to this contract.' });
+			}
+
+			// --- Update Logic ---
+			const now = new Date().toISOString();
+			const updates: Partial<Contract> = {
+				status: newStatus,
+				updatedAt: now
+			};
+			const updatedContract = await contractsDB.update(contractId, updates);
+
+			if (!updatedContract) {
+				return res.status(500).json({ message: 'Failed to update the contract in the database.' });
+			}
+
+			// --- Chat Notification Logic ---
+			try {
+				const allChats = await chatsDB.getAll();
+				// Find a chat that exclusively contains these two participants.
+				const relevantChat = allChats.find(
+					(chat) =>
+						chat.participants.length === 2 &&
+						chat.participants.includes(contract.customerId) &&
+						chat.participants.includes(contract.expertSupplierId)
+				);
+
+				if (relevantChat) {
+					const messageId = crypto.randomUUID();
+					const notificationMessage: Message = {
+						id: messageId,
+						chatId: relevantChat.id,
+						senderId: 'system', // Indicates a system-generated message
+						content: `[System] The project status was updated to: ${newStatus.replace(/_/g, ' ')}.`,
+						timestamp: now
+					};
+					await messagesDB.create(notificationMessage);
+					await chatsDB.update(relevantChat.id, { updatedAt: now });
+					console.log(
+						`[Status Update] Sent notification to chat ${relevantChat.id} for contract ${contract.id}`
+					);
+				} else {
+					console.warn(
+						`[Status Update] Could not find a chat between ${contract.customerId} and ${contract.expertSupplierId} to send notification for contract ${contract.id}`
+					);
+				}
+			} catch (chatError) {
+				console.error(
+					`[Status Update] Failed to send chat notification for contract ${contract.id}:`,
+					chatError
+				);
+			}
+
+			res.status(200).json(updatedContract);
+		} catch (error: unknown) {
+			console.error('Error updating contract status:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update contract status.', error: errorMessage });
 		}
 	}
 );
