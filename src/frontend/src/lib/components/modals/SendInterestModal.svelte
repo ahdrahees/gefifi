@@ -3,19 +3,16 @@
 	import { createEventDispatcher, onMount } from 'svelte';
 	import GeneralModal from '$lib/components/ui/GeneralModal.svelte';
 	import apiClient from '$lib/api';
-	import { authStore, type AuthUser } from '$lib/stores/auth';
+	import { authStore } from '$lib/stores/auth';
+	import type { AuthUser, WorkRequest } from '$lib/types';
 	import { goto } from '$app/navigation';
 
 	export let show: boolean = false;
 	export let targetProfessionalId: string;
 	export let targetProfessionalName: string;
 
-	// Define a simple type for WorkRequest for the dropdown
-	type CustomerWorkRequest = {
-		id: string;
-		title: string;
-		status: string;
-	};
+	// Define a simple type for WorkRequest for the dropdown, using Pick for conciseness
+	type CustomerWorkRequest = Pick<WorkRequest, 'id' | 'title' | 'status'>;
 
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
@@ -69,10 +66,15 @@
 	});
 
 	// Re-fetch if modal is reshown and was hidden
-	$: if (show && currentUser?.userType === 'customer' && customerWorkRequests.length === 0 && !isLoadingWorkRequests && !formSuccess) {
+	$: if (
+		show &&
+		currentUser?.userType === 'customer' &&
+		customerWorkRequests.length === 0 &&
+		!isLoadingWorkRequests &&
+		!formSuccess
+	) {
 		fetchCustomerWorkRequests();
 	}
-
 
 	async function handleSendQuickGreeting() {
 		isLoading = true;
@@ -103,23 +105,23 @@
 		formSuccess = null;
 
 		if (!customMessage.trim() && !selectedWorkRequestId) {
-			formError = "Please write a note or select a project to discuss.";
+			formError = 'Please write a note or select a project to discuss.';
 			isLoading = false;
 			return;
 		}
 
 		let messageToSend = customMessage.trim();
 		if (selectedWorkRequestId && customerWorkRequests.length > 0) {
-			const selectedWR = customerWorkRequests.find(wr => wr.id === selectedWorkRequestId);
+			const selectedWR = customerWorkRequests.find((wr) => wr.id === selectedWorkRequestId);
 			if (selectedWR) {
 				const wrBlurb = `Regarding project: "${selectedWR.title}"`;
 				messageToSend = messageToSend ? `${wrBlurb}. ${messageToSend}` : wrBlurb;
 			}
 		}
-		if (!messageToSend) { // Fallback if only WR was selected but something went wrong with title
+		if (!messageToSend) {
+			// Fallback if only WR was selected but something went wrong with title
 			messageToSend = `I'm interested in discussing a project.`;
 		}
-
 
 		try {
 			const result = await apiClient.sendInterest({
@@ -150,26 +152,37 @@
 		if (isLoading) return; // Don't close if an action is in progress
 		dispatch('close');
 	}
-
 </script>
 
-<GeneralModal {show} title="Send Interest to {targetProfessionalName}" on:close={handleClose} maxWidthClass="max-w-xl">
+<GeneralModal
+	{show}
+	title="Send Interest to {targetProfessionalName}"
+	on:close={handleClose}
+	maxWidthClass="max-w-xl"
+>
 	<div class="space-y-6">
 		{#if formError}
-			<div role="alert" class="rounded-md border border-red-600 bg-red-500/20 p-3 text-sm text-red-300">
+			<div
+				role="alert"
+				class="rounded-md border border-red-600 bg-red-500/20 p-3 text-sm text-red-300"
+			>
 				{formError}
 			</div>
 		{/if}
 		{#if formSuccess}
-			<div role="alert" class="rounded-md border border-emerald-600 bg-emerald-500/20 p-3 text-sm text-emerald-300">
+			<div
+				role="alert"
+				class="rounded-md border border-emerald-600 bg-emerald-500/20 p-3 text-sm text-emerald-300"
+			>
 				{formSuccess}
 			</div>
 		{/if}
 
-		{#if !formSuccess} <!-- Hide form options if successfully submitted -->
+		{#if !formSuccess}
+			<!-- Hide form options if successfully submitted -->
 			<!-- Option 1: Quick Greeting -->
 			<div class="rounded-lg bg-slate-700/50 p-4 shadow">
-				<h3 class="mb-2 text-md font-semibold text-sky-300">Quick Greeting</h3>
+				<h3 class="text-md mb-2 font-semibold text-sky-300">Quick Greeting</h3>
 				<p class="mb-3 text-sm text-slate-300">
 					Send a general interest message to start a conversation.
 				</p>
@@ -178,13 +191,14 @@
 					disabled={isLoading}
 					class="w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
 				>
-					{#if isLoading && !customMessage && !selectedWorkRequestId}Processing...{:else}Send Quick Greeting{/if}
+					{#if isLoading && !customMessage && !selectedWorkRequestId}Processing...{:else}Send Quick
+						Greeting{/if}
 				</button>
 			</div>
 
 			<div class="my-4 flex items-center">
 				<span class="flex-grow border-t border-slate-600"></span>
-				<span class="mx-3 text-xs uppercase text-slate-400">Or</span>
+				<span class="mx-3 text-xs text-slate-400 uppercase">Or</span>
 				<span class="flex-grow border-t border-slate-600"></span>
 			</div>
 
@@ -236,15 +250,17 @@
 					disabled={isLoading}
 					class="w-full rounded-md bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
 				>
-					{#if isLoading && (customMessage || selectedWorkRequestId)}Processing...{:else}Send Detailed Interest{/if}
+					{#if isLoading && (customMessage || selectedWorkRequestId)}Processing...{:else}Send
+						Detailed Interest{/if}
 				</button>
 			</div>
-		{/if} <!-- end !formSuccess block -->
+		{/if}
+		<!-- end !formSuccess block -->
 	</div>
 
 	<svelte:fragment slot="footer">
 		{#if !formSuccess}
-			<div class="border-t border-slate-700 p-4 flex justify-end">
+			<div class="flex justify-end border-t border-slate-700 p-4">
 				<button
 					type="button"
 					on:click={handleClose}

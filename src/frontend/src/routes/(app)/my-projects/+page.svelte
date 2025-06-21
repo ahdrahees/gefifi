@@ -2,50 +2,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
-	import { authStore, type AuthUser } from '$lib/stores/auth';
+	import { authStore } from '$lib/stores/auth';
+	import type { AuthUser, ContractStatus, ProjectSummary } from '$lib/types';
 	import apiClient from '$lib/api';
-
-	// TODO: Move these types to a central types.ts file
-	type UserProfile = {
-		id: string;
-		email: string;
-		userType: 'customer' | 'expert' | 'supplier';
-		profile?: {
-			fullName?: string;
-			companyName?: string;
-		};
-	};
-
-	type ContractStatus =
-		| 'draft'
-		| 'awaiting_signatures'
-		| 'signed'
-		| 'in_progress'
-		| 'completed'
-		| 'disputed'
-		| 'cancelled'
-		| 'terminated';
-
-	type EnrichedProject = {
-		id: string;
-		workRequestId?: string;
-		customerId: string;
-		expertSupplierId: string;
-		status: ContractStatus;
-		contractDate: string;
-		workRequestTitle?: string;
-		otherPartyName?: string;
-	};
+	import { page } from '$app/stores';
 
 	let currentUser: AuthUser | null = null;
 	authStore.subscribe((auth) => (currentUser = auth.user));
 
 	let activeTab: 'ongoing' | 'completed' = 'ongoing';
 
-	let ongoingProjects: EnrichedProject[] = [];
-	let completedProjects: EnrichedProject[] = [];
-	let displayedProjects: EnrichedProject[] = [];
+	let ongoingProjects: ProjectSummary[] = [];
+	let completedProjects: ProjectSummary[] = [];
+	let displayedProjects: ProjectSummary[] = [];
 
 	let isLoading = true;
 	let errorMessage = '';
@@ -83,7 +52,7 @@
 					]);
 
 					if (otherPartyRes.status === 'fulfilled' && otherPartyRes.value) {
-						const userData = otherPartyRes.value;
+						const userData: AuthUser = otherPartyRes.value;
 						otherPartyName =
 							userData.profile?.companyName ||
 							userData.profile?.fullName ||
@@ -98,16 +67,15 @@
 						console.warn(`Failed to fetch work request ${contract.workRequestId}`);
 					}
 
-					return {
+					const summary: ProjectSummary = {
 						id: contract.id,
 						workRequestId: contract.workRequestId,
-						customerId: contract.customerId,
-						expertSupplierId: contract.expertSupplierId,
 						status: contract.status as ContractStatus,
 						contractDate: contract.contractDate,
 						workRequestTitle,
 						otherPartyName
 					};
+					return summary;
 				})
 			);
 

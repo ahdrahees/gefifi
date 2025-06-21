@@ -2,22 +2,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 
-	// Define UserProfile type - ideally import from a central types.ts
-	// This must match the structure provided by the parent page
-	export type UserProfile = {
-		id: string;
-		email: string; // Used as fallback for name
-		userType: 'expert' | 'supplier'; // This card is for professionals
-		profile: {
-			fullName?: string;
-			companyName?: string;
-			avatarUrl?: string;
-			location?: string;
-			expertise?: string;
-			experience?: string;
-			category?: string;
-		};
-	};
+	import type { UserProfile } from '$lib/types';
 
 	export let professional: UserProfile;
 

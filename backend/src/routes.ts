@@ -10,6 +10,7 @@ import {
 	JwtPayload
 } from './auth';
 import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 
 // Initialize databases
 const usersDB = new SimpleDB<User>('users.json');
@@ -19,6 +20,7 @@ const messagesDB = new SimpleDB<Message>('messages.json');
 const contractsDB = new SimpleDB<Contract>('contracts.json');
 
 const router = Router();
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // --- Helper: Validate User Profile based on UserType ---
 const validateProfileData = (
@@ -205,78 +207,100 @@ router.get('/auth/me', authenticateToken, async (req: AuthenticatedRequest, res:
 });
 
 router.post('/auth/google', async (req: Request, res: Response) => {
-	const { googleTokenId, _userTypeForNewGoogleUser, _profileForNewGoogleUser } = req.body;
-	if (req.body.mockGoogleUser) {
-		const { email, googleId, name, userType, profile } = req.body.mockGoogleUser;
-		if (!email || !googleId || !userType) {
-			return res
-				.status(400)
-				.json({ message: 'Mock Google user requires email, googleId, and userType.' });
+	const { googleTokenId, userTypeForNewUser, profileForNewUser } = req.body;
+
+	if (!googleTokenId) {
+		return res.status(400).json({ message: 'Google ID Token is required.' });
+	}
+
+	try {
+		// Verify the ID token with Google
+		const ticket = await googleClient.verifyIdToken({
+			idToken: googleTokenId,
+			audience: process.env.GOOGLE_CLIENT_ID
+		});
+
+		const payload = ticket.getPayload();
+		if (!payload) {
+			return res.status(400).json({ message: 'Invalid Google token payload.' });
 		}
-		if (!['customer', 'expert', 'supplier'].includes(userType)) {
-			return res.status(400).json({ message: 'Invalid userType for mock Google user.' });
+
+		const { sub: googleId, email, name, picture: avatarUrl } = payload;
+		if (!email) {
+			return res.status(400).json({ message: 'Email not found in Google token.' });
 		}
-		try {
-			const users = await usersDB.getAll();
-			let user = users.find(
-				(u) => u.googleId === googleId || u.email.toLowerCase() === email.toLowerCase()
-			);
-			const now = new Date().toISOString();
-			const profileValidation = validateProfileData(profile || { fullName: name }, userType);
-			if (!user) {
-				const newUserId = crypto.randomUUID();
-				user = {
-					id: newUserId,
-					email: email.toLowerCase(),
-					googleId,
-					userType,
-					profile: profileValidation.validatedProfile,
-					createdAt: now,
-					updatedAt: now,
-					isActive: true
-				};
-				await usersDB.create(user);
-			} else {
-				if (!user.googleId) user.googleId = googleId;
-				if (!user.isActive) return res.status(403).json({ message: 'Account is inactive.' });
-				user.userType = user.userType || userType;
-				user.profile = { ...user.profile, ...profileValidation.validatedProfile };
-				user.updatedAt = now;
-				await usersDB.update(user.id, {
-					googleId: user.googleId,
-					userType: user.userType,
-					profile: user.profile,
-					updatedAt: user.updatedAt
+
+		const users = await usersDB.getAll();
+		let user = users.find((u) => u.googleId === googleId || u.email.toLowerCase() === email);
+		const now = new Date().toISOString();
+
+		if (user) {
+			// --- Existing User Login Flow ---
+			if (!user.isActive) {
+				return res.status(403).json({ message: 'Account is inactive.' });
+			}
+			// Update user details if they've changed in their Google profile
+			user.googleId = user.googleId || googleId; // Link account if they signed up with email first
+			user.profile.fullName = user.profile.fullName || name;
+			user.profile.avatarUrl = user.profile.avatarUrl || avatarUrl;
+			user.updatedAt = now;
+
+			await usersDB.update(user.id, {
+				googleId: user.googleId,
+				profile: user.profile,
+				updatedAt: user.updatedAt
+			});
+		} else {
+			// --- New User Registration Flow ---
+			if (!userTypeForNewUser || !['customer', 'expert', 'supplier'].includes(userTypeForNewUser)) {
+				return res.status(400).json({
+					message:
+						"This Google account is not registered. Please provide a 'userTypeForNewUser' (customer, expert, or supplier) to create a new account."
 				});
 			}
-			const token = generateToken({ id: user.id, email: user.email, userType: user.userType });
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
-			const { password: _, ...userToReturn } = user;
-			return res
-				.status(200)
-				.json({ user: userToReturn, token, message: 'Google Sign-In successful (simulated).' });
-		} catch (error: unknown) {
-			console.error('Error during mock Google Sign-In:', error);
-			if (error instanceof Error) {
-				return res
-					.status(500)
-					.json({ message: 'Server error during mock Google Sign-In.', error: error.message });
-			} else {
-				return res
-					.status(500)
-					.json({ message: 'An unknown server error occurred during mock Google Sign-In.' });
+
+			const profileData = {
+				fullName: name,
+				avatarUrl: avatarUrl,
+				...(profileForNewUser || {}) // Merge any additional profile data from frontend
+			};
+
+			const profileValidation = validateProfileData(profileData, userTypeForNewUser);
+			if (!profileValidation.valid) {
+				return res.status(400).json({ message: profileValidation.message });
 			}
+
+			const newUserId = crypto.randomUUID();
+			user = {
+				id: newUserId,
+				email: email.toLowerCase(),
+				googleId,
+				userType: userTypeForNewUser,
+				profile: profileValidation.validatedProfile,
+				createdAt: now,
+				updatedAt: now,
+				isActive: true
+			};
+			await usersDB.create(user);
+		}
+
+		// --- Generate Token and Respond ---
+		const token = generateToken({ id: user.id, email: user.email, userType: user.userType });
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const { password: _, ...userToReturn } = user;
+		res.status(200).json({ user: userToReturn, token, message: 'Google Sign-In successful.' });
+	} catch (error: unknown) {
+		console.error('Error during Google Sign-In:', error);
+		if (error instanceof Error) {
+			return res
+				.status(500)
+				.json({ message: 'Server error during Google Sign-In.', error: error.message });
+		} else {
+			return res
+				.status(500)
+				.json({ message: 'An unknown server error occurred during Google Sign-In.' });
 		}
 	}
-	console.log(
-		'Received Google Token ID for real verification (not fully implemented):',
-		googleTokenId
-	);
-	res.status(501).json({
-		message:
-			'Google Sign-In: Real verification not fully implemented. Send `mockGoogleUser` object for demo flow.',
-		note: 'For new Google users via real flow, frontend needs to provide `userTypeForNewGoogleUser` and `profileForNewGoogleUser`.'
-	});
 });
 
 // --- Work Request Endpoints ---

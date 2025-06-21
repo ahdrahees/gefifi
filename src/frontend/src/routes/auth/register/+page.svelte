@@ -1,9 +1,12 @@
 <!-- gefifi-2/src/frontend/src/routes/auth/register/+page.svelte -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { authStore, type RegisterUserData, type AuthUser } from '$lib/stores/auth';
-	import apiClient, { ApiError } from '$lib/api'; // For Google login mock/register
+	import { authStore, type RegisterUserData } from '$lib/stores/auth';
+	import type { AuthUser } from '$lib/types';
+	import apiClient, { ApiError } from '$lib/api';
 	import { onMount } from 'svelte';
+
+	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 	let currentStep = 1; // 1: Account details, 2: Profile details
 
@@ -108,37 +111,33 @@
 		}
 	}
 
-	async function handleGoogleRegister() {
+	async function handleGoogleCredentialResponse(response: any) {
 		googleIsLoading = true;
 		errorMessage = null;
 
-		const googleUserType = userType || 'customer';
+		// The userType is selected in Step 1.
+		const userTypeForNewUser = userType;
+		const profileForNewUser = currentStep === 2 ? profile : {};
 
 		try {
-			const mockGoogleUserData = {
-				email: `guser.reg.${Date.now().toString().slice(-6)}@example.com`,
-				googleId: `google.reg.${Date.now()}`,
-				name: 'Google Reg User',
-				userType: googleUserType,
-				profile: {
-					fullName: 'Google Registered User',
-					avatarUrl: '/hero/Tabby Cat Construction Worker.png',
-					location: 'Googletown'
-				}
-			};
-
-			const response = await apiClient.googleLogin({
-				mockGoogleUser: mockGoogleUserData
+			// Call the backend with the token from Google and the selected userType
+			const result = await apiClient.googleLogin({
+				googleTokenId: response.credential,
+				userTypeForNewUser: userTypeForNewUser,
+				profileForNewUser: profileForNewUser // Send profile data if already collected
 			});
-			authStore._updateAuthData(response.token, response.user);
-			goto('/dashboard');
+
+			// On success, the backend returns a token for the new/existing user
+			authStore._updateAuthData(result.token, result.user);
+			goto('/dashboard', { replaceState: true });
 		} catch (error: any) {
+			console.error('Google Sign-In/Registration Error:', error);
 			if (error instanceof ApiError) {
-				errorMessage = error.data?.message || error.message || 'Google registration failed.';
+				errorMessage =
+					error.data?.message || 'An error occurred during Google Sign-In/Registration.';
 			} else {
-				errorMessage = error.message || 'An unexpected error with Google registration.';
+				errorMessage = 'An unexpected error occurred.';
 			}
-			console.error('Google Registration page error:', error);
 		} finally {
 			googleIsLoading = false;
 		}
@@ -146,6 +145,7 @@
 
 	let unsubscribeAuth: (() => void) | null = null;
 	onMount(() => {
+		// Redirect logic
 		const initialAuthState = $authStore;
 		if (initialAuthState.isLoggedIn && !initialAuthState.isLoading) {
 			goto('/dashboard', { replaceState: true });
@@ -155,6 +155,29 @@
 				goto('/dashboard', { replaceState: true });
 			}
 		});
+
+		// Initialize Google Sign-In
+		if (GOOGLE_CLIENT_ID && window.google) {
+			window.google.accounts.id.initialize({
+				client_id: GOOGLE_CLIENT_ID,
+				callback: handleGoogleCredentialResponse
+			});
+
+			const googleButtonElement = document.getElementById('google-register-button');
+			if (googleButtonElement) {
+				window.google.accounts.id.renderButton(googleButtonElement, {
+					theme: 'outline',
+					size: 'large',
+					type: 'standard',
+					text: 'continue_with', // More appropriate for registration
+					shape: 'rectangular',
+					logo_alignment: 'left'
+				});
+			}
+		} else {
+			console.error('Google Client ID not found or Google script not loaded.');
+		}
+
 		return () => {
 			if (unsubscribeAuth) unsubscribeAuth();
 		};
@@ -307,47 +330,16 @@
 						<span class="mx-4 flex-shrink text-xs text-slate-400 uppercase">Or</span>
 						<div class="flex-grow border-t border-slate-600"></div>
 					</div>
-					<button
-						type="button"
-						on:click={handleGoogleRegister}
-						disabled={isLoading || googleIsLoading}
-						class="flex w-full items-center justify-center rounded-lg bg-sky-500 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-sky-600 hover:shadow-lg focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-					>
-						{#if googleIsLoading}
-							<svg
-								class="mr-3 -ml-1 h-5 w-5 animate-spin text-white"
-								xmlns="http://www.w3.org/2000/svg"
-								fill="none"
-								viewBox="0 0 24 24"
-								><circle
-									class="opacity-25"
-									cx="12"
-									cy="12"
-									r="10"
-									stroke="currentColor"
-									stroke-width="4"
-								></circle><path
-									class="opacity-75"
-									fill="currentColor"
-									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-								></path></svg
-							>
-							Processing...
-						{:else}
-							<svg
-								class="mr-2 -ml-1 h-4 w-4"
-								aria-hidden="true"
-								focusable="false"
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 488 512"
-								><path
-									fill="currentColor"
-									d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"
-								></path></svg
-							>
-							Register with Google as {userType}
-						{/if}
-					</button>
+					<div id="google-register-button" class="flex justify-center">
+						<!-- Google will render its button here. We show a placeholder. -->
+						<button
+							type="button"
+							disabled={true}
+							class="flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-slate-700 px-6 py-3 font-semibold text-slate-300 opacity-70 shadow-md"
+						>
+							Loading Google Sign-In...
+						</button>
+					</div>
 				</form>
 			{:else if currentStep === 2}
 				<form on:submit|preventDefault={handleRegister} class="space-y-5">

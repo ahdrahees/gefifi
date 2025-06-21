@@ -1,26 +1,11 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/find-professionals/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { authStore, type AuthUser } from '$lib/stores/auth';
+	import { authStore } from '$lib/stores/auth';
+	import type { AuthUser, UserProfile } from '$lib/types';
 	import apiClient from '$lib/api';
 	import ProfessionalCard from '$lib/components/ui/ProfessionalCard.svelte';
 	import SendInterestModal from '$lib/components/modals/SendInterestModal.svelte';
-
-	type UserProfile = {
-		id: string;
-		email: string;
-		userType: 'customer' | 'expert' | 'supplier';
-		profile: {
-			fullName?: string;
-			companyName?: string;
-			avatarUrl?: string;
-			location?: string;
-			expertise?: string;
-			experience?: string;
-			category?: string;
-		};
-	};
 
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;

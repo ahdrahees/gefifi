@@ -44,7 +44,7 @@
 		try {
 			// Fetch the core contract using apiClient
 			const contractData = await apiClient.getContractById(id);
-			selectedStatus = contractData.status;
+			selectedStatus = contractData.status as ContractStatus;
 
 			// Fetch related data in parallel
 			const [workRequestRes, customerRes, providerRes] = await Promise.allSettled([
