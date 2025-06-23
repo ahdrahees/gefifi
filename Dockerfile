@@ -11,6 +11,9 @@ COPY . .
 # This keeps the final container size smaller and more secure
 RUN cd backend && bun install --production
 
+# Set the environment to production to ensure correct behavior in the cloud
+ENV NODE_ENV production
+
 # Tell the container to listen on port 3000 (GCP will map this automatically)
 # Google Cloud Run provides a PORT environment variable.
 # We'll default to 8080 if it's not set.
