@@ -26,11 +26,9 @@ vite.config.ts.timestamp-*
 /data/*
 
 
-# Ignore runtime data files in backend/data
-/backend/data/*.json
+# GCP credentials
 
 # Ignore uploaded files in backend/uploads
 /backend/uploads/*
 
-# GCP credentials
 /backend/gcp-credentials.json
