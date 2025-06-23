@@ -1,24 +1,44 @@
-# Use the official Bun image as a base, which is optimized and small
-FROM oven/bun:latest
+#
+# Build Stage
+#
+FROM oven/bun:latest as builder
 
-# Set the working directory inside the container to /app
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy all project files from your local machine into the container
-COPY . .
+# Copy package.json and bun.lockb to leverage Docker cache
+COPY backend/package.json backend/bun.lockb ./backend/
 
-# Change to the backend directory and install ONLY production dependencies
-# This keeps the final container size smaller and more secure
+# Install ONLY production dependencies
 RUN cd backend && bun install --production
 
-# Set the environment to production to ensure correct behavior in the cloud
-ENV NODE_ENV production
+# Copy the rest of the project files
+COPY . .
 
-# Tell the container to listen on port 3000 (GCP will map this automatically)
-# Google Cloud Run provides a PORT environment variable.
-# We'll default to 8080 if it's not set.
-ENV PORT 8080
+# Compile the TypeScript code to JavaScript
+RUN cd backend && bun run build
+
+
+#
+# Runner Stage
+#
+FROM oven/bun:latest
+
+# Set environment to production
+ENV NODE_ENV=production
+# The port the application will listen on. Google Cloud Run provides its own.
+ENV PORT=8080
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the compiled code and production dependencies from the builder stage
+COPY --from=builder /app/backend/dist ./backend/dist
+COPY --from=builder /app/backend/node_modules ./backend/node_modules
+COPY --from=builder /app/backend/package.json ./backend/package.json
+
+# Expose the port the app runs on
 EXPOSE 8080
 
-# The command to start your server when the container runs
-CMD ["bun", "run", "backend/src/server.ts"]
+# The command to start the application by running the compiled JavaScript
+CMD ["bun", "run", "backend/start"]
