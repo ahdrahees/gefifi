@@ -5,8 +5,10 @@ import path from 'path';
 import multer from 'multer';
 import fs from 'fs';
 
-// Load environment variables from .env file in the backend directory
-dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+// Conditionally load .env file in development
+if (process.env.NODE_ENV !== 'production') {
+	dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+}
 
 // Import API routes
 import apiRoutes from './routes';
@@ -88,16 +90,14 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 });
 
 // --- Start Server ---
+// Listen on all network interfaces in containers.
 const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 app.listen(Number(PORT), HOST, () => {
 	console.log(`Server is running on http://${HOST}:${PORT}`);
-	console.log(`Attempting to load .env from: ${path.resolve(__dirname, '..', '.env')}`);
-	console.log(
-		`JWT_SECRET from env: ${process.env.JWT_SECRET ? 'Loaded (first few chars: ' + process.env.JWT_SECRET.substring(0, 5) + '...)' : 'NOT Loaded or Empty'}`
-	);
-	console.log(
-		`Serving uploaded files from static path /uploads, mapped to directory: ${uploadsDir}`
-	);
+	console.log(`Current environment: ${process.env.NODE_ENV || 'development'}`);
+	if (process.env.NODE_ENV !== 'production') {
+		console.log(`Attempting to load .env file from: ${path.resolve(__dirname, '..', '.env')}`);
+	}
 });
 
 export default app; // Export app for potential serverless deployment or testing
