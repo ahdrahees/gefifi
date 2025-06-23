@@ -306,7 +306,14 @@ router.post('/auth/google', async (req: Request, res: Response) => {
 // --- Work Request Endpoints ---
 router.get('/work-requests', async (req: Request, res: Response) => {
 	try {
-		const workRequests = await workRequestsDB.getAll();
+		const { customerId } = req.query as { customerId?: string };
+		let workRequests = await workRequestsDB.getAll();
+
+		// If a customerId is provided, filter the work requests
+		if (customerId) {
+			workRequests = workRequests.filter((request) => request.customerId === customerId);
+		}
+
 		const sortedWorkRequests = workRequests.sort(
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		);

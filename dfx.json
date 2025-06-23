@@ -1,0 +1,18 @@
+{
+	"canisters": {
+		"frontend": {
+			"frontend": {
+				"entrypoint": "build/index.html"
+			},
+			"source": ["build/"],
+			"type": "assets"
+		}
+	},
+	"networks": {
+		"local": {
+			"bind": "localhost:8080",
+			"type": "ephemeral"
+		}
+	},
+	"output_env_file": ".env"
+}

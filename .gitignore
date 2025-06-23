@@ -7,6 +7,8 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+.dfx
+.zed
 
 # OS
 .DS_Store
@@ -26,3 +28,9 @@ vite.config.ts.timestamp-*
 
 # Ignore runtime data files in backend/data
 /backend/data/*.json
+
+# Ignore uploaded files in backend/uploads
+/backend/uploads/*
+
+# GCP credentials
+/backend/gcp-credentials.json

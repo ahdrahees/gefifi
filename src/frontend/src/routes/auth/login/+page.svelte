@@ -79,48 +79,6 @@
 		}
 	}
 
-	async function handleGoogleLogin() {
-		googleIsLoading = true;
-		errorMessage = null;
-		try {
-			// For a real Google Sign-In, you'd use the Google Sign-In library client-side
-			// to get the googleTokenId.
-			// Then pass that googleTokenId to your backend.
-			// For this demo, we'll use the mock flow defined in the backend.
-			const mockGoogleUserData = {
-				email: `guser${Date.now().toString().slice(-6)}@example.com`, // Unique email for new mock users
-				googleId: `google${Date.now()}`, // Unique googleId
-				name: 'Mock Google User',
-				userType: 'customer', // Default userType for new Google users, or prompt on frontend
-				profile: {
-					fullName: 'Mock Google User',
-					// Using one of the cat images as a placeholder avatar from static folder
-					avatarUrl: '/hero/Tabby Cat Construction Worker.png'
-				}
-			};
-
-			// Call the apiClient's googleLogin method, which POSTs to /api/auth/google
-			const response = await apiClient.googleLogin({ mockGoogleUser: mockGoogleUserData });
-
-			// Update the authStore with the user and token from the backend response
-			// The `_updateAuthData` is an internal helper, normally you'd rely on login/register actions.
-			// But for Google flow where backend handles user creation/retrieval, this direct update is okay.
-			authStore._updateAuthData(response.token, response.user);
-
-			goto('/dashboard');
-		} catch (error: any) {
-			if (error instanceof ApiError) {
-				errorMessage =
-					error.data?.message || error.message || 'Google login failed. Please try again.';
-			} else {
-				errorMessage = error.message || 'An unexpected error occurred during Google login.';
-			}
-			console.error('Google Login page error:', error);
-		} finally {
-			googleIsLoading = false;
-		}
-	}
-
 	// Redirect if already logged in & initialize Google Sign-In
 	let unsubscribeAuth: (() => void) | null = null;
 	onMount(() => {

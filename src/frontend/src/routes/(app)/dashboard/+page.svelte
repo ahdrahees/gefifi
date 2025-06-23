@@ -227,7 +227,7 @@
 	}
 </script>
 
-<div class="space-y-8">
+<div class="flex h-full flex-col space-y-8">
 	<header
 		class="flex flex-col items-start justify-between space-y-3 sm:flex-row sm:items-center sm:space-y-0"
 	>
@@ -284,15 +284,17 @@
 		</div>
 
 		<!-- Main content grid -->
-		<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+		<div class="grid flex-grow grid-cols-1 gap-6 lg:grid-cols-3">
 			<!-- Work Requests Section -->
-			<section class="space-y-4 rounded-lg bg-slate-700/40 p-5 shadow-md lg:col-span-2">
+			<section
+				class="flex flex-col space-y-4 rounded-lg bg-slate-700/40 p-5 shadow-md lg:col-span-2"
+			>
 				{#if currentUser?.userType === 'customer'}
 					<h2 class="mb-3 text-2xl font-semibold text-sky-400">
 						My Work Requests ({workRequests.length})
 					</h2>
 					{#if workRequests.length > 0}
-						<div class="max-h-96 space-y-3 overflow-y-auto pr-2">
+						<div class="scrollable-content flex-grow space-y-3 overflow-y-auto pr-2">
 							{#each workRequests as wr (wr.id)}
 								<div
 									class="cursor-pointer rounded-lg bg-slate-600/50 p-4 shadow transition-all hover:bg-slate-500/50"
@@ -326,7 +328,7 @@
 						Available Work Requests ({workRequests.length})
 					</h2>
 					{#if workRequests.length > 0}
-						<div class="max-h-96 space-y-3 overflow-y-auto pr-2">
+						<div class="scrollable-content flex-grow space-y-3 overflow-y-auto pr-2">
 							{#each workRequests as wr (wr.id)}
 								<div
 									class="cursor-pointer rounded-lg bg-slate-600/50 p-4 shadow transition-all hover:bg-slate-500/50"
@@ -359,14 +361,14 @@
 			</section>
 
 			<!-- Side Column for Chats and Contracts -->
-			<div class="space-y-6 lg:col-span-1">
+			<div class="flex flex-col space-y-6 lg:col-span-1">
 				<!-- Recent Chats Section -->
-				<section class="rounded-lg bg-slate-700/40 p-5 shadow-md">
+				<section class="flex flex-1 flex-col rounded-lg bg-slate-700/40 p-5 shadow-md">
 					<h2 class="mb-3 text-xl font-semibold text-sky-400">
 						Recent Chats ({recentChats.length})
 					</h2>
 					{#if recentChats.length > 0}
-						<div class="max-h-60 space-y-2 overflow-y-auto pr-1">
+						<div class="scrollable-content flex-grow space-y-2 overflow-y-auto pr-1">
 							{#each recentChats as chat (chat.id)}
 								<a
 									href={`/chat/${chat.id}`}
@@ -394,12 +396,12 @@
 				</section>
 
 				<!-- Active Contracts Section -->
-				<section class="rounded-lg bg-slate-700/40 p-5 shadow-md">
+				<section class="flex flex-1 flex-col rounded-lg bg-slate-700/40 p-5 shadow-md">
 					<h2 class="mb-3 text-xl font-semibold text-sky-400">
 						Active Contracts ({activeContracts.length})
 					</h2>
 					{#if activeContracts.length > 0}
-						<div class="max-h-60 space-y-2 overflow-y-auto pr-1">
+						<div class="scrollable-content flex-grow space-y-2 overflow-y-auto pr-1">
 							{#each activeContracts.slice(0, 3) as contract (contract.id)}
 								<!-- Show latest 3 -->
 								<div
@@ -448,21 +450,17 @@
 -->
 
 <style lang="postcss">
-	/* Custom scrollbar for overflow areas - similar to global layout but can be specific */
-	.max-h-96::-webkit-scrollbar,
-	.max-h-60::-webkit-scrollbar {
+	/* Custom scrollbar for overflow areas */
+	.scrollable-content::-webkit-scrollbar {
 		width: 6px;
 	}
-	.max-h-96::-webkit-scrollbar-track,
-	.max-h-60::-webkit-scrollbar-track {
+	.scrollable-content::-webkit-scrollbar-track {
 		@reference bg-slate-700/50 rounded-full;
 	}
-	.max-h-96::-webkit-scrollbar-thumb,
-	.max-h-60::-webkit-scrollbar-thumb {
+	.scrollable-content::-webkit-scrollbar-thumb {
 		@reference bg-slate-500 rounded-full;
 	}
-	.max-h-96::-webkit-scrollbar-thumb:hover,
-	.max-h-60::-webkit-scrollbar-thumb:hover {
+	.scrollable-content::-webkit-scrollbar-thumb:hover {
 		@reference bg-slate-400;
 	}
 </style>

@@ -187,18 +187,21 @@
 		<div class="rounded-xl bg-slate-700/50 p-8 text-center shadow-lg">
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
-				fill="none"
+				width="24"
+				height="24"
 				viewBox="0 0 24 24"
-				stroke-width="1.5"
+				fill="none"
 				stroke="currentColor"
-				class="mx-auto mb-4 h-16 w-16 text-slate-500"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="lucide lucide-construction-icon lucide-construction mx-auto mb-4 h-16 w-16 text-slate-500"
+				><rect x="2" y="6" width="20" height="8" rx="1" /><path d="M17 14v7" /><path
+					d="M7 14v7"
+				/><path d="M17 3v3" /><path d="M7 3v3" /><path d="M10 14 2.3 6.3" /><path
+					d="m14 6 7.7 7.7"
+				/><path d="m8 6 8 8" /></svg
 			>
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					d="M20.25 14.15v4.05a2.25 2.25 0 01-2.25 2.25H5.625a2.25 2.25 0 01-2.25-2.25v-13.5a2.25 2.25 0 012.25-2.25h4.05m-4.05 0a2.25 2.25 0 012.25-2.25h3.75a2.25 2.25 0 012.25 2.25m4.5 0v4.05a2.25 2.25 0 002.25 2.25h4.05a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25h-4.05a2.25 2.25 0 00-2.25 2.25v4.05m0 0a2.25 2.25 0 00-2.25 2.25h-4.05a2.25 2.25 0 00-2.25-2.25V6.75a2.25 2.25 0 002.25-2.25h3.75a2.25 2.25 0 002.25 2.25z"
-				/>
-			</svg>
 			<h2 class="mb-2 text-xl font-semibold text-sky-400">
 				{#if activeTab === 'ongoing'}
 					No Active Projects

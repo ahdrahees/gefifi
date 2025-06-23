@@ -281,18 +281,19 @@
 		<div class="rounded-xl bg-slate-700/50 p-6 text-center shadow-lg">
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
-				fill="none"
+				width="24"
+				height="24"
 				viewBox="0 0 24 24"
-				stroke-width="1.5"
+				fill="none"
 				stroke="currentColor"
-				class="mx-auto mb-4 h-16 w-16 text-slate-500"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="lucide lucide-message-square-more-icon lucide-message-square-more mx-auto mb-4 h-16 w-16 text-slate-500"
+				><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path
+					d="M8 10h.01"
+				/><path d="M12 10h.01" /><path d="M16 10h.01" /></svg
 			>
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-3.862 8.25-8.625 8.25S3.75 16.556 3.75 12H21zM5.25 12C5.25 9.103 7.353 6.75 10.125 6.75s4.875 2.353 4.875 5.25H5.25z"
-				/>
-			</svg>
 			<h2 class="mb-2 text-xl font-semibold text-sky-400">No Chats Yet</h2>
 			<p class="text-slate-300">
 				You haven't started any conversations. Express interest in a work request or contact a
