@@ -12,7 +12,10 @@ COPY . .
 RUN cd backend && bun install --production
 
 # Tell the container to listen on port 3000 (GCP will map this automatically)
-EXPOSE 3000
+# Google Cloud Run provides a PORT environment variable.
+# We'll default to 8080 if it's not set.
+ENV PORT 8080
+EXPOSE 8080
 
 # The command to start your server when the container runs
 CMD ["bun", "run", "backend/src/server.ts"]

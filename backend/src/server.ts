@@ -88,8 +88,9 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 });
 
 // --- Start Server ---
-app.listen(PORT, () => {
-	console.log(`Server is running on http://localhost:${PORT}`);
+const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+app.listen(Number(PORT), HOST, () => {
+	console.log(`Server is running on http://${HOST}:${PORT}`);
 	console.log(`Attempting to load .env from: ${path.resolve(__dirname, '..', '.env')}`);
 	console.log(
 		`JWT_SECRET from env: ${process.env.JWT_SECRET ? 'Loaded (first few chars: ' + process.env.JWT_SECRET.substring(0, 5) + '...)' : 'NOT Loaded or Empty'}`
