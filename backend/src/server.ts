@@ -5,6 +5,15 @@ import path from 'path';
 import multer from 'multer';
 import fs from 'fs';
 
+// --- DIAGNOSTIC LOGGING ---
+console.log('--- Cloud Run Environment Diagnosis ---');
+console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`PORT: ${process.env.PORT}`);
+console.log(`GCP_PROJECT_ID: ${process.env.GCP_PROJECT_ID}`);
+console.log(`GCS_BUCKET_NAME: ${process.env.GCS_BUCKET_NAME}`);
+console.log(`JWT_SECRET is set: ${!!process.env.JWT_SECRET}`);
+console.log('--- END DIAGNOSTIC LOGGING ---');
+
 // Conditionally load .env file in development
 if (process.env.NODE_ENV !== 'production') {
 	dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
