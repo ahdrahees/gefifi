@@ -2,11 +2,25 @@
 import { Firestore } from '@google-cloud/firestore';
 import type { User, WorkRequest, Chat, Message, Contract } from './interfaces';
 
-// Initialize Firestore.
-// If the GOOGLE_APPLICATION_CREDENTIALS environment variable is set (which it is
-// when running in Google Cloud Run), the client will automatically authenticate.
-// When running locally, you must set this environment variable to point to your credentials file.
-const firestore = new Firestore();
+// --- Lazy Initializer for Firestore Client ---
+
+let firestore: Firestore | null = null;
+
+/**
+ * Gets a singleton instance of the Firestore client.
+ * Initializes the client on the first call.
+ * This "lazy initialization" is crucial for environments like Cloud Run
+ * where the application might start before environment variables are fully available.
+ * @returns The Firestore client instance.
+ */
+function getFirestoreClient(): Firestore {
+	if (!firestore) {
+		console.log('[Firestore] Client not initialized. Creating new instance...');
+		firestore = new Firestore();
+		console.log('[Firestore] Client instance created successfully.');
+	}
+	return firestore;
+}
 
 // Define collection names for type safety and easy management.
 const COLLECTIONS = {
@@ -31,11 +45,14 @@ export class FirestoreCollection<T extends Identifiable> {
 
 	constructor(collectionName: string) {
 		this.collectionName = collectionName;
-		console.log(`[Firestore] Initialized collection handler for '${collectionName}'`);
+		// No client initialization here anymore.
 	}
 
+	/**
+	 * Lazily gets the Firestore collection reference.
+	 */
 	private get collection() {
-		return firestore.collection(this.collectionName);
+		return getFirestoreClient().collection(this.collectionName);
 	}
 
 	/**
@@ -126,4 +143,4 @@ export const chatsDB = new FirestoreCollection<Chat>(COLLECTIONS.CHATS);
 export const messagesDB = new FirestoreCollection<Message>(COLLECTIONS.MESSAGES);
 export const contractsDB = new FirestoreCollection<Contract>(COLLECTIONS.CONTRACTS);
 
-console.log('[Firestore] All collection handlers have been initialized.');
+console.log('[Firestore] Data handlers configured with lazy initialization.');
