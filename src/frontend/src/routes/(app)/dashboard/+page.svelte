@@ -49,45 +49,11 @@
 			return 'Unknown User';
 		}
 
-		const idSuffix = otherUser.id ? `${otherUser.id.substring(0, 8)}...` : 'ID';
-		const userType = otherUser.userType; // userType is always available if otherUser exists
-
-		// If profile data is missing, handle display based on userType and ID
-		if (!otherUser.profile) {
-			switch (userType) {
-				case 'customer':
-					return `Customer - ${idSuffix}`;
-				case 'expert':
-					return `Expert - ${idSuffix}`;
-				case 'supplier':
-					return `Supplier - ${idSuffix}`;
-				default:
-					// For 'admin' or other types without a profile, use capitalized type and ID
-					const typePrefixDefaultNoProfile = userType.charAt(0).toUpperCase() + userType.slice(1);
-					return `${typePrefixDefaultNoProfile} - ${idSuffix}`;
-			}
+		if (otherUser.userType === 'supplier') {
+			return otherUser.profile?.companyName || otherUser.email.split('@')[0] || 'Supplier';
 		}
-
-		// Profile exists, try to use names from it
-		const { fullName, companyName } = otherUser.profile;
-
-		switch (userType) {
-			case 'customer':
-				// Prefer fullName for customers, prefixed with "Customer"
-				return `Customer - ${fullName || idSuffix}`;
-			case 'expert':
-				// Prefer fullName for experts, prefixed with "Expert"
-				return `Expert - ${fullName || idSuffix}`;
-			case 'supplier':
-				// Prefer companyName for suppliers, prefixed with "Supplier"
-				return `Supplier - ${companyName || idSuffix}`;
-			default:
-				// For other types like 'admin', prefix with capitalized userType
-				const typePrefixDefaultWithProfile = userType.charAt(0).toUpperCase() + userType.slice(1);
-				if (fullName) return `${typePrefixDefaultWithProfile} - ${fullName}`;
-				if (companyName) return `${typePrefixDefaultWithProfile} - ${companyName}`; // e.g., an Admin might have a company or department name
-				return `${typePrefixDefaultWithProfile} - ${idSuffix}`;
-		}
+		// Default for 'customer', 'expert', and others
+		return otherUser.profile?.fullName || otherUser.email.split('@')[0] || 'User';
 	}
 
 	async function fetchData() {
@@ -276,9 +242,14 @@
 		<!-- General Welcome / Info -->
 		<div class="rounded-xl bg-slate-700/60 p-6 shadow-lg">
 			<p class="text-xl text-slate-200">
-				Welcome back, <span class="font-semibold text-emerald-400"
-					>{currentUser?.profile?.fullName || currentUser?.email?.split('@')[0]}</span
-				>!
+				Welcome back,
+				<span class="font-semibold text-emerald-400">
+					{#if currentUser?.userType === 'supplier'}
+						{currentUser?.profile?.companyName || currentUser?.email?.split('@')[0]}
+					{:else}
+						{currentUser?.profile?.fullName || currentUser?.email?.split('@')[0]}
+					{/if}
+				</span>!
 			</p>
 			<p class="mt-2 text-sm text-slate-400">Here's a summary of your activities on GEFIFI.</p>
 		</div>

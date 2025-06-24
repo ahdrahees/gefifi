@@ -197,9 +197,15 @@
 					<div class="overflow-hidden">
 						<p
 							class="truncate text-sm font-semibold text-white"
-							title={currentAuth.user.profile?.fullName || currentAuth.user.email.split('@')[0]}
+							title={currentAuth.user.userType === 'supplier'
+								? currentAuth.user.profile?.companyName
+								: currentAuth.user.profile?.fullName || currentAuth.user.email.split('@')[0]}
 						>
-							{currentAuth.user.profile?.fullName || currentAuth.user.email.split('@')[0]}
+							{#if currentAuth.user.userType === 'supplier'}
+								{currentAuth.user.profile?.companyName || currentAuth.user.email.split('@')[0]}
+							{:else}
+								{currentAuth.user.profile?.fullName || currentAuth.user.email.split('@')[0]}
+							{/if}
 						</p>
 						<p class="truncate text-xs text-slate-400" title={currentAuth.user.email}>
 							{currentAuth.user.email}

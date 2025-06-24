@@ -1,20 +1,17 @@
 <!-- gefifi-2/src/frontend/src/lib/components/ui/ProfessionalCard.svelte -->
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import type { AuthUser } from '$lib/types';
 
-	import type { UserProfile } from '$lib/types';
-
-	export let professional: UserProfile;
+	export let professional: AuthUser;
 
 	const dispatch = createEventDispatcher();
 
-	function getProfessionalName(prof: UserProfile): string {
-		return (
-			prof.profile?.fullName ||
-			prof.profile?.companyName ||
-			prof.email.split('@')[0] ||
-			'Professional'
-		);
+	function getProfessionalName(prof: AuthUser): string {
+		if (prof.userType === 'supplier') {
+			return prof.profile?.companyName || prof.email.split('@')[0] || 'Supplier';
+		}
+		return prof.profile?.fullName || prof.email.split('@')[0] || 'Professional';
 	}
 
 	function handleSendInterestClick() {
