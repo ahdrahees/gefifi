@@ -233,6 +233,7 @@ router.post('/auth/google', async (req: Request, res: Response) => {
 		const users = await usersDB.getAll();
 		let user = users.find((u: User) => u.googleId === googleId || u.email.toLowerCase() === email);
 		const now = new Date().toISOString();
+		let isNewUser = false; // Flag to indicate if a new user was created
 
 		if (user) {
 			// --- Existing User Login Flow ---
@@ -252,6 +253,7 @@ router.post('/auth/google', async (req: Request, res: Response) => {
 			});
 		} else {
 			// --- New User Registration Flow ---
+			isNewUser = true; // Set the flag to true
 			if (!userTypeForNewUser || !['customer', 'expert', 'supplier'].includes(userTypeForNewUser)) {
 				return res.status(400).json({
 					message:
@@ -288,7 +290,12 @@ router.post('/auth/google', async (req: Request, res: Response) => {
 		const token = generateToken({ id: user.id, email: user.email, userType: user.userType });
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		const { password: _, ...userToReturn } = user;
-		res.status(200).json({ user: userToReturn, token, message: 'Google Sign-In successful.' });
+		res.status(200).json({
+			user: userToReturn,
+			token,
+			isNewUser, // Include the flag in the response
+			message: 'Google Sign-In successful.'
+		});
 	} catch (error: unknown) {
 		console.error('Error during Google Sign-In:', error);
 		if (error instanceof Error) {
@@ -474,6 +481,63 @@ router.get('/users/:userId', async (req: Request, res: Response) => {
 		res.status(500).json({ message: 'Failed to fetch user.', error: errorMessage });
 	}
 });
+
+// --- Endpoint to Update User Profile After Registration ---
+router.put(
+	'/users/me/profile',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const profileData: Partial<UserProfile> = req.body;
+
+			// Fetch the latest user data to ensure we're not overwriting anything unintentionally
+			const existingUser = await usersDB.findById(user.id);
+			if (!existingUser) {
+				return res.status(404).json({ message: 'User not found.' });
+			}
+
+			// Validate the provided profile data against the user's type
+			const profileValidation = validateProfileData(profileData, user.userType);
+			if (!profileValidation.valid) {
+				return res
+					.status(400)
+					.json({ message: profileValidation.message || 'Invalid profile data.' });
+			}
+
+			// Merge the new profile data with any existing profile data
+			const updatedProfile = {
+				...existingUser.profile,
+				...profileValidation.validatedProfile
+			};
+
+			const now = new Date().toISOString();
+			const updates = {
+				profile: updatedProfile,
+				updatedAt: now
+			};
+
+			// Update the user in the database
+			const updatedUser = await usersDB.update(user.id, updates);
+
+			if (!updatedUser) {
+				return res.status(500).json({ message: 'Failed to update user in database.' });
+			}
+
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { password, ...userToReturn } = updatedUser;
+
+			res.status(200).json({
+				message: 'Profile updated successfully.',
+				user: userToReturn
+			});
+		} catch (error) {
+			console.error('Error updating user profile:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update profile.', error: errorMessage });
+		}
+	}
+);
 
 // --- User Interest Endpoint (Creates Chat & Initial Message) ---
 router.post(

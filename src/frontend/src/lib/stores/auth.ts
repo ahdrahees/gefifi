@@ -2,9 +2,10 @@ import { writable, type Writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import apiClient, { ApiError } from '$lib/api'; // Import the API client and ApiError
 import type { AuthUser } from '$lib/types'; // Import central AuthUser type
+export type { AuthUser }; // Re-export AuthUser for other modules
 
 export interface AuthState {
-	isLoggedIn: boolean;
+	isAuthenticated: boolean;
 	user: AuthUser | null;
 	token: string | null;
 	error: string | null; // For login/registration errors
@@ -12,7 +13,7 @@ export interface AuthState {
 }
 
 const initialAuthState: AuthState = {
-	isLoggedIn: false,
+	isAuthenticated: false,
 	user: null,
 	token: null,
 	error: null,
@@ -47,7 +48,7 @@ function parseJwt(token: string): { exp?: number; [key: string]: any } | null {
 // Helper function to update the store and localStorage
 function updateAuthData(token: string | null, user: AuthUser | null, error: string | null = null) {
 	const newAuthState: AuthState = {
-		isLoggedIn: !!(token && user),
+		isAuthenticated: !!(token && user),
 		user,
 		token,
 		error,
@@ -91,7 +92,7 @@ async function loadUserFromStorage() {
 				// However, authStore.subscribe in api.ts should handle this.
 				// We must ensure the token is in the store *before* apiClient.getMe() is called by it internally.
 				// The most robust way is to ensure authStore.set is called if a token is read from localStorage.
-				store.update((s) => ({ ...s, token: token, isLoggedIn: false, user: null })); // Temporarily set token for api.ts
+				store.update((s) => ({ ...s, token: token, isAuthenticated: false, user: null })); // Temporarily set token for api.ts
 
 				const freshUser = await apiClient.getMe();
 				updateAuthData(token, freshUser); // This updates the store correctly with the fresh user
@@ -181,15 +182,50 @@ async function register(userData: RegisterUserData): Promise<AuthUser> {
 	}
 }
 
+// --- Google Sign-In Flow ---
+interface GoogleLoginPayload {
+	googleTokenId: string;
+	userTypeForNewUser?: 'customer' | 'expert' | 'supplier';
+	// profileForNewUser is not needed here as we will collect it on a separate page
+}
+interface GoogleAuthResponse {
+	user: AuthUser;
+	token: string;
+	isNewUser: boolean;
+	message?: string;
+}
+
+async function googleLogin(payload: GoogleLoginPayload): Promise<GoogleAuthResponse> {
+	store.update((s) => ({ ...s, isLoading: true, error: null }));
+	try {
+		const response = await apiClient.googleLogin(payload);
+		if (response.user && response.token) {
+			updateAuthData(response.token, response.user);
+			return response; // Return the full response including isNewUser
+		} else {
+			throw new Error('Google Sign-In response was incomplete.');
+		}
+	} catch (err: unknown) {
+		let errorMessage = 'Google Sign-In failed. Please try again later.';
+		if (err instanceof ApiError && err.data?.message) {
+			errorMessage = err.data.message;
+		} else if (err instanceof Error) {
+			errorMessage = err.message;
+		}
+		updateAuthData(null, null, errorMessage);
+		throw new Error(errorMessage);
+	}
+}
+
 export const authStore = {
 	subscribe: store.subscribe,
-	// `set` could be used for server-side initialisation if auth state comes from cookies
+	update: store.update,
 	set: store.set,
-	loadUserFromStorage, // Should be called in a root +layout.svelte or +layout.ts on client
+	loadUserFromStorage,
 	logout,
 	login,
 	register,
-	// Expose internal update function if needed by other modules (e.g. API client on token refresh)
+	googleLogin,
 	_updateAuthData: updateAuthData
 };
 

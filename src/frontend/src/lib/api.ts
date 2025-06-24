@@ -111,6 +111,9 @@ interface AuthResponse {
 	token: string;
 	message?: string;
 }
+interface GoogleAuthResponse extends AuthResponse {
+	isNewUser: boolean;
+}
 interface GoogleLoginPayload {
 	mockGoogleUser?: any;
 	googleTokenId?: string;
@@ -172,6 +175,21 @@ type ContractStatusUpdatePayload = {
 		| 'terminated';
 };
 
+interface UserProfileUpdateData {
+	fullName?: string;
+	phoneNumber?: string;
+	location?: string;
+	expertise?: string;
+	experience?: string;
+	companyName?: string;
+	category?: string;
+}
+
+interface UpdateProfileResponse {
+	user: AuthUser;
+	message: string;
+}
+
 // API client object
 const apiClient = {
 	// --- Authentication ---
@@ -184,8 +202,8 @@ const apiClient = {
 	getMe: (): Promise<AuthUser> => {
 		return request<AuthUser>('/auth/me', 'GET', undefined, true);
 	},
-	googleLogin: (payload: GoogleLoginPayload): Promise<AuthResponse> => {
-		return request<AuthResponse>('/auth/google', 'POST', payload);
+	googleLogin: (payload: GoogleLoginPayload): Promise<GoogleAuthResponse> => {
+		return request<GoogleAuthResponse>('/auth/google', 'POST', payload);
 	},
 
 	// --- File Upload ---
@@ -211,6 +229,9 @@ const apiClient = {
 	// --- Users ---
 	getExperts: (): Promise<AuthUser[]> => {
 		return request<AuthUser[]>('/users/experts', 'GET');
+	},
+	updateUserProfile: (data: UserProfileUpdateData): Promise<UpdateProfileResponse> => {
+		return request<UpdateProfileResponse>('/users/me/profile', 'PUT', data, true);
 	},
 	getSuppliers: (): Promise<AuthUser[]> => {
 		return request<AuthUser[]>('/users/suppliers', 'GET');

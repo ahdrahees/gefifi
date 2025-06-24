@@ -117,27 +117,25 @@
 
 		// The userType is selected in Step 1.
 		const userTypeForNewUser = userType;
-		const profileForNewUser = currentStep === 2 ? profile : {};
+		// No need to send profile data from here anymore, it will be collected on the next page
+		// const profileForNewUser = currentStep === 2 ? profile : {};
 
 		try {
-			// Call the backend with the token from Google and the selected userType
-			const result = await apiClient.googleLogin({
+			// Call the new googleLogin method from the authStore
+			const result = await authStore.googleLogin({
 				googleTokenId: response.credential,
-				userTypeForNewUser: userTypeForNewUser,
-				profileForNewUser: profileForNewUser // Send profile data if already collected
+				userTypeForNewUser: userTypeForNewUser
 			});
 
-			// On success, the backend returns a token for the new/existing user
-			authStore._updateAuthData(result.token, result.user);
-			goto('/dashboard', { replaceState: true });
+			// On success, the store is already updated. Now, redirect based on isNewUser.
+			if (result.isNewUser) {
+				goto('/auth/complete-profile', { replaceState: true });
+			} else {
+				goto('/dashboard', { replaceState: true });
+			}
 		} catch (error: any) {
 			console.error('Google Sign-In/Registration Error:', error);
-			if (error instanceof ApiError) {
-				errorMessage =
-					error.data?.message || 'An error occurred during Google Sign-In/Registration.';
-			} else {
-				errorMessage = 'An unexpected error occurred.';
-			}
+			errorMessage = error.message || 'An unexpected error occurred.';
 		} finally {
 			googleIsLoading = false;
 		}
@@ -147,11 +145,11 @@
 	onMount(() => {
 		// Redirect logic
 		const initialAuthState = $authStore;
-		if (initialAuthState.isLoggedIn && !initialAuthState.isLoading) {
+		if (initialAuthState.isAuthenticated && !initialAuthState.isLoading) {
 			goto('/dashboard', { replaceState: true });
 		}
 		unsubscribeAuth = authStore.subscribe((state) => {
-			if (state.isLoggedIn && !state.isLoading) {
+			if (state.isAuthenticated && !state.isLoading) {
 				goto('/dashboard', { replaceState: true });
 			}
 		});
@@ -214,7 +212,7 @@
 
 			<div class="mb-6 flex items-center justify-center space-x-2">
 				<button
-					class="flex items-center {currentStep === 1
+					class="group flex items-center {currentStep === 1
 						? 'text-emerald-300'
 						: 'text-slate-400 hover:text-slate-200'}"
 					on:click={() => (currentStep = 1)}
@@ -224,15 +222,15 @@
 					<span
 						class="flex h-8 w-8 items-center justify-center rounded-full border-2 {currentStep === 1
 							? 'border-emerald-400 bg-emerald-500/20'
-							: 'border-slate-600 group-hover:border-slate-400'}">1</span
+							: 'border-slate-600 group-hover:border-slate-400'}"
 					>
-					<span class="ml-2 text-xs sm:text-sm {currentStep === 1 ? 'font-semibold' : ''}"
-						>Account</span
-					>
+						1
+					</span>
+					<span class="ml-2 text-xs font-semibold sm:text-sm">Account</span>
 				</button>
 				<div class="h-px flex-1 {currentStep > 1 ? 'bg-emerald-400' : 'bg-slate-600'} mx-1"></div>
 				<button
-					class="flex items-center {currentStep === 2
+					class="group flex items-center {currentStep === 2
 						? 'text-emerald-300'
 						: 'text-slate-400 hover:text-slate-200'}"
 					on:click={() => {
@@ -247,271 +245,283 @@
 					<span
 						class="flex h-8 w-8 items-center justify-center rounded-full border-2 {currentStep === 2
 							? 'border-emerald-400 bg-emerald-500/20'
-							: 'border-slate-600 group-hover:border-slate-400'}">2</span
+							: 'border-slate-600 group-hover:border-slate-400'}"
 					>
-					<span class="ml-2 text-xs sm:text-sm {currentStep === 2 ? 'font-semibold' : ''}"
-						>Profile</span
-					>
+						2
+					</span>
+					<span class="ml-2 text-xs font-semibold sm:text-sm">Profile</span>
 				</button>
 			</div>
 
-			{#if currentStep === 1}
-				<form on:submit|preventDefault={handleNextStep} class="space-y-5">
+			<!-- STEP 1: ACCOUNT DETAILS (Email, Password, UserType) -->
+			<div class:hidden={currentStep !== 1}>
+				<form
+					class="space-y-6"
+					on:submit|preventDefault={() => {
+						handleNextStep();
+					}}
+				>
 					<div>
-						<label for="email" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Email Address <span class="text-red-400">*</span></label
+						<label for="email" class="block text-sm leading-6 font-medium text-slate-300"
+							>Email address</label
 						>
-						<input
-							type="email"
-							id="email"
-							bind:value={email}
-							required
-							disabled={isLoading || googleIsLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							placeholder="you@example.com"
-						/>
+						<div class="mt-2">
+							<input
+								id="email"
+								name="email"
+								type="email"
+								autocomplete="email"
+								required
+								bind:value={email}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+							/>
+						</div>
 					</div>
+
 					<div>
-						<label for="password" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Password <span class="text-red-400">*</span></label
+						<label for="password" class="block text-sm leading-6 font-medium text-slate-300"
+							>Password</label
 						>
-						<input
-							type="password"
-							id="password"
-							bind:value={password}
-							required
-							minlength="6"
-							disabled={isLoading || googleIsLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							placeholder="Minimum 6 characters"
-						/>
+						<div class="mt-2">
+							<input
+								id="password"
+								name="password"
+								type="password"
+								autocomplete="new-password"
+								required
+								minlength="6"
+								bind:value={password}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+							/>
+						</div>
 					</div>
+
 					<div>
-						<label for="confirmPassword" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Confirm Password <span class="text-red-400">*</span></label
+						<label for="confirmPassword" class="block text-sm leading-6 font-medium text-slate-300"
+							>Confirm Password</label
 						>
-						<input
-							type="password"
-							id="confirmPassword"
-							bind:value={confirmPassword}
-							required
-							minlength="6"
-							disabled={isLoading || googleIsLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							placeholder="Re-enter your password"
-						/>
+						<div class="mt-2">
+							<input
+								id="confirmPassword"
+								name="confirmPassword"
+								type="password"
+								autocomplete="new-password"
+								required
+								bind:value={confirmPassword}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+							/>
+						</div>
 					</div>
+
 					<div>
-						<label for="userType" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>I want to register as a... <span class="text-red-400">*</span></label
+						<label for="userType" class="block text-sm leading-6 font-medium text-slate-300"
+							>I am a...</label
 						>
-						<select
-							id="userType"
-							bind:value={userType}
-							required
-							disabled={isLoading || googleIsLoading}
-							class="w-full appearance-none rounded-lg border border-slate-600 bg-slate-700/80 bg-right bg-no-repeat px-4 py-2.5 pr-8 text-gray-100 transition-colors outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							style={bgstyle}
-						>
-							{#each userTypes as typeOpt (typeOpt)}
-								<option value={typeOpt.value}>{typeOpt.label}</option>
-							{/each}
-						</select>
+						<div class="mt-2">
+							<select
+								id="userType"
+								name="userType"
+								bind:value={userType}
+								required
+								class="block w-full appearance-none rounded-lg border-0 bg-slate-700/50 py-2.5 pr-10 pl-3 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								style={bgstyle}
+							>
+								{#each userTypes as type}
+									<option value={type.value}>{type.label}</option>
+								{/each}
+							</select>
+						</div>
 					</div>
-					<button
-						type="submit"
-						disabled={isLoading || googleIsLoading}
-						class="flex w-full items-center justify-center rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-					>
-						Next: Profile Details &rarr;
-					</button>
-					<div class="relative flex items-center py-2">
-						<div class="flex-grow border-t border-slate-600"></div>
-						<span class="mx-4 flex-shrink text-xs text-slate-400 uppercase">Or</span>
-						<div class="flex-grow border-t border-slate-600"></div>
+
+					<div class="flex items-center justify-between">
+						<div class="text-sm">
+							<a href="/auth/login" class="font-semibold text-emerald-400 hover:text-emerald-300"
+								>Already have an account?</a
+							>
+						</div>
 					</div>
-					<div id="google-register-button" class="flex justify-center">
-						<!-- Google will render its button here. We show a placeholder. -->
+
+					<div>
 						<button
-							type="button"
-							disabled={true}
-							class="flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-slate-700 px-6 py-3 font-semibold text-slate-300 opacity-70 shadow-md"
+							type="submit"
+							class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 text-sm leading-6 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:opacity-50"
+							disabled={!email || !password || !confirmPassword}
 						>
-							Loading Google Sign-In...
+							Next: Profile Details
 						</button>
 					</div>
 				</form>
-			{:else if currentStep === 2}
-				<form on:submit|preventDefault={handleRegister} class="space-y-5">
-					<h2 class="mb-1 text-center text-xl font-semibold text-sky-300">
-						Complete Your Profile <span class="text-amber-400 capitalize">({userType})</span>
-					</h2>
+				<div
+					class="my-6 flex items-center before:flex-1 before:border-t before:border-slate-600 before:content-[''] after:flex-1 after:border-t after:border-slate-600 after:content-['']"
+				>
+					<p class="mx-4 mb-0 text-center text-sm font-semibold">OR</p>
+				</div>
+				<div id="google-register-button" class="flex justify-center" data-text="signup_with"></div>
+			</div>
 
-					{#if userType === 'supplier'}
+			<!-- STEP 2: PROFILE DETAILS (Based on UserType) -->
+			<div class:hidden={currentStep !== 2}>
+				<form class="space-y-6" on:submit|preventDefault={handleRegister}>
+					<!-- Fields for Customer -->
+					{#if userType === 'customer' || userType === 'expert'}
 						<div>
-							<label for="companyName" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Company Name <span class="text-red-400">*</span></label
+							<label for="fullName" class="block text-sm leading-6 font-medium text-slate-300"
+								>Full Name</label
 							>
-							<input
-								type="text"
-								id="companyName"
-								bind:value={profile.companyName}
-								required={userType === 'supplier'}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="Your company's official name"
-							/>
-						</div>
-					{:else}
-						<div>
-							<label for="fullName" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Full Name <span class="text-red-400">*</span></label
-							>
-							<input
-								type="text"
-								id="fullName"
-								bind:value={profile.fullName}
-								required={userType !== 'supplier'}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="Your full name"
-							/>
+							<div class="mt-2">
+								<input
+									id="fullName"
+									name="fullName"
+									type="text"
+									required={userType !== 'customer'}
+									bind:value={profile.fullName}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
 						</div>
 					{/if}
 
-					<div>
-						<label for="phoneNumber" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Phone Number (Optional)</label
-						>
-						<input
-							type="tel"
-							id="phoneNumber"
-							bind:value={profile.phoneNumber}
-							disabled={isLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-							placeholder="e.g., +919876543210"
-						/>
-					</div>
-
-					<div>
-						<label for="location" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Primary Location (City/Area, Optional)</label
-						>
-						<input
-							type="text"
-							id="location"
-							bind:value={profile.location}
-							disabled={isLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-							placeholder="e.g., Bangalore, Koramangala"
-						/>
-					</div>
-
-					{#if userType === 'expert'}
-						<div>
-							<label for="expertise" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Primary Expertise</label
-							>
-							<input
-								type="text"
-								id="expertise"
-								bind:value={profile.expertise}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., Plumbing, Electrical Design"
-							/>
-						</div>
-						<div>
-							<label for="experience" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Years of Experience</label
-							>
-							<input
-								type="text"
-								id="experience"
-								bind:value={profile.experience}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., 5 years, 10+ years"
-							/>
-						</div>
-					{/if}
-
+					<!-- Fields for Supplier -->
 					{#if userType === 'supplier'}
 						<div>
-							<label for="category" class="mb-1.5 block text-sm font-medium text-sky-300"
+							<label for="companyName" class="block text-sm leading-6 font-medium text-slate-300"
+								>Company Name</label
+							>
+							<div class="mt-2">
+								<input
+									id="companyName"
+									name="companyName"
+									type="text"
+									required
+									bind:value={profile.companyName}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+						<div>
+							<label for="category" class="block text-sm leading-6 font-medium text-slate-300"
 								>Main Material Category</label
 							>
-							<input
-								type="text"
-								id="category"
-								bind:value={profile.category}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., Cement & Steel, Tiles, Paints"
-							/>
-						</div>
-						<div>
-							<label for="experienceSupplier" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Years in Business</label
-							>
-							<input
-								type="text"
-								id="experienceSupplier"
-								bind:value={profile.experience}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., 15 years"
-							/>
+							<div class="mt-2">
+								<input
+									id="category"
+									name="category"
+									type="text"
+									required
+									placeholder="e.g., Cement, Steel, Electricals"
+									bind:value={profile.category}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
 						</div>
 					{/if}
 
-					<!-- <div>
-            <label for="avatarUrl" class="block text-sm font-medium text-sky-300 mb-1.5">Profile Picture URL (Optional)</label>
-            <input type="url" id="avatarUrl" bind:value={profile.avatarUrl} disabled={isLoading}
-                   class="w-full bg-slate-700/80 border border-slate-600 text-gray-100 px-4 py-2.5 rounded-lg placeholder:text-slate-400" placeholder="https://example.com/avatar.jpg" />
-          </div> -->
+					<!-- Fields for Expert -->
+					{#if userType === 'expert'}
+						<div>
+							<label for="expertise" class="block text-sm leading-6 font-medium text-slate-300"
+								>Primary Expertise</label
+							>
+							<div class="mt-2">
+								<input
+									id="expertise"
+									name="expertise"
+									type="text"
+									required
+									placeholder="e.g., Plumbing, Masonry"
+									bind:value={profile.expertise}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+					{/if}
 
-					<div class="flex flex-col gap-3 pt-3 sm:flex-row">
-						<button
-							type="button"
-							on:click={() => (currentStep = 1)}
-							disabled={isLoading}
-							class="order-2 flex w-full items-center justify-center rounded-lg bg-slate-600 px-6 py-3 font-semibold text-slate-200 shadow-md transition-colors duration-150 ease-in-out hover:bg-slate-500 sm:order-1 sm:w-auto"
+					<!-- Shared fields for Expert & Supplier -->
+					{#if userType === 'expert' || userType === 'supplier'}
+						<div>
+							<label for="experience" class="block text-sm leading-6 font-medium text-slate-300"
+								>{userType === 'expert' ? 'Years of Experience' : 'Years in Business'}</label
+							>
+							<div class="mt-2">
+								<input
+									id="experience"
+									name="experience"
+									type="text"
+									required
+									bind:value={profile.experience}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Optional fields for all -->
+					<div>
+						<label for="phone" class="block text-sm leading-6 font-medium text-slate-300"
+							>Phone Number <span class="text-xs text-slate-400">(Optional)</span></label
 						>
-							&larr; Back to Account
-						</button>
+						<div class="mt-2">
+							<input
+								id="phone"
+								name="phone"
+								type="tel"
+								bind:value={profile.phoneNumber}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+							/>
+						</div>
+					</div>
+
+					<div>
+						<label for="location" class="block text-sm leading-6 font-medium text-slate-300"
+							>Primary Location <span class="text-xs text-slate-400">(Optional)</span></label
+						>
+						<div class="mt-2">
+							<input
+								id="location"
+								name="location"
+								type="text"
+								placeholder="e.g., Mumbai, Maharashtra"
+								bind:value={profile.location}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+							/>
+						</div>
+					</div>
+
+					<div>
 						<button
 							type="submit"
 							disabled={isLoading}
-							class="order-1 flex w-full items-center justify-center rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-700 hover:shadow-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:order-2"
+							class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 text-sm leading-6 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:opacity-50"
 						>
 							{#if isLoading}
 								<svg
-									class="mr-3 -ml-1 h-5 w-5 animate-spin text-white"
+									class="mr-3 h-5 w-5 animate-spin text-white"
 									xmlns="http://www.w3.org/2000/svg"
 									fill="none"
 									viewBox="0 0 24 24"
-									><circle
+								>
+									<circle
 										class="opacity-25"
 										cx="12"
 										cy="12"
 										r="10"
 										stroke="currentColor"
 										stroke-width="4"
-									></circle><path
+									></circle>
+									<path
 										class="opacity-75"
 										fill="currentColor"
 										d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-									></path></svg
-								>
-								Registering Account...
+									></path>
+								</svg>
+								<span>Processing...</span>
 							{:else}
-								Complete Registration
+								Create Account
 							{/if}
 						</button>
 					</div>
 				</form>
-			{/if}
+			</div>
 		</div>
 
 		<div class="mt-6 text-center text-sm">
