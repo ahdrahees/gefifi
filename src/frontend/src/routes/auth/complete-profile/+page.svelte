@@ -62,166 +62,202 @@
 	}
 </script>
 
-<div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
-	<div class="sm:mx-auto sm:w-full sm:max-w-md">
-		<h2 class="mt-10 text-center text-2xl leading-9 font-bold tracking-tight text-gray-900">
-			Complete Your Profile
-		</h2>
-		<p class="mt-2 text-center text-sm text-gray-600">
-			Just a few more details to get you started.
-		</p>
-	</div>
+<div
+	class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 p-4 font-sans text-gray-100"
+>
+	<div class="w-full max-w-lg">
+		<div class="mb-6 text-center sm:mb-8">
+			<a
+				href="/"
+				class="text-5xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
+			>
+				GEFIFI
+			</a>
+			<h2 class="mt-2 text-2xl text-sky-300">Complete Your Profile</h2>
+			<p class="mt-1 text-sm text-slate-400">
+				Just a few more details to get you started as a <span
+					class="font-semibold text-amber-400 capitalize">{currentUser?.userType}</span
+				>.
+			</p>
+		</div>
 
-	<div class="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
-		{#if currentUser}
-			<form class="space-y-6" on:submit|preventDefault={handleSubmit}>
-				<!-- Customer Fields -->
-				{#if currentUser.userType === 'customer' || currentUser.userType === 'expert'}
+		<div class="rounded-xl bg-slate-800/70 p-6 shadow-2xl sm:p-8">
+			{#if currentUser}
+				<form class="space-y-6" on:submit|preventDefault={handleSubmit}>
+					<!-- Customer and Expert Fields -->
+					{#if currentUser.userType === 'customer' || currentUser.userType === 'expert'}
+						<div>
+							<label for="fullName" class="block text-sm leading-6 font-medium text-slate-300"
+								>Full Name</label
+							>
+							<div class="mt-2">
+								<input
+									id="fullName"
+									name="fullName"
+									type="text"
+									required
+									bind:value={profileData.fullName}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Supplier Fields -->
+					{#if currentUser.userType === 'supplier'}
+						<div>
+							<label for="companyName" class="block text-sm leading-6 font-medium text-slate-300"
+								>Company Name</label
+							>
+							<div class="mt-2">
+								<input
+									id="companyName"
+									name="companyName"
+									type="text"
+									required
+									bind:value={profileData.companyName}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+						<div>
+							<label for="category" class="block text-sm leading-6 font-medium text-slate-300"
+								>Main Material Category</label
+							>
+							<div class="mt-2">
+								<input
+									id="category"
+									name="category"
+									type="text"
+									required
+									placeholder="e.g., Cement, Steel, Electricals"
+									bind:value={profileData.category}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Expert Fields -->
+					{#if currentUser.userType === 'expert'}
+						<div>
+							<label for="expertise" class="block text-sm leading-6 font-medium text-slate-300"
+								>Primary Expertise</label
+							>
+							<div class="mt-2">
+								<input
+									id="expertise"
+									name="expertise"
+									type="text"
+									required
+									placeholder="e.g., Plumbing, Masonry"
+									bind:value={profileData.expertise}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Shared Expert/Supplier Fields -->
+					{#if currentUser.userType === 'expert' || currentUser.userType === 'supplier'}
+						<div>
+							<label for="experience" class="block text-sm leading-6 font-medium text-slate-300"
+								>{currentUser.userType === 'expert'
+									? 'Years of Experience'
+									: 'Years in Business'}</label
+							>
+							<div class="mt-2">
+								<input
+									id="experience"
+									name="experience"
+									type="text"
+									required
+									bind:value={profileData.experience}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Common Optional Fields -->
 					<div>
-						<label for="fullName" class="block text-sm leading-6 font-medium text-gray-900"
-							>Full Name</label
+						<label for="phoneNumber" class="block text-sm leading-6 font-medium text-slate-300"
+							>Phone Number <span class="text-xs text-slate-400">(Optional)</span></label
 						>
 						<div class="mt-2">
 							<input
-								id="fullName"
-								name="fullName"
-								type="text"
-								required
-								bind:value={profileData.fullName}
-								class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm sm:leading-6"
+								id="phoneNumber"
+								name="phoneNumber"
+								type="tel"
+								bind:value={profileData.phoneNumber}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
 							/>
 						</div>
 					</div>
-				{/if}
 
-				<!-- Supplier Fields -->
-				{#if currentUser.userType === 'supplier'}
 					<div>
-						<label for="companyName" class="block text-sm leading-6 font-medium text-gray-900"
-							>Company Name</label
+						<label for="location" class="block text-sm leading-6 font-medium text-slate-300"
+							>Primary Location (City/Area)
+							<span class="text-xs text-slate-400">(Optional)</span></label
 						>
 						<div class="mt-2">
 							<input
-								id="companyName"
-								name="companyName"
+								id="location"
+								name="location"
 								type="text"
-								required
-								bind:value={profileData.companyName}
-								class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm sm:leading-6"
+								placeholder="e.g., Mumbai, Maharashtra"
+								bind:value={profileData.location}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
 							/>
 						</div>
 					</div>
-					<div>
-						<label for="category" class="block text-sm leading-6 font-medium text-gray-900"
-							>Main Material Category (e.g., Cement, Steel, Electricals)</label
+
+					{#if errorMessage}
+						<div
+							class="rounded-md border border-red-500/50 bg-red-500/25 p-3.5 text-sm text-red-200"
+							role="alert"
 						>
-						<div class="mt-2">
-							<input
-								id="category"
-								name="category"
-								type="text"
-								required
-								bind:value={profileData.category}
-								class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm sm:leading-6"
-							/>
+							{errorMessage}
 						</div>
-					</div>
-				{/if}
+					{/if}
 
-				<!-- Expert Fields -->
-				{#if currentUser.userType === 'expert'}
 					<div>
-						<label for="expertise" class="block text-sm leading-6 font-medium text-gray-900"
-							>Primary Expertise (e.g., Plumbing, Masonry, Electrical Work)</label
+						<button
+							type="submit"
+							disabled={isLoading}
+							class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 text-sm leading-6 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:opacity-50"
 						>
-						<div class="mt-2">
-							<input
-								id="expertise"
-								name="expertise"
-								type="text"
-								required
-								bind:value={profileData.expertise}
-								class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm sm:leading-6"
-							/>
-						</div>
+							{#if isLoading}
+								<svg
+									class="mr-3 h-5 w-5 animate-spin text-white"
+									xmlns="http://www.w3.org/2000/svg"
+									fill="none"
+									viewBox="0 0 24 24"
+								>
+									<circle
+										class="opacity-25"
+										cx="12"
+										cy="12"
+										r="10"
+										stroke="currentColor"
+										stroke-width="4"
+									></circle>
+									<path
+										class="opacity-75"
+										fill="currentColor"
+										d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+									></path>
+								</svg>
+								<span>Saving...</span>
+							{:else}
+								Save and Continue
+							{/if}
+						</button>
 					</div>
-				{/if}
-
-				<!-- Shared Expert/Supplier Fields -->
-				{#if currentUser.userType === 'expert' || currentUser.userType === 'supplier'}
-					<div>
-						<label for="experience" class="block text-sm leading-6 font-medium text-gray-900"
-							>{currentUser.userType === 'expert'
-								? 'Years of Experience'
-								: 'Years in Business'}</label
-						>
-						<div class="mt-2">
-							<input
-								id="experience"
-								name="experience"
-								type="text"
-								required
-								bind:value={profileData.experience}
-								class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm sm:leading-6"
-							/>
-						</div>
-					</div>
-				{/if}
-
-				<!-- Common Optional Fields -->
-				<div>
-					<label for="phoneNumber" class="block text-sm leading-6 font-medium text-gray-900"
-						>Phone Number <span class="text-xs text-gray-500">(Optional)</span></label
-					>
-					<div class="mt-2">
-						<input
-							id="phoneNumber"
-							name="phoneNumber"
-							type="tel"
-							bind:value={profileData.phoneNumber}
-							class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm sm:leading-6"
-						/>
-					</div>
-				</div>
-
-				<div>
-					<label for="location" class="block text-sm leading-6 font-medium text-gray-900"
-						>Primary Location (City/Area)
-						<span class="text-xs text-gray-500">(Optional)</span></label
-					>
-					<div class="mt-2">
-						<input
-							id="location"
-							name="location"
-							type="text"
-							bind:value={profileData.location}
-							class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm sm:leading-6"
-						/>
-					</div>
-				</div>
-
-				{#if errorMessage}
-					<div class="text-sm text-red-600">
-						{errorMessage}
-					</div>
-				{/if}
-
-				<div>
-					<button
-						type="submit"
-						disabled={isLoading}
-						class="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm leading-6 font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
-					>
-						{#if isLoading}
-							<span>Saving...</span>
-						{:else}
-							Save and Continue
-						{/if}
-					</button>
-				</div>
-			</form>
-		{:else}
-			<div class="text-center text-gray-500">Loading user data...</div>
-		{/if}
+				</form>
+			{:else}
+				<div class="text-center text-slate-400">Loading user data...</div>
+			{/if}
+		</div>
 	</div>
 </div>

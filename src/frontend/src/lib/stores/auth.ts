@@ -119,6 +119,13 @@ async function loadUserFromStorage() {
 
 // Logout function
 function logout() {
+	if (browser) {
+		// This is crucial for allowing users to switch Google accounts.
+		// It tells Google's library to forget the previous sign-in and not to
+		// automatically select that user next time the sign-in page is visited.
+		window.google?.accounts?.id?.disableAutoSelect();
+		console.log('Google auto sign-in disabled.');
+	}
 	updateAuthData(null, null);
 	// To redirect after logout, use `goto` from `$app/navigation` in the component calling logout.
 	// e.g., if (browser) { import('$app/navigation').then(({goto}) => goto('/auth/login')); }
