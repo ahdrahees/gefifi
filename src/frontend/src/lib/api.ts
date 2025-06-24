@@ -1,9 +1,9 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { authStore, type AuthUser } from './stores/auth'; // Assuming AuthUser is exported from the auth store
+import { API_BASE_URL } from './config';
 
 // Access VITE_API_URL (set in .env file at the root of the SvelteKit project, e.g., gefifi-2/frontend/.env or gefifi-2/.env)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 if (!API_BASE_URL && browser) {
 	console.warn(
