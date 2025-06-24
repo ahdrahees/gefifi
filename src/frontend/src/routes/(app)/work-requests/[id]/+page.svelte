@@ -207,13 +207,13 @@
 						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
 							{#each workRequest.images as imagePath (imagePath)}
 								<a
-									href={API_BASE_URL + imagePath}
+									href={imagePath}
 									target="_blank"
 									rel="noopener noreferrer"
 									class="block aspect-video overflow-hidden rounded-lg shadow-md transition-shadow duration-200 hover:shadow-xl"
 								>
 									<img
-										src={API_BASE_URL + imagePath}
+										src={imagePath}
 										alt="Work request image for {workRequest.title}"
 										class="h-full w-full bg-slate-600 object-cover"
 										loading="lazy"

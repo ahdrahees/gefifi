@@ -181,7 +181,7 @@
 			{:else if currentAuth.isLoggedIn && currentAuth.user}
 				<div class="mb-3 flex items-center">
 					<img
-						src={currentAuth.user.profile?.avatarUrl || '/hero/Tabby Cat Construction Worker.png'}
+						src={currentAuth.user.profile?.avatarUrl || '/images/default-avatar.png'}
 						alt={currentAuth.user.profile?.fullName || 'User Avatar'}
 						class="mr-3 h-10 w-10 shrink-0 rounded-full border-2 border-emerald-500 object-cover"
 						loading="lazy"

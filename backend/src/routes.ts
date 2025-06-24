@@ -923,13 +923,18 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			agreementSummary,
 			contractDate: contractDate || now,
 			customerSigned: initialCustomerSigned,
-			customerSignatureTimestamp: customerSigTimestamp,
 			expertSupplierSigned: initialExpertSupplierSigned,
-			expertSupplierSignatureTimestamp: expertSigTimestamp,
 			status: initialStatus,
 			createdAt: now,
 			updatedAt: now
 		};
+
+		if (customerSigTimestamp) {
+			newContract.customerSignatureTimestamp = customerSigTimestamp;
+		}
+		if (expertSigTimestamp) {
+			newContract.expertSupplierSignatureTimestamp = expertSigTimestamp;
+		}
 
 		console.log(
 			'[POST /api/contracts] Attempting to create contract with data:',
