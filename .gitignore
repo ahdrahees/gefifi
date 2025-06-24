@@ -9,6 +9,7 @@ node_modules
 /build
 .dfx
 .zed
+.cursor
 
 # OS
 .DS_Store
@@ -20,12 +21,19 @@ Thumbs.db
 !.env.example
 !.env.test
 .env.local
+.env-backend
 
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /data/*
 
+# Notes
+Notes-for-me.md
+project-structure-prompt.md
+project-structure-update.md
+project-structure.md
+prompomt.md
 
 # GCP credentials
 
