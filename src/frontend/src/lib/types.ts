@@ -40,7 +40,6 @@ export type AuthUser = {
 	updatedAt: string;
 	isActive?: boolean;
 	googleId?: string;
-	profileCompleted?: boolean;
 };
 
 // --- Core Application Data Types ---

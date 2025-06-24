@@ -123,19 +123,13 @@
 			// Call the backend with the token from Google and the selected userType
 			const result = await apiClient.googleLogin({
 				googleTokenId: response.credential,
-				userTypeForNewGoogleUser: userTypeForNewUser,
-				profileForNewGoogleUser: profileForNewUser // Send profile data if already collected
+				userTypeForNewUser: userTypeForNewUser,
+				profileForNewUser: profileForNewUser // Send profile data if already collected
 			});
 
 			// On success, the backend returns a token for the new/existing user
 			authStore._updateAuthData(result.token, result.user);
-
-			// Check if profile needs completion
-			if (result.user.profileCompleted === false) {
-				goto('/auth/complete-profile', { replaceState: true });
-			} else {
-				goto('/dashboard', { replaceState: true });
-			}
+			goto('/dashboard', { replaceState: true });
 		} catch (error: any) {
 			console.error('Google Sign-In/Registration Error:', error);
 			if (error instanceof ApiError) {
@@ -163,15 +157,15 @@
 		});
 
 		// Initialize Google Sign-In
-		if (GOOGLE_CLIENT_ID && (window as any).google) {
-			(window as any).google.accounts.id.initialize({
+		if (GOOGLE_CLIENT_ID && window.google) {
+			window.google.accounts.id.initialize({
 				client_id: GOOGLE_CLIENT_ID,
 				callback: handleGoogleCredentialResponse
 			});
 
 			const googleButtonElement = document.getElementById('google-register-button');
 			if (googleButtonElement) {
-				(window as any).google.accounts.id.renderButton(googleButtonElement, {
+				window.google.accounts.id.renderButton(googleButtonElement, {
 					theme: 'outline',
 					size: 'large',
 					type: 'standard',
@@ -362,7 +356,7 @@
 								type="text"
 								id="companyName"
 								bind:value={profile.companyName}
-								required={true}
+								required={userType === 'supplier'}
 								disabled={isLoading}
 								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
 								placeholder="Your company's official name"
@@ -377,7 +371,7 @@
 								type="text"
 								id="fullName"
 								bind:value={profile.fullName}
-								required={userType === 'customer' || userType === 'expert'}
+								required={userType !== 'supplier'}
 								disabled={isLoading}
 								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
 								placeholder="Your full name"

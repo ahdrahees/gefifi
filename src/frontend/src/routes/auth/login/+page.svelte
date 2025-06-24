@@ -39,13 +39,7 @@
 
 			// On successful login (existing user) or registration, the backend returns a token.
 			authStore._updateAuthData(result.token, result.user);
-
-			// Check if profile needs completion
-			if (result.user.profileCompleted === false) {
-				goto('/auth/complete-profile', { replaceState: true });
-			} else {
-				goto('/dashboard', { replaceState: true });
-			}
+			goto('/dashboard', { replaceState: true });
 		} catch (error: any) {
 			console.error('Google Sign-In Error:', error);
 			if (error instanceof ApiError && error.status === 400) {
@@ -99,8 +93,8 @@
 		}
 
 		// Initialize Google Sign-In
-		if (GOOGLE_CLIENT_ID && (window as any).google) {
-			(window as any).google.accounts.id.initialize({
+		if (GOOGLE_CLIENT_ID && window.google) {
+			window.google.accounts.id.initialize({
 				client_id: GOOGLE_CLIENT_ID,
 				callback: handleGoogleCredentialResponse
 			});
@@ -108,7 +102,7 @@
 			// Render the Google Sign-In button
 			const googleButtonElement = document.getElementById('google-signin-button');
 			if (googleButtonElement) {
-				(window as any).google.accounts.id.renderButton(googleButtonElement, {
+				window.google.accounts.id.renderButton(googleButtonElement, {
 					theme: 'outline',
 					size: 'large',
 					type: 'standard',
