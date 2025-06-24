@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { SimpleDB } from './data';
+import { FirestoreCollection } from './data';
 import { User, UserProfile, WorkRequest, Chat, Message, Contract } from './interfaces';
 import {
 	hashPassword,
@@ -13,11 +13,11 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 
 // Initialize databases
-const usersDB = new SimpleDB<User>('users.json');
-const workRequestsDB = new SimpleDB<WorkRequest>('workRequests.json');
-const chatsDB = new SimpleDB<Chat>('chats.json');
-const messagesDB = new SimpleDB<Message>('messages.json');
-const contractsDB = new SimpleDB<Contract>('contracts.json');
+const usersDB = new FirestoreCollection<User>('users');
+const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
+const chatsDB = new FirestoreCollection<Chat>('chats');
+const messagesDB = new FirestoreCollection<Message>('messages');
+const contractsDB = new FirestoreCollection<Contract>('contracts');
 
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -94,7 +94,7 @@ router.post('/auth/register', async (req: Request, res: Response) => {
 				.json({ message: profileValidation.message || 'Invalid profile data.' });
 		}
 		const existingUsers = await usersDB.getAll();
-		if (existingUsers.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
+		if (existingUsers.some((u: User) => u.email.toLowerCase() === email.toLowerCase())) {
 			return res.status(409).json({
 				message: 'User with this email already exists. Please login or use a different email.'
 			});
@@ -146,7 +146,7 @@ router.post('/auth/login', async (req: Request, res: Response) => {
 			return res.status(400).json({ message: 'Email and password must be strings.' });
 		}
 		const users = await usersDB.getAll();
-		const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+		const user = users.find((u: User) => u.email.toLowerCase() === email.toLowerCase());
 		if (!user) {
 			return res.status(401).json({ message: 'Invalid credentials. User not found.' });
 		}
@@ -231,7 +231,7 @@ router.post('/auth/google', async (req: Request, res: Response) => {
 		}
 
 		const users = await usersDB.getAll();
-		let user = users.find((u) => u.googleId === googleId || u.email.toLowerCase() === email);
+		let user = users.find((u: User) => u.googleId === googleId || u.email.toLowerCase() === email);
 		const now = new Date().toISOString();
 
 		if (user) {
@@ -311,11 +311,14 @@ router.get('/work-requests', async (req: Request, res: Response) => {
 
 		// If a customerId is provided, filter the work requests
 		if (customerId) {
-			workRequests = workRequests.filter((request) => request.customerId === customerId);
+			workRequests = workRequests.filter(
+				(request: WorkRequest) => request.customerId === customerId
+			);
 		}
 
 		const sortedWorkRequests = workRequests.sort(
-			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+			(a: WorkRequest, b: WorkRequest) =>
+				new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		);
 		res.status(200).json(sortedWorkRequests);
 	} catch (error: unknown) {
@@ -349,7 +352,10 @@ router.post(
 			if (!title || !description || !location) {
 				return res.status(400).json({ message: 'Title, description, and location are required.' });
 			}
-			if (images && (!Array.isArray(images) || !images.every((img) => typeof img === 'string'))) {
+			if (
+				images &&
+				(!Array.isArray(images) || !images.every((img: string) => typeof img === 'string'))
+			) {
 				return res
 					.status(400)
 					.json({ message: 'Images must be an array of strings (file paths).' });
@@ -412,8 +418,8 @@ router.get('/users/experts', async (_req: Request, res: Response) => {
 	try {
 		const allUsers = await usersDB.getAll();
 		const experts = allUsers
-			.filter((user) => user.userType === 'expert' && user.isActive)
-			.map((expert) => {
+			.filter((user: User) => user.userType === 'expert' && user.isActive)
+			.map((expert: User) => {
 				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 				const { password, ...expertData } = expert;
 				return expertData;
@@ -430,8 +436,8 @@ router.get('/users/suppliers', async (_req: Request, res: Response) => {
 	try {
 		const allUsers = await usersDB.getAll();
 		const suppliers = allUsers
-			.filter((user) => user.userType === 'supplier' && user.isActive)
-			.map((supplier) => {
+			.filter((user: User) => user.userType === 'supplier' && user.isActive)
+			.map((supplier: User) => {
 				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 				const { password, ...supplierData } = supplier;
 				return supplierData;
@@ -540,7 +546,7 @@ router.post(
 
 			const allChats = await chatsDB.getAll();
 			let existingChat = allChats.find(
-				(chat) =>
+				(chat: Chat) =>
 					chat.participants.includes(sender.id) &&
 					chat.participants.includes(targetUserId) &&
 					(!workRequestId || chat.workRequestId === workRequestId)
@@ -608,9 +614,9 @@ router.get('/chat', authenticateToken, async (req: AuthenticatedRequest, res: Re
 	try {
 		const user = req.user as JwtPayload;
 		const allChats = await chatsDB.getAll();
-		const userChats = allChats.filter((chat) => chat.participants.includes(user.id));
+		const userChats = allChats.filter((chat: Chat) => chat.participants.includes(user.id));
 		userChats.sort(
-			(a, b) =>
+			(a: Chat, b: Chat) =>
 				new Date(b.updatedAt || b.createdAt).getTime() -
 				new Date(a.updatedAt || a.createdAt).getTime()
 		);
@@ -646,9 +652,9 @@ router.post('/chat', authenticateToken, async (req: AuthenticatedRequest, res: R
 		}
 		const allChats = await chatsDB.getAll();
 		const existingChat = allChats.find(
-			(c) =>
+			(c: Chat) =>
 				c.participants.length === allParticipantIds.length &&
-				c.participants.every((p) => allParticipantIds.includes(p)) &&
+				c.participants.every((p: string) => allParticipantIds.includes(p)) &&
 				c.workRequestId === workRequestId
 		);
 		if (existingChat) {
@@ -706,7 +712,7 @@ router.post(
 				images &&
 				Array.isArray(images) &&
 				images.length > 0 &&
-				images.every((img) => typeof img === 'string');
+				images.every((img: string) => typeof img === 'string');
 
 			if (!hasValidContent && !hasValidImages) {
 				return res.status(400).json({ message: 'Message content or images are required.' });
@@ -770,8 +776,11 @@ router.get(
 			}
 			const allMessages = await messagesDB.getAll();
 			const chatMessages = allMessages
-				.filter((msg) => msg.chatId === chatId)
-				.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+				.filter((msg: Message) => msg.chatId === chatId)
+				.sort(
+					(a: Message, b: Message) =>
+						new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+				);
 			res.status(200).json(chatMessages);
 		} catch (error: unknown) {
 			console.error(`Error fetching messages for chat ${req.params.chatId}:`, error);
@@ -787,9 +796,13 @@ router.get('/contracts', authenticateToken, async (req: AuthenticatedRequest, re
 		const user = req.user as JwtPayload;
 		const allContracts = await contractsDB.getAll();
 		const userContracts = allContracts.filter(
-			(contract) => contract.customerId === user.id || contract.expertSupplierId === user.id
+			(contract: Contract) =>
+				contract.customerId === user.id || contract.expertSupplierId === user.id
 		);
-		userContracts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+		userContracts.sort(
+			(a: Contract, b: Contract) =>
+				new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+		);
 		res.status(200).json(userContracts);
 	} catch (error: unknown) {
 		console.error('Error fetching contracts:', error);
