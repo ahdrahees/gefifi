@@ -66,7 +66,7 @@ async function request<T = any>( // Default T to any if not specified by caller
 		config.body = isFormData ? (body as FormData) : JSON.stringify(body);
 	}
 
-	const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+	const response = await fetch(`${API_BASE_URL}/api${endpoint}`, config);
 
 	if (!response.ok) {
 		let errorData: ApiErrorData = { message: `HTTP error! Status: ${response.status}` };
