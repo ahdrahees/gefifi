@@ -22,6 +22,23 @@ const contractsDB = new FirestoreCollection<Contract>('contracts');
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// --- Helper: Check if profile is complete based on user type ---
+const checkProfileCompletion = (profile: UserProfile, userType: User['userType']): boolean => {
+	switch (userType) {
+		case 'customer':
+			// For customers, having fullName is sufficient (location and phone are optional)
+			return !!profile.fullName;
+		case 'expert':
+			// For experts, require fullName and expertise (others are optional)
+			return !!(profile.fullName && profile.expertise);
+		case 'supplier':
+			// For suppliers, require companyName and category (others are optional)
+			return !!(profile.companyName && profile.category);
+		default:
+			return false;
+	}
+};
+
 // --- Helper: Validate User Profile based on UserType ---
 const validateProfileData = (
 	profile: Partial<UserProfile> | null | undefined,
@@ -110,7 +127,8 @@ router.post('/auth/register', async (req: Request, res: Response) => {
 			profile: profileValidation.validatedProfile,
 			createdAt: now,
 			updatedAt: now,
-			isActive: true
+			isActive: true,
+			profileCompleted: checkProfileCompletion(profileValidation.validatedProfile, userType)
 		};
 		const createdUser = await usersDB.create(newUser);
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -180,34 +198,89 @@ router.post('/auth/login', async (req: Request, res: Response) => {
 
 router.get('/auth/me', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
 	try {
-		const jwtPayload = req.user as JwtPayload;
-		if (!jwtPayload || !jwtPayload.id) {
-			return res
-				.status(401)
-				.json({ message: 'Authentication token did not provide valid user details.' });
-		}
-		const user = await usersDB.findById(jwtPayload.id);
-		if (!user) {
-			return res.status(404).json({ message: 'User not found based on token.' });
-		}
-		if (!user.isActive) {
-			return res.status(403).json({ message: 'User account is inactive.' });
+		const user = req.user as JwtPayload;
+		const userData = await usersDB.findById(user.id);
+		if (!userData || !userData.isActive) {
+			return res.status(404).json({ message: 'User not found or inactive.' });
 		}
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const { password: _, ...userToReturn } = user;
+		const { password: _, ...userToReturn } = userData;
 		res.status(200).json(userToReturn);
 	} catch (error: unknown) {
-		console.error('Error fetching current user (/auth/me):', error);
-		if (error instanceof Error) {
-			res.status(500).json({ message: 'Error fetching user details.', error: error.message });
-		} else {
-			res.status(500).json({ message: 'An unknown error occurred fetching user details.' });
-		}
+		console.error('Error fetching user profile:', error);
+		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+		res.status(500).json({ message: 'Failed to fetch user profile.', error: errorMessage });
 	}
 });
 
+// --- Profile Completion Endpoint ---
+router.post(
+	'/auth/complete-profile',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { profile: profileData } = req.body;
+
+			if (!profileData || typeof profileData !== 'object') {
+				return res.status(400).json({ message: 'Profile data is required.' });
+			}
+
+			// Get current user data
+			const userData = await usersDB.findById(user.id);
+			if (!userData || !userData.isActive) {
+				return res.status(404).json({ message: 'User not found or inactive.' });
+			}
+
+			// Validate profile data
+			const profileValidation = validateProfileData(profileData, userData.userType);
+			if (!profileValidation.valid) {
+				return res
+					.status(400)
+					.json({ message: profileValidation.message || 'Invalid profile data.' });
+			}
+
+			// Merge existing profile with new data
+			const updatedProfile = {
+				...userData.profile,
+				...profileValidation.validatedProfile
+			};
+
+			// Check if profile is now complete
+			const isProfileComplete = checkProfileCompletion(updatedProfile, userData.userType);
+
+			// Update user profile
+			const now = new Date().toISOString();
+			await usersDB.update(userData.id, {
+				profile: updatedProfile,
+				profileCompleted: isProfileComplete,
+				updatedAt: now
+			});
+
+			// Fetch and return updated user
+			const updatedUser = await usersDB.findById(userData.id);
+			if (!updatedUser) {
+				return res.status(404).json({ message: 'Failed to fetch updated user.' });
+			}
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { password: _, ...userToReturn } = updatedUser;
+
+			res.status(200).json({
+				user: userToReturn,
+				message: isProfileComplete
+					? 'Profile completed successfully.'
+					: 'Profile updated successfully.'
+			});
+		} catch (error: unknown) {
+			console.error('Error completing profile:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to complete profile.', error: errorMessage });
+		}
+	}
+);
+
 router.post('/auth/google', async (req: Request, res: Response) => {
-	const { googleTokenId, userTypeForNewUser, profileForNewUser } = req.body;
+	const { googleTokenId, userTypeForNewGoogleUser, profileForNewGoogleUser } = req.body;
 
 	if (!googleTokenId) {
 		return res.status(400).json({ message: 'Google ID Token is required.' });
@@ -252,34 +325,45 @@ router.post('/auth/google', async (req: Request, res: Response) => {
 			});
 		} else {
 			// --- New User Registration Flow ---
-			if (!userTypeForNewUser || !['customer', 'expert', 'supplier'].includes(userTypeForNewUser)) {
+			if (
+				!userTypeForNewGoogleUser ||
+				!['customer', 'expert', 'supplier'].includes(userTypeForNewGoogleUser)
+			) {
 				return res.status(400).json({
 					message:
-						"This Google account is not registered. Please provide a 'userTypeForNewUser' (customer, expert, or supplier) to create a new account."
+						"This Google account is not registered. Please provide a 'userTypeForNewGoogleUser' (customer, expert, or supplier) to create a new account."
 				});
 			}
 
 			const profileData = {
 				fullName: name,
 				avatarUrl: avatarUrl,
-				...(profileForNewUser || {}) // Merge any additional profile data from frontend
+				...(profileForNewGoogleUser || {}) // Merge any additional profile data from frontend
 			};
 
-			const profileValidation = validateProfileData(profileData, userTypeForNewUser);
+			const profileValidation = validateProfileData(profileData, userTypeForNewGoogleUser);
 			if (!profileValidation.valid) {
 				return res.status(400).json({ message: profileValidation.message });
 			}
 
 			const newUserId = crypto.randomUUID();
+
+			// Check if profile is complete based on user type
+			const isProfileComplete = checkProfileCompletion(
+				profileValidation.validatedProfile,
+				userTypeForNewGoogleUser
+			);
+
 			user = {
 				id: newUserId,
 				email: email.toLowerCase(),
 				googleId,
-				userType: userTypeForNewUser,
+				userType: userTypeForNewGoogleUser,
 				profile: profileValidation.validatedProfile,
 				createdAt: now,
 				updatedAt: now,
-				isActive: true
+				isActive: true,
+				profileCompleted: isProfileComplete
 			};
 			await usersDB.create(user);
 		}

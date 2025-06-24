@@ -1,7 +1,8 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/dashboard/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { authStore, type AuthUser } from '$lib/stores/auth';
+	import { authStore } from '$lib/stores/auth';
+	import type { AuthUser } from '$lib/types';
 	import { page } from '$app/stores'; // For query params or path if needed later
 	import { goto } from '$app/navigation';
 	import { API_BASE_URL } from '$lib/config'; // Assuming you have a config file for API base
@@ -36,6 +37,11 @@
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
 		token = auth.token;
+
+		// Check if profile needs completion
+		if (currentUser && currentUser.profileCompleted === false) {
+			goto('/auth/complete-profile');
+		}
 	});
 
 	function trimString(str: string | undefined | null, maxLength: number): string {

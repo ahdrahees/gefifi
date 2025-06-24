@@ -187,6 +187,14 @@ const apiClient = {
 	googleLogin: (payload: GoogleLoginPayload): Promise<AuthResponse> => {
 		return request<AuthResponse>('/auth/google', 'POST', payload);
 	},
+	completeProfile: (profileData: any): Promise<{ user: AuthUser; message: string }> => {
+		return request<{ user: AuthUser; message: string }>(
+			'/auth/complete-profile',
+			'POST',
+			{ profile: profileData },
+			true
+		);
+	},
 
 	// --- File Upload ---
 	uploadFile: (
