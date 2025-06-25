@@ -131,14 +131,33 @@ interface WorkRequestData {
 	materialsSuggested?: string;
 	category?: string;
 }
-interface WorkRequestResponse {
-	/* Define based on backend WorkRequest interface */ id: string;
+export interface WorkRequestResponse {
+	id: string;
+	[key: string]: any;
+}
+
+interface MaterialRequestData {
+	title: string;
+	description: string;
+	deliveryLocation: string;
+	deliveryDate?: string;
+	linkedWorkRequestId?: string;
+	items: {
+		itemName: string;
+		quantity: string;
+		notes?: string;
+	}[];
+}
+
+export interface MaterialRequestResponse {
+	id: string;
 	[key: string]: any;
 }
 
 interface UserInterestData {
 	targetUserId: string;
 	workRequestId?: string;
+	materialRequestId?: string;
 	predefinedMessageKey: string;
 }
 interface ChatData {
@@ -219,11 +238,35 @@ const apiClient = {
 	getWorkRequests: (): Promise<WorkRequestResponse[]> => {
 		return request<WorkRequestResponse[]>('/work-requests', 'GET');
 	},
+	getWorkRequestsByCustomerId: (customerId: string): Promise<WorkRequestResponse[]> => {
+		return request<WorkRequestResponse[]>(
+			`/work-requests?customerId=${customerId}`,
+			'GET',
+			undefined,
+			true
+		);
+	},
 	createWorkRequest: (data: WorkRequestData): Promise<WorkRequestResponse> => {
 		return request<WorkRequestResponse>('/work-requests', 'POST', data, true);
 	},
 	getWorkRequestById: (id: string): Promise<WorkRequestResponse> => {
 		return request<WorkRequestResponse>(`/work-requests/${id}`, 'GET');
+	},
+
+	// --- Material Requests ---
+	getMaterialRequestsByCustomerId: (customerId: string): Promise<MaterialRequestResponse[]> => {
+		return request<MaterialRequestResponse[]>(
+			`/material-requests?customerId=${customerId}`,
+			'GET',
+			undefined,
+			true
+		);
+	},
+	createMaterialRequest: (data: MaterialRequestData): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>('/material-requests', 'POST', data, true);
+	},
+	getMaterialRequests: (): Promise<MaterialRequestResponse[]> => {
+		return request<MaterialRequestResponse[]>('/material-requests', 'GET', undefined, true);
 	},
 
 	// --- Users ---
@@ -282,6 +325,11 @@ const apiClient = {
 		payload: ContractStatusUpdatePayload
 	): Promise<ContractResponse> => {
 		return request<ContractResponse>(`/contracts/${contractId}/status`, 'PUT', payload, true);
+	},
+
+	// --- Projects ---
+	getProjects: (): Promise<any[]> => {
+		return request<any[]>('/projects', 'GET', undefined, true);
 	}
 };
 

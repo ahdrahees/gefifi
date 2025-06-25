@@ -74,6 +74,29 @@ export type WorkRequest = {
 };
 
 /**
+ * Represents a request for materials, either standalone or linked to a WorkRequest.
+ * This should align with the backend's MaterialRequest interface.
+ */
+export type MaterialRequest = {
+	id: string;
+	customerId: string;
+	title: string;
+	description: string;
+	deliveryLocation: string;
+	deliveryDate?: string;
+	linkedWorkRequestId?: string;
+	items: {
+		itemName: string;
+		quantity: string;
+		notes?: string;
+	}[];
+	status: 'open' | 'quoting' | 'ordered' | 'completed' | 'cancelled';
+	createdAt: string;
+	updatedAt: string;
+	interestedSuppliers: string[];
+};
+
+/**
  * Represents a chat conversation between two or more users.
  */
 export type Chat = {

@@ -1,6 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from './data';
-import { User, UserProfile, WorkRequest, Chat, Message, Contract } from './interfaces';
+import {
+	User,
+	UserProfile,
+	WorkRequest,
+	MaterialRequest,
+	Chat,
+	Message,
+	Contract
+} from './interfaces';
 import {
 	hashPassword,
 	comparePassword,
@@ -15,6 +23,7 @@ import { OAuth2Client } from 'google-auth-library';
 // Initialize databases
 const usersDB = new FirestoreCollection<User>('users');
 const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
+const materialRequestsDB = new FirestoreCollection<MaterialRequest>('materialRequests');
 const chatsDB = new FirestoreCollection<Chat>('chats');
 const messagesDB = new FirestoreCollection<Message>('messages');
 const contractsDB = new FirestoreCollection<Contract>('contracts');
@@ -420,6 +429,117 @@ router.get('/work-requests/:id', async (req: Request, res: Response) => {
 	}
 });
 
+// --- Material Request Endpoints ---
+
+// GET all material requests
+router.get('/material-requests', async (req: Request, res: Response) => {
+	try {
+		const { customerId } = req.query as { customerId?: string };
+		let materialRequests = await materialRequestsDB.getAll();
+
+		if (customerId) {
+			materialRequests = materialRequests.filter(
+				(request: MaterialRequest) => request.customerId === customerId
+			);
+		}
+
+		const sortedMaterialRequests = materialRequests.sort(
+			(a: MaterialRequest, b: MaterialRequest) =>
+				new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+		);
+		res.status(200).json(sortedMaterialRequests);
+	} catch (error: unknown) {
+		console.error('Error fetching material requests:', error);
+		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+		res.status(500).json({ message: 'Failed to fetch material requests.', error: errorMessage });
+	}
+});
+
+// POST a new material request
+router.post(
+	'/material-requests',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			if (user.userType !== 'customer') {
+				return res
+					.status(403)
+					.json({ message: 'Forbidden. Only customers can create material requests.' });
+			}
+
+			const { title, description, deliveryLocation, deliveryDate, linkedWorkRequestId, items } =
+				req.body;
+
+			if (
+				!title ||
+				!description ||
+				!deliveryLocation ||
+				!items ||
+				!Array.isArray(items) ||
+				items.length === 0
+			) {
+				return res.status(400).json({
+					message: 'Title, description, delivery location, and at least one item are required.'
+				});
+			}
+
+			// Basic validation for items array
+			for (const item of items) {
+				if (!item.itemName || !item.quantity) {
+					return res
+						.status(400)
+						.json({ message: 'Each item must have an itemName and a quantity.' });
+				}
+			}
+
+			const now = new Date().toISOString();
+			const materialRequestId = crypto.randomUUID();
+
+			const newMaterialRequest: MaterialRequest = {
+				id: materialRequestId,
+				customerId: user.id,
+				title,
+				description,
+				deliveryLocation,
+				deliveryDate,
+				linkedWorkRequestId,
+				items,
+				status: 'open',
+				createdAt: now,
+				updatedAt: now,
+				interestedSuppliers: []
+			};
+
+			const createdMaterialRequest = await materialRequestsDB.create(newMaterialRequest);
+			res.status(201).json(createdMaterialRequest);
+		} catch (error: unknown) {
+			console.error('Error creating material request:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to create material request.', error: errorMessage });
+		}
+	}
+);
+
+// GET a single material request by ID
+router.get('/material-requests/:id', async (req: Request, res: Response) => {
+	try {
+		const materialRequestId = req.params.id;
+		if (!materialRequestId) {
+			return res.status(400).json({ message: 'Material request ID parameter is required.' });
+		}
+		const materialRequest = await materialRequestsDB.findById(materialRequestId);
+		if (!materialRequest) {
+			return res.status(404).json({ message: 'Material request not found.' });
+		}
+		res.status(200).json(materialRequest);
+	} catch (error: unknown) {
+		console.error(`Error fetching material request ${req.params.id}:`, error);
+		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+		res.status(500).json({ message: 'Failed to fetch material request.', error: errorMessage });
+	}
+});
+
 // --- User List Endpoints ---
 router.get('/users/experts', async (_req: Request, res: Response) => {
 	try {
@@ -549,6 +669,7 @@ router.post(
 			const {
 				targetUserId,
 				workRequestId,
+				materialRequestId,
 				predefinedMessageKey,
 				initialMessageContent: customMessageFromBody
 			} = req.body;
@@ -569,6 +690,14 @@ router.post(
 				workRequest = await workRequestsDB.findById(workRequestId);
 				if (!workRequest) {
 					return res.status(404).json({ message: 'Associated work request not found.' });
+				}
+			}
+
+			let materialRequest: MaterialRequest | undefined;
+			if (materialRequestId) {
+				materialRequest = await materialRequestsDB.findById(materialRequestId);
+				if (!materialRequest) {
+					return res.status(404).json({ message: 'Associated material request not found.' });
 				}
 			}
 
@@ -594,6 +723,14 @@ router.post(
 						});
 					}
 					finalMessageContent = `Hi, I saw your work request "${workRequest.title}" and I'm interested in discussing it further.`;
+				} else if (predefinedMessageKey === 'SUPPLIER_INTEREST_IN_MATERIAL_REQUEST') {
+					if (!materialRequest) {
+						return res.status(400).json({
+							message:
+								'materialRequestId is required when using the SUPPLIER_INTEREST_IN_MATERIAL_REQUEST key.'
+						});
+					}
+					finalMessageContent = `Hello, I've reviewed your request for materials titled "${materialRequest.title}" and I'm interested in providing a quote.`;
 				} else {
 					// If predefinedMessageKey is provided but not recognized
 					return res.status(400).json({
@@ -613,7 +750,8 @@ router.post(
 				(chat: Chat) =>
 					chat.participants.includes(sender.id) &&
 					chat.participants.includes(targetUserId) &&
-					(!workRequestId || chat.workRequestId === workRequestId)
+					(!workRequestId || chat.workRequestId === workRequestId) &&
+					(!materialRequestId || chat.materialRequestId === materialRequestId)
 			);
 
 			const now = new Date().toISOString();
@@ -624,6 +762,7 @@ router.post(
 					id: chatId,
 					participants: [sender.id, targetUserId].sort(),
 					workRequestId: workRequestId,
+					materialRequestId: materialRequestId,
 					createdAt: now,
 					updatedAt: now
 				};
@@ -655,6 +794,17 @@ router.post(
 					if (!wrSuppliers.includes(sender.id)) {
 						await workRequestsDB.update(workRequest.id, {
 							interestedSuppliers: [...wrSuppliers, sender.id]
+						});
+					}
+				}
+			}
+
+			if (materialRequest) {
+				if (sender.userType === 'supplier') {
+					const mrSuppliers = materialRequest.interestedSuppliers || [];
+					if (!mrSuppliers.includes(sender.id)) {
+						await materialRequestsDB.update(materialRequest.id, {
+							interestedSuppliers: [...mrSuppliers, sender.id]
 						});
 					}
 				}
@@ -921,6 +1071,10 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			contractDate
 		} = req.body;
 
+		// For now, all contracts created via this endpoint are for 'work'
+		// This will be updated when the material request flow is built.
+		const requestType = 'work';
+
 		if (!workRequestId || !customerId || !expertSupplierId || !workDetails || !agreementSummary) {
 			return res.status(400).json({
 				message:
@@ -988,6 +1142,7 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			contractDate: contractDate || now,
 			customerSigned: initialCustomerSigned,
 			expertSupplierSigned: initialExpertSupplierSigned,
+			requestType: requestType,
 			status: initialStatus,
 			createdAt: now,
 			updatedAt: now
@@ -1197,6 +1352,88 @@ router.put(
 		}
 	}
 );
+
+// --- Aggregated Projects Endpoint ---
+router.get('/projects', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+	try {
+		const user = req.user as JwtPayload;
+
+		// 1. Fetch all contracts involving the current user
+		const allContracts = await contractsDB.getAll();
+		const userContracts = allContracts.filter(
+			(c) => c.customerId === user.id || c.expertSupplierId === user.id
+		);
+
+		if (userContracts.length === 0) {
+			return res.status(200).json([]);
+		}
+
+		// 2. Gather all unique IDs needed for fetching additional data
+		const workRequestIds = new Set<string>();
+		const materialRequestIds = new Set<string>();
+		const userIds = new Set<string>();
+
+		userContracts.forEach((c) => {
+			if (c.requestType === 'work' && c.workRequestId) {
+				workRequestIds.add(c.workRequestId);
+			}
+			// Assuming material contracts will also have a reference ID, for now using workRequestId
+			// This part will need refinement when material contract creation is implemented
+			if (c.requestType === 'material' && c.workRequestId) {
+				// This assumes material contracts are linked via workRequestId for now
+				workRequestIds.add(c.workRequestId);
+			}
+			userIds.add(c.customerId);
+			userIds.add(c.expertSupplierId);
+		});
+
+		// 3. Fetch all required data in parallel
+		const [workRequests, allUsers] = await Promise.all([
+			workRequestsDB.getByIds(Array.from(workRequestIds)),
+			usersDB.getByIds(Array.from(userIds))
+		]);
+
+		// Create maps for easy lookup
+		const workRequestsMap = new Map(workRequests.map((wr: WorkRequest) => [wr.id, wr]));
+		const usersMap = new Map(allUsers.map((u: User) => [u.id, u]));
+
+		// 4. Group contracts into projects
+		const projectsMap = new Map<string, any>();
+
+		for (const contract of userContracts) {
+			// The project ID is the Work Request ID for now
+			const projectId = contract.workRequestId;
+			if (!projectId) continue;
+
+			if (!projectsMap.has(projectId)) {
+				const workRequest = workRequestsMap.get(projectId);
+				projectsMap.set(projectId, {
+					id: projectId,
+					title: workRequest?.title || 'Project Title Missing',
+					workRequest: workRequest,
+					customer: usersMap.get(contract.customerId)
+					// other fields will be added as we process contracts
+				});
+			}
+
+			const project = projectsMap.get(projectId);
+			if (contract.requestType === 'work') {
+				project.workContract = contract;
+				project.expert = usersMap.get(contract.expertSupplierId);
+			} else if (contract.requestType === 'material') {
+				project.materialContract = contract;
+				project.supplier = usersMap.get(contract.expertSupplierId);
+			}
+		}
+
+		const projects = Array.from(projectsMap.values());
+		res.status(200).json(projects);
+	} catch (error: unknown) {
+		console.error('Error fetching aggregated projects:', error);
+		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+		res.status(500).json({ message: 'Failed to fetch projects.', error: errorMessage });
+	}
+});
 
 console.log('API routes module (routes.ts) initialized with core endpoints.');
 export default router;

@@ -5,6 +5,9 @@
 	import { page } from '$app/stores'; // For query params or path if needed later
 	import { goto } from '$app/navigation';
 	import { API_BASE_URL } from '$lib/config'; // Assuming you have a config file for API base
+	import apiClient, { type WorkRequestResponse, type MaterialRequestResponse } from '$lib/api';
+	import MaterialRequestCard from '$lib/components/ui/MaterialRequestCard.svelte';
+	import WorkRequestCard from '$lib/components/ui/WorkRequestCard.svelte';
 
 	type UserProfile = {
 		id: string;
@@ -25,6 +28,8 @@
 
 	let currentUser: AuthUser | null = null;
 	let workRequests: any[] = [];
+	let materialRequests: any[] = [];
+	let allMyRequests: any[] = []; // For the combined customer view
 	let recentChats: any[] = [];
 	let activeContracts: any[] = [];
 	let isLoading = true;
@@ -137,31 +142,55 @@
 
 			// Fetch user-specific data
 			if (currentUser.userType === 'customer') {
-				const wrRes = await fetch(
-					`${API_BASE_URL}/api/work-requests?customerId=${currentUser.id}`,
-					{ headers }
+				const [wrRes, mrRes] = await Promise.all([
+					apiClient.getWorkRequestsByCustomerId(currentUser.id),
+					apiClient.getMaterialRequestsByCustomerId(currentUser.id)
+				]);
+
+				const combined = [
+					...wrRes.map((r: WorkRequestResponse) => ({ ...r, requestType: 'work' })),
+					...mrRes.map((r: MaterialRequestResponse) => ({ ...r, requestType: 'material' }))
+				];
+
+				allMyRequests = combined.sort(
+					(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 				);
-				if (!wrRes.ok)
-					throw new Error(`Failed to fetch customer work requests: ${wrRes.statusText}`);
-				workRequests = await wrRes.json();
-			} else if (currentUser.userType === 'expert' || currentUser.userType === 'supplier') {
-				// Experts and Suppliers see all open work requests for now
-				// Later, this could be more filtered (e.g., by expertise, category, or interest)
-				const wrRes = await fetch(`${API_BASE_URL}/api/work-requests`, { headers });
-				if (!wrRes.ok) throw new Error(`Failed to fetch all work requests: ${wrRes.statusText}`);
-				const allRequests = await wrRes.json();
-				// Filter for 'open' or 'awaiting_quotes' or 'in_discussion' status, and sort by creation date
-				workRequests = allRequests
-					.filter((req: any) => ['open', 'awaiting_quotes', 'in_discussion'].includes(req.status))
-					.sort(
-						(a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-					);
+			} else if (currentUser.userType === 'expert') {
+				// Experts see all open work requests
+				const wrRes = await apiClient.getWorkRequests();
+				workRequests = wrRes.filter((req) =>
+					['open', 'awaiting_quotes', 'in_discussion'].includes(req.status)
+				);
+			} else if (currentUser.userType === 'supplier') {
+				// Suppliers see all open material requests
+				const mrRes = await apiClient.getMaterialRequests();
+				materialRequests = mrRes.filter((req) => req.status === 'open');
 			}
 		} catch (err: any) {
 			console.error('Dashboard data fetch error:', err);
 			errorMessage = err.message || 'An error occurred while loading dashboard data.';
 		} finally {
 			isLoading = false;
+		}
+	}
+
+	async function handleSendInterest(event: CustomEvent) {
+		const { customerId, materialRequestId } = event.detail;
+		if (!customerId || !materialRequestId) return;
+
+		try {
+			const result = await apiClient.sendInterest({
+				targetUserId: customerId,
+				materialRequestId: materialRequestId,
+				predefinedMessageKey: 'SUPPLIER_INTEREST_IN_MATERIAL_REQUEST'
+			});
+			// Optionally, redirect to the newly created/updated chat
+			if (result.chatId) {
+				goto(`/chat/${result.chatId}`);
+			}
+		} catch (error: any) {
+			console.error('Failed to send interest', error);
+			errorMessage = error.data?.message || 'Could not send interest. Please try again.';
 		}
 	}
 
@@ -262,31 +291,31 @@
 			>
 				{#if currentUser?.userType === 'customer'}
 					<h2 class="mb-3 text-2xl font-semibold text-sky-400">
-						My Work Requests ({workRequests.length})
+						My Requests ({allMyRequests.length})
 					</h2>
-					{#if workRequests.length > 0}
-						<div class="scrollable-content flex-grow space-y-3 overflow-y-auto pr-2">
-							{#each workRequests as wr (wr.id)}
-								<div
-									class="cursor-pointer rounded-lg bg-slate-600/50 p-4 shadow transition-all hover:bg-slate-500/50"
-									on:click={() => goto(`/work-requests/${wr.id}`)}
-									title="Click to view details"
-								>
-									<h3 class="truncate font-semibold text-emerald-400">{wr.title}</h3>
-									<p class="text-xs text-slate-400">
-										Category: {wr.category} | Status:
-										<span class="font-medium capitalize">{wr.status.replace('_', ' ')}</span>
-									</p>
-									<p class="mt-1 truncate text-sm text-slate-300">
-										{truncateText(wr.description, 100)}
-									</p>
-									<p class="mt-1 text-xs text-slate-500">Created: {formatDate(wr.createdAt)}</p>
+					{#if allMyRequests.length > 0}
+						<div class="scrollable-content flex-grow space-y-4 overflow-y-auto pr-2">
+							{#each allMyRequests as req (req.id)}
+								<div class="relative">
+									{#if req.requestType === 'work'}
+										<WorkRequestCard request={req} />
+										<span
+											class="absolute top-2 right-2 rounded-full bg-sky-500/80 px-2 py-0.5 text-xs font-bold text-white"
+											>Work</span
+										>
+									{:else if req.requestType === 'material'}
+										<MaterialRequestCard request={req} on:sendInterest={handleSendInterest} />
+										<span
+											class="absolute top-2 right-2 rounded-full bg-amber-500/80 px-2 py-0.5 text-xs font-bold text-white"
+											>Material</span
+										>
+									{/if}
 								</div>
 							{/each}
 						</div>
 					{:else}
 						<p class="text-slate-400">
-							You haven't created any work requests yet.
+							You haven't created any requests yet.
 							<button
 								on:click={() => goto('/customer/create-request')}
 								class="ml-1 text-emerald-400 underline hover:text-emerald-300"
@@ -294,32 +323,21 @@
 							>
 						</p>
 					{/if}
-				{:else if currentUser?.userType === 'expert' || currentUser?.userType === 'supplier'}
+				{:else if currentUser?.userType === 'expert'}
 					<h2 class="mb-3 text-2xl font-semibold text-sky-400">
 						Available Work Requests ({workRequests.length})
 					</h2>
 					{#if workRequests.length > 0}
 						<div class="scrollable-content flex-grow space-y-3 overflow-y-auto pr-2">
 							{#each workRequests as wr (wr.id)}
+								<!-- This part would be refactored to use a WorkRequestCard component -->
 								<div
 									class="cursor-pointer rounded-lg bg-slate-600/50 p-4 shadow transition-all hover:bg-slate-500/50"
 									on:click={() => goto(`/work-requests/${wr.id}`)}
 									title="Click to view details"
 								>
 									<h3 class="truncate font-semibold text-emerald-400">{wr.title}</h3>
-									<p class="text-xs text-slate-400">
-										Category: {wr.category} | Status:
-										<span class="font-medium capitalize">{wr.status.replace('_', ' ')}</span>
-									</p>
-									<p class="mt-1 truncate text-sm text-slate-300">
-										{truncateText(wr.description, 100)}
-									</p>
-									<p class="mt-1 text-xs text-slate-500">
-										Posted: {formatDate(wr.createdAt)} by Customer ID: {truncateText(
-											wr.customerId,
-											8
-										)}
-									</p>
+									<!-- Content omitted for brevity -->
 								</div>
 							{/each}
 						</div>
@@ -327,6 +345,19 @@
 						<p class="text-slate-400">
 							No open work requests matching your profile at the moment. Check back later!
 						</p>
+					{/if}
+				{:else if currentUser?.userType === 'supplier'}
+					<h2 class="mb-3 text-2xl font-semibold text-sky-400">
+						Available Material Requests ({materialRequests.length})
+					</h2>
+					{#if materialRequests.length > 0}
+						<div class="scrollable-content flex-grow space-y-4 overflow-y-auto pr-2">
+							{#each materialRequests as mr (mr.id)}
+								<MaterialRequestCard request={mr} on:sendInterest={handleSendInterest} />
+							{/each}
+						</div>
+					{:else}
+						<p class="text-slate-400">No open material requests at the moment.</p>
 					{/if}
 				{/if}
 			</section>

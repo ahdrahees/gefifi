@@ -6,6 +6,7 @@
 	import type { AuthUser, ContractStatus, ProjectSummary } from '$lib/types';
 	import apiClient from '$lib/api';
 	import { page } from '$app/stores';
+	import ProjectCard from '$lib/components/ui/ProjectCard.svelte';
 
 	let currentUser: AuthUser | null = null;
 	authStore.subscribe((auth) => (currentUser = auth.user));
@@ -16,6 +17,7 @@
 	let completedProjects: ProjectSummary[] = [];
 	let displayedProjects: ProjectSummary[] = [];
 
+	let projects: any[] = [];
 	let isLoading = true;
 	let errorMessage = '';
 
@@ -95,8 +97,15 @@
 		}
 	}
 
-	onMount(() => {
-		fetchProjects();
+	onMount(async () => {
+		try {
+			projects = await apiClient.getProjects();
+		} catch (error: any) {
+			console.error('Failed to fetch projects:', error);
+			errorMessage = error.data?.message || 'Could not load your projects.';
+		} finally {
+			isLoading = false;
+		}
 	});
 
 	$: {
@@ -129,37 +138,18 @@
 	}
 </script>
 
-<div class="space-y-6">
+<div class="flex h-full flex-col space-y-8">
 	<header>
 		<h1 class="text-3xl font-bold text-emerald-400">My Projects</h1>
-		<div class="mt-4 border-b border-slate-600">
-			<nav class="-mb-px flex space-x-6" aria-label="Tabs">
-				<button
-					class="{activeTab === 'ongoing'
-						? 'border-emerald-400 text-emerald-400'
-						: 'border-transparent text-slate-400 hover:border-slate-400 hover:text-slate-200'} border-b-2
-						px-1 py-3 text-sm font-medium whitespace-nowrap transition-colors"
-					on:click={() => goto('/my-projects?tab=ongoing', { keepFocus: true, noScroll: true })}
-				>
-					Ongoing ({ongoingProjects.length})
-				</button>
-				<button
-					class="{activeTab === 'completed'
-						? 'border-emerald-400 text-emerald-400'
-						: 'border-transparent text-slate-400 hover:border-slate-400 hover:text-slate-200'} border-b-2
-						px-1 py-3 text-sm font-medium whitespace-nowrap transition-colors"
-					on:click={() => goto('/my-projects?tab=completed', { keepFocus: true, noScroll: true })}
-				>
-					Completed ({completedProjects.length})
-				</button>
-			</nav>
-		</div>
+		<p class="mt-2 text-slate-400">
+			Here are all your active and past projects, including both work and material contracts.
+		</p>
 	</header>
 
 	{#if isLoading}
 		<div class="flex h-64 items-center justify-center">
 			<svg
-				class="mr-3 -ml-1 h-8 w-8 animate-spin text-emerald-500"
+				class="mr-3 h-8 w-8 animate-spin text-emerald-500"
 				xmlns="http://www.w3.org/2000/svg"
 				fill="none"
 				viewBox="0 0 24 24"
@@ -175,88 +165,29 @@
 			<p class="text-slate-300">Loading your projects...</p>
 		</div>
 	{:else if errorMessage}
-		<div class="rounded-lg border border-red-700 bg-red-800/50 p-4 text-red-300 shadow">
-			<h3 class="text-lg font-bold">Error Loading Projects</h3>
+		<div class="rounded-lg border border-red-700 bg-red-800/50 p-4 text-red-300">
+			<h3 class="font-bold">Error</h3>
 			<p>{errorMessage}</p>
-			<button
-				class="mt-3 rounded bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700"
-				on:click={fetchProjects}>Try Again</button
-			>
 		</div>
-	{:else if displayedProjects.length === 0}
-		<div class="rounded-xl bg-slate-700/50 p-8 text-center shadow-lg">
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="24"
-				height="24"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				class="lucide lucide-construction-icon lucide-construction mx-auto mb-4 h-16 w-16 text-slate-500"
-				><rect x="2" y="6" width="20" height="8" rx="1" /><path d="M17 14v7" /><path
-					d="M7 14v7"
-				/><path d="M17 3v3" /><path d="M7 3v3" /><path d="M10 14 2.3 6.3" /><path
-					d="m14 6 7.7 7.7"
-				/><path d="m8 6 8 8" /></svg
-			>
-			<h2 class="mb-2 text-xl font-semibold text-sky-400">
-				{#if activeTab === 'ongoing'}
-					No Active Projects
-				{:else}
-					No Completed Projects
-				{/if}
-			</h2>
-			<p class="text-slate-300">
-				{#if activeTab === 'ongoing'}
-					You currently have no projects with a 'signed' or 'in progress' status.
-				{:else}
-					You have no projects that have been completed or cancelled.
-				{/if}
+	{:else if projects.length === 0}
+		<div
+			class="flex h-64 flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-600 bg-slate-700/50 text-center"
+		>
+			<h3 class="text-xl font-semibold text-sky-300">No Projects Yet</h3>
+			<p class="mt-2 max-w-sm text-slate-400">
+				When you create a contract with an expert or supplier, it will appear here.
 			</p>
+			<a
+				href="/customer/create-request"
+				class="mt-4 rounded-lg bg-emerald-500 px-5 py-2.5 font-semibold text-white transition-colors hover:bg-emerald-600"
+			>
+				Create a New Request
+			</a>
 		</div>
 	{:else}
-		<div class="grid grid-cols-1 gap-5 md:grid-cols-2">
-			{#each displayedProjects as project (project.id)}
-				<a
-					href={`/my-projects/${project.id}?from=${activeTab}`}
-					class="focus-within:ring-opacity-75 block rounded-lg bg-slate-700/60 p-5 shadow-lg transition-all duration-200 ease-in-out focus-within:ring-2 focus-within:ring-emerald-500 hover:bg-slate-600/80 hover:shadow-emerald-500/20 focus:outline-none"
-					aria-label="View project details for {project.workRequestTitle}"
-				>
-					<div class="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
-						<h3 class="pr-2 text-lg font-semibold text-sky-300" title={project.workRequestTitle}>
-							{project.workRequestTitle}
-						</h3>
-						<span
-							class="rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap {getStatusClass(
-								project.status
-							)}"
-						>
-							{project.status.replace(/_/g, ' ').toUpperCase()}
-						</span>
-					</div>
-					<div class="space-y-1 text-sm text-slate-400">
-						<p>
-							With: <span class="font-medium text-slate-200">{project.otherPartyName}</span>
-						</p>
-						<p>
-							Contract Date: <span class="font-medium text-slate-300"
-								>{new Date(project.contractDate).toLocaleDateString('en-GB', {
-									day: '2-digit',
-									month: 'short',
-									year: 'numeric'
-								})}</span
-							>
-						</p>
-					</div>
-					<div class="mt-4 text-right">
-						<span class="text-sm font-medium text-emerald-400 group-hover:underline">
-							View Project &rarr;
-						</span>
-					</div>
-				</a>
+		<div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+			{#each projects as project (project.id)}
+				<ProjectCard {project} />
 			{/each}
 		</div>
 	{/if}

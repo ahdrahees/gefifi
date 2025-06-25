@@ -82,6 +82,38 @@ export class FirestoreCollection<T extends Identifiable> {
 	}
 
 	/**
+	 * Fetches multiple documents by their unique IDs.
+	 * Firestore's `in` query is limited to 30 items per query. This handles larger arrays by batching.
+	 * @param ids An array of document IDs to fetch.
+	 * @returns A promise that resolves to an array of found documents.
+	 */
+	public async getByIds(ids: string[]): Promise<T[]> {
+		if (!ids || ids.length === 0) {
+			return [];
+		}
+
+		// Firestore 'in' query limit is 30. We chunk the requests to handle any size array.
+		const chunks: string[][] = [];
+		for (let i = 0; i < ids.length; i += 30) {
+			chunks.push(ids.slice(i, i + 30));
+		}
+
+		const results: T[] = [];
+		for (const chunk of chunks) {
+			if (chunk.length > 0) {
+				const snapshot = await this.collection.where('id', 'in', chunk).get();
+				if (!snapshot.empty) {
+					snapshot.docs.forEach((doc) => {
+						results.push(doc.data() as T);
+					});
+				}
+			}
+		}
+
+		return results;
+	}
+
+	/**
 	 * Creates a new document in the collection. The item's ID will be used as the document ID.
 	 * @param item The data to create. Must include a unique 'id' property.
 	 * @returns A promise that resolves to the created item.
