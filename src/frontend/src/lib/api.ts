@@ -133,6 +133,8 @@ interface WorkRequestData {
 }
 export interface WorkRequestResponse {
 	id: string;
+	status: string;
+	createdAt: string;
 	[key: string]: any;
 }
 
@@ -151,6 +153,8 @@ interface MaterialRequestData {
 
 export interface MaterialRequestResponse {
 	id: string;
+	status: string;
+	createdAt: string;
 	[key: string]: any;
 }
 
@@ -264,6 +268,9 @@ const apiClient = {
 	},
 	createMaterialRequest: (data: MaterialRequestData): Promise<MaterialRequestResponse> => {
 		return request<MaterialRequestResponse>('/material-requests', 'POST', data, true);
+	},
+	getMaterialRequestById: (id: string): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>(`/material-requests/${id}`, 'GET', undefined, true);
 	},
 	getMaterialRequests: (): Promise<MaterialRequestResponse[]> => {
 		return request<MaterialRequestResponse[]>('/material-requests', 'GET', undefined, true);

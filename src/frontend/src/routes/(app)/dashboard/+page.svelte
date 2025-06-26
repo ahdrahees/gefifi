@@ -304,7 +304,15 @@
 											>Work</span
 										>
 									{:else if req.requestType === 'material'}
-										<MaterialRequestCard request={req} on:sendInterest={handleSendInterest} />
+										<div
+											class="cursor-pointer"
+											on:click={() => goto(`/material-requests/${req.id}`)}
+											on:keypress
+											role="link"
+											tabindex="0"
+										>
+											<MaterialRequestCard request={req} />
+										</div>
 										<span
 											class="absolute top-2 right-2 rounded-full bg-amber-500/80 px-2 py-0.5 text-xs font-bold text-white"
 											>Material</span
