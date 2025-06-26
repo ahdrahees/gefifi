@@ -24,7 +24,7 @@
 			}
 
 			const currentPath = $derived(page.url.pathname);
-			const isLoggedIn = currentAuth.isLoggedIn;
+			const isLoggedIn = currentAuth.isAuthenticated;
 
 			// Define routes that require authentication
 			// These are typically routes that fall under the (app) layout group.
