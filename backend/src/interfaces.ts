@@ -94,9 +94,10 @@ export interface Message extends Identifiable {
 
 export interface Contract extends Identifiable {
 	// id: string; // From Identifiable
-	workRequestId: string; // Link to the originating WorkRequest
-	customerId: string; // User ID of the customer
-	expertSupplierId: string; // User ID of the expert or supplier
+	workRequestId?: string; // Link to a work request
+	materialRequestId?: string; // Link to a material request
+	customerId: string;
+	expertSupplierId: string;
 	// providerType: 'expert' | 'supplier'; // To distinguish if the other party is expert or supplier
 	workDetails: string; // Detailed description of the work agreed upon
 	agreementSummary: string; // Key terms, payment schedule, etc.
