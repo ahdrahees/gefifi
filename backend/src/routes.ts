@@ -1168,10 +1168,8 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		// and both flags became true, status should be 'signed'.
 		// For current model, one party signing on creation moves it to 'awaiting_signatures'.
 
-		const newContract: Contract = {
+		const newContract: Partial<Contract> = {
 			id: contractId,
-			workRequestId: workRequestId,
-			materialRequestId: materialRequestId,
 			customerId,
 			expertSupplierId,
 			workDetails,
@@ -1185,6 +1183,9 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			updatedAt: now
 		};
 
+		if (workRequestId) newContract.workRequestId = workRequestId;
+		if (materialRequestId) newContract.materialRequestId = materialRequestId;
+
 		if (customerSigTimestamp) {
 			newContract.customerSignatureTimestamp = customerSigTimestamp;
 		}
@@ -1196,7 +1197,7 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			'[POST /api/contracts] Attempting to create contract with data:',
 			JSON.stringify(newContract, null, 2)
 		);
-		const createdContract = await contractsDB.create(newContract);
+		const createdContract = await contractsDB.create(newContract as Contract);
 		console.log(
 			'[POST /api/contracts] Successfully created contract in DB, ID:',
 			createdContract.id
