@@ -4,6 +4,7 @@
 	import type { MaterialRequest } from '$lib/types';
 
 	export let request: MaterialRequest;
+	export let showInterestButton: boolean = false; // Default to false
 
 	const dispatch = createEventDispatcher();
 
@@ -66,12 +67,14 @@
 		{/if}
 	</div>
 
-	<div class="mt-5 border-t border-slate-600/70 pt-4">
-		<button
-			on:click={handleSendInterest}
-			class="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors duration-150 ease-in-out hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-700 focus:outline-none"
-		>
-			Express Interest & Start Chat
-		</button>
-	</div>
+	{#if showInterestButton}
+		<div class="mt-5 border-t border-slate-600/70 pt-4">
+			<button
+				on:click={handleSendInterest}
+				class="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors duration-150 ease-in-out hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-700 focus:outline-none"
+			>
+				Express Interest & Start Chat
+			</button>
+		</div>
+	{/if}
 </div>

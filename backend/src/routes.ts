@@ -758,15 +758,17 @@ router.post(
 
 			if (!existingChat) {
 				const chatId = crypto.randomUUID();
-				const newChat: Chat = {
+				const newChat: Partial<Chat> = {
 					id: chatId,
 					participants: [sender.id, targetUserId].sort(),
-					workRequestId: workRequestId,
-					materialRequestId: materialRequestId,
 					createdAt: now,
 					updatedAt: now
 				};
-				existingChat = await chatsDB.create(newChat);
+
+				if (workRequestId) newChat.workRequestId = workRequestId;
+				if (materialRequestId) newChat.materialRequestId = materialRequestId;
+
+				existingChat = await chatsDB.create(newChat as Chat);
 			}
 
 			const messageId = crypto.randomUUID();
