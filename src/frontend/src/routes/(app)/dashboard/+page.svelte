@@ -239,7 +239,7 @@
 			>
 				<!-- Replace with SVG icon if available -->
 				<span>&#43;</span>
-				<span>Create New Work Request</span>
+				<span>Create New Request</span>
 			</button>
 		{/if}
 	</header>
@@ -294,7 +294,7 @@
 						My Requests ({allMyRequests.length})
 					</h2>
 					{#if allMyRequests.length > 0}
-						<div class="scrollable-content flex-grow space-y-4 overflow-y-auto pr-2">
+						<div class="scrollable-content flex-grow space-y-4 overflow-y-auto p-2 lg:p-3">
 							{#each allMyRequests as req (req.id)}
 								<div class="relative">
 									{#if req.requestType === 'work'}

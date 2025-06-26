@@ -29,7 +29,10 @@
 			// In a real app, you might want to create a dedicated endpoint for this.
 			// Reusing the work-requests endpoint is efficient for now.
 			const requests = await apiClient.getWorkRequestsByCustomerId(user.id);
-			customerWorkRequests = requests.filter((req) => req.status === 'open');
+			// Allow linking to open requests OR requests that are already under contract
+			customerWorkRequests = requests.filter(
+				(req) => req.status === 'open' || req.status === 'contracted'
+			);
 		} catch (error) {
 			console.error('Failed to fetch user work requests:', error);
 			// Non-critical error, the form can still be used.
