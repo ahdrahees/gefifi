@@ -311,7 +311,7 @@
 											role="link"
 											tabindex="0"
 										>
-											<MaterialRequestCard request={req} />
+											<MaterialRequestCard request={req} showInterestButton={false} />
 										</div>
 										<span
 											class="absolute top-2 right-2 rounded-full bg-amber-500/80 px-2 py-0.5 text-xs font-bold text-white"
@@ -359,9 +359,13 @@
 						Available Material Requests ({materialRequests.length})
 					</h2>
 					{#if materialRequests.length > 0}
-						<div class="scrollable-content flex-grow space-y-4 overflow-y-auto pr-2">
+						<div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
 							{#each materialRequests as mr (mr.id)}
-								<MaterialRequestCard request={mr} on:sendInterest={handleSendInterest} />
+								<MaterialRequestCard
+									request={mr}
+									on:sendInterest={handleSendInterest}
+									showInterestButton={true}
+								/>
 							{/each}
 						</div>
 					{:else}
