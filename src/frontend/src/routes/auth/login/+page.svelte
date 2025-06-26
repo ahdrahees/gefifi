@@ -84,11 +84,11 @@
 	onMount(() => {
 		// Set up redirect for already logged-in users
 		unsubscribeAuth = authStore.subscribe((state) => {
-			if (state.isLoggedIn && !state.isLoading) {
+			if (state.isAuthenticated && !state.isLoading) {
 				goto('/dashboard', { replaceState: true });
 			}
 		});
-		if ($authStore.isLoggedIn && !$authStore.isLoading) {
+		if ($authStore.isAuthenticated && !$authStore.isLoading) {
 			goto('/dashboard', { replaceState: true });
 		}
 

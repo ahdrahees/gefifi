@@ -7,12 +7,18 @@
 	import { get } from 'svelte/store'; // To get token value non-reactively
 
 	export let workRequestId: string | undefined = undefined;
+	export let materialRequestId: string | undefined = undefined;
 	export let customerId: string;
 	export let expertSupplierId: string;
 
 	const dispatch = createEventDispatcher();
 
-	let workDetails = '';
+	let detailsLabel = workRequestId ? 'Work Details' : 'Material & Delivery Details';
+	let detailsPlaceholder = workRequestId
+		? 'Describe the scope of work, tasks, deliverables...'
+		: 'List the materials, quantities, and delivery terms...';
+
+	let details = '';
 	let agreementSummary = '';
 	// contractDate will likely be set on submission or by the backend
 
@@ -33,20 +39,29 @@
 			return;
 		}
 
-		if (!workDetails.trim() || !agreementSummary.trim()) {
-			errorMessage = 'Work details and agreement summary are required.';
+		if (!details.trim() || !agreementSummary.trim()) {
+			errorMessage = 'Details and agreement summary are required.';
 			isLoading = false;
 			return;
 		}
 
-		const contractData = {
-			workRequestId,
+		const contractData: any = {
 			customerId,
 			expertSupplierId,
-			workDetails: workDetails.trim(),
+			workDetails: details.trim(), // Keep field name generic for now, backend will handle
 			agreementSummary: agreementSummary.trim(),
-			contractDate: new Date().toISOString() // Or let backend set it
+			contractDate: new Date().toISOString()
 		};
+
+		if (workRequestId) {
+			contractData.workRequestId = workRequestId;
+		} else if (materialRequestId) {
+			contractData.materialRequestId = materialRequestId;
+		} else {
+			errorMessage = 'A related Work Request or Material Request is required.';
+			isLoading = false;
+			return;
+		}
 
 		try {
 			const response = await fetch(`${API_BASE_URL}/api/contracts`, {
@@ -99,15 +114,15 @@
 
 	<form on:submit|preventDefault={handleSubmit} class="space-y-4">
 		<div>
-			<label for="work-details" class="mb-1 block text-sm font-medium text-slate-300"
-				>Work Details</label
+			<label for="details" class="mb-1 block text-sm font-medium text-slate-300"
+				>{detailsLabel}</label
 			>
 			<textarea
-				id="work-details"
-				bind:value={workDetails}
+				id="details"
+				bind:value={details}
 				rows="4"
 				class="w-full rounded-md border-slate-600 bg-slate-800 p-2.5 text-slate-100 placeholder-slate-400 focus:border-emerald-500 focus:ring-emerald-500"
-				placeholder="Describe the scope of work, tasks, deliverables..."
+				placeholder={detailsPlaceholder}
 				required
 				disabled={isLoading}
 			/>
@@ -130,7 +145,12 @@
 
 		<div class="pt-2">
 			<p class="text-xs text-slate-400">
-				Associated Work Request ID: {workRequestId || 'N/A'}<br />
+				{#if workRequestId}
+					Associated Work Request ID: {workRequestId}
+				{:else if materialRequestId}
+					Associated Material Request ID: {materialRequestId}
+				{/if}
+				<br />
 				Customer ID: {customerId || 'N/A'}<br />
 				Expert/Supplier ID: {expertSupplierId || 'N/A'}
 			</p>

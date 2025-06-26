@@ -365,6 +365,7 @@
 									request={mr}
 									on:sendInterest={handleSendInterest}
 									showInterestButton={true}
+									currentUserId={currentUser?.id}
 								/>
 							{/each}
 						</div>

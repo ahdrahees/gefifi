@@ -27,6 +27,7 @@
 		id: string;
 		participants: string[];
 		workRequestId?: string;
+		materialRequestId?: string;
 		createdAt: string;
 		updatedAt: string;
 	};
@@ -67,6 +68,7 @@
 	let showContractModal = false;
 	type ContractModalProps = {
 		workRequestId?: string;
+		materialRequestId?: string;
 		customerId: string;
 		expertSupplierId: string;
 	};
@@ -95,17 +97,6 @@
 					messagesContainer.scrollTop = messagesContainer.scrollHeight;
 				}
 			}, 0);
-		}
-	}
-
-	function handleImageLoadOrError(messageId: string) {
-		if (newlyAddedMessageId === messageId) {
-			loadingImagesInNewMessageCount--;
-			if (loadingImagesInNewMessageCount <= 0) {
-				scrollToBottom();
-				newlyAddedMessageId = null;
-				loadingImagesInNewMessageCount = 0;
-			}
 		}
 	}
 
@@ -520,6 +511,7 @@
 
 		contractModalProps = {
 			workRequestId: currentChatDetails.workRequestId,
+			materialRequestId: currentChatDetails.materialRequestId,
 			customerId: determinedCustomerId,
 			expertSupplierId: determinedExpertSupplierId
 		};
@@ -828,6 +820,7 @@
 	<ContractModal
 		bind:show={showContractModal}
 		workRequestId={contractModalProps.workRequestId}
+		materialRequestId={contractModalProps.materialRequestId}
 		customerId={contractModalProps.customerId}
 		expertSupplierId={contractModalProps.expertSupplierId}
 		on:close={() => (showContractModal = false)}

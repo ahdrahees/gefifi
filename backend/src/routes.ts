@@ -699,6 +699,15 @@ router.post(
 				if (!materialRequest) {
 					return res.status(404).json({ message: 'Associated material request not found.' });
 				}
+				// Check if the sender has already expressed interest
+				if (
+					sender.userType === 'supplier' &&
+					materialRequest.interestedSuppliers?.includes(sender.id)
+				) {
+					return res
+						.status(409) // 409 Conflict is a good status code for this
+						.json({ message: 'You have already expressed interest in this material request.' });
+				}
 			}
 
 			let finalMessageContent: string;
@@ -1066,6 +1075,7 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		const initiator = req.user as JwtPayload;
 		const {
 			workRequestId,
+			materialRequestId,
 			customerId,
 			expertSupplierId,
 			workDetails,
@@ -1073,24 +1083,48 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			contractDate
 		} = req.body;
 
-		// For now, all contracts created via this endpoint are for 'work'
-		// This will be updated when the material request flow is built.
-		const requestType = 'work';
-
-		if (!workRequestId || !customerId || !expertSupplierId || !workDetails || !agreementSummary) {
+		// --- Validation ---
+		if (
+			(!workRequestId && !materialRequestId) ||
+			(workRequestId && materialRequestId) ||
+			!customerId ||
+			!expertSupplierId ||
+			!workDetails ||
+			!agreementSummary
+		) {
 			return res.status(400).json({
 				message:
-					'workRequestId, customerId, expertSupplierId, workDetails, and agreementSummary are required.'
+					'Exactly one of workRequestId or materialRequestId must be provided, along with all other required fields.'
 			});
 		}
-		const workRequest = await workRequestsDB.findById(workRequestId);
-		if (!workRequest)
-			return res.status(404).json({ message: `Work request with ID ${workRequestId} not found.` });
-		if (workRequest.customerId !== customerId) {
-			return res
-				.status(400)
-				.json({ message: 'Mismatch: workRequest.customerId does not match provided customerId.' });
+
+		const requestType = workRequestId ? 'work' : 'material';
+		const requestId = workRequestId || materialRequestId;
+
+		// Validate that the request exists
+		if (requestType === 'work') {
+			const workRequest = await workRequestsDB.findById(requestId);
+			if (!workRequest)
+				return res.status(404).json({ message: `Work request with ID ${requestId} not found.` });
+			if (workRequest.customerId !== customerId) {
+				return res.status(400).json({
+					message: 'Mismatch: workRequest.customerId does not match provided customerId.'
+				});
+			}
+		} else {
+			// requestType === 'material'
+			const materialRequest = await materialRequestsDB.findById(requestId);
+			if (!materialRequest)
+				return res
+					.status(404)
+					.json({ message: `Material request with ID ${requestId} not found.` });
+			if (materialRequest.customerId !== customerId) {
+				return res.status(400).json({
+					message: 'Mismatch: materialRequest.customerId does not match provided customerId.'
+				});
+			}
 		}
+
 		const customer = await usersDB.findById(customerId);
 		const provider = await usersDB.findById(expertSupplierId);
 		if (!customer || !customer.isActive)
@@ -1136,7 +1170,8 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 
 		const newContract: Contract = {
 			id: contractId,
-			workRequestId,
+			workRequestId: workRequestId,
+			materialRequestId: materialRequestId,
 			customerId,
 			expertSupplierId,
 			workDetails,
@@ -1167,16 +1202,28 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			createdContract.id
 		);
 
-		if (
-			workRequest.status === 'in_discussion' ||
-			workRequest.status === 'open' ||
-			workRequest.status === 'awaiting_quotes'
-		) {
-			console.log(
-				`[POST /api/contracts] Updating work request ${workRequest.id} status to 'contracted'.`
-			);
-			await workRequestsDB.update(workRequest.id, { status: 'contracted', updatedAt: now });
+		// Optionally, update the status of the original request
+		if (requestType === 'work') {
+			const workRequest = await workRequestsDB.findById(requestId); // Refetch to be safe
+			if (
+				workRequest &&
+				(workRequest.status === 'in_discussion' ||
+					workRequest.status === 'open' ||
+					workRequest.status === 'awaiting_quotes')
+			) {
+				console.log(
+					`[POST /api/contracts] Updating work request ${workRequest.id} status to 'contracted'.`
+				);
+				await workRequestsDB.update(workRequest.id, { status: 'contracted', updatedAt: now });
+			}
+		} else {
+			// requestType === 'material'
+			const materialRequest = await materialRequestsDB.findById(requestId);
+			if (materialRequest && materialRequest.status === 'open') {
+				await materialRequestsDB.update(materialRequest.id, { status: 'ordered', updatedAt: now });
+			}
 		}
+
 		res.status(201).json(createdContract);
 	} catch (error: unknown) {
 		console.error('Error in POST /api/contracts route:', error); // More specific error origin

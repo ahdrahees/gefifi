@@ -5,6 +5,7 @@
 
 	export let show: boolean = false;
 	export let workRequestId: string | undefined = undefined;
+	export let materialRequestId: string | undefined = undefined;
 	export let customerId: string;
 	export let expertSupplierId: string;
 
@@ -78,6 +79,7 @@
 			<div class="max-h-[calc(100vh-12rem)] overflow-y-auto p-2 sm:p-4 md:p-6">
 				<ContractForm
 					{workRequestId}
+					{materialRequestId}
 					{customerId}
 					{expertSupplierId}
 					on:contractCreated={handleContractCreated}
