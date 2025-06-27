@@ -1559,5 +1559,62 @@ router.get('/projects/:id', authenticateToken, async (req: AuthenticatedRequest,
 	}
 });
 
+router.put(
+	'/projects/:projectId/status',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const projectId = req.params.projectId;
+			const { component, newStatus } = req.body as {
+				component: 'work' | 'material';
+				newStatus: string;
+			};
+
+			if (!component || !newStatus) {
+				return res.status(400).json({ message: 'Component and newStatus are required.' });
+			}
+
+			const project = await projectsDB.findById(projectId);
+			if (!project) {
+				return res.status(404).json({ message: 'Project not found.' });
+			}
+
+			// Authorization check can be more granular here
+			if (
+				user.id !== project.customerId &&
+				user.id !== project.workComponent?.expertId &&
+				user.id !== project.materialComponent?.supplierId
+			) {
+				return res.status(403).json({ message: 'Only a party to the project can update status.' });
+			}
+
+			const now = new Date().toISOString();
+			const historyEntry = { status: newStatus, updatedAt: now, updatedBy: user.id };
+
+			let updatePayload: Partial<Project> = { updatedAt: now };
+
+			if (component === 'work' && project.workComponent) {
+				project.workComponent.status = newStatus as any; // Cast for now
+				project.workComponent.statusHistory.push(historyEntry);
+				updatePayload.workComponent = project.workComponent;
+			} else if (component === 'material' && project.materialComponent) {
+				project.materialComponent.status = newStatus as any; // Cast for now
+				project.materialComponent.statusHistory.push(historyEntry);
+				updatePayload.materialComponent = project.materialComponent;
+			} else {
+				return res.status(400).json({ message: 'Invalid component specified for this project.' });
+			}
+
+			const updatedProject = await projectsDB.update(projectId, updatePayload);
+			res.status(200).json(updatedProject);
+		} catch (error: unknown) {
+			console.error('Error updating project status:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update project status.', error: errorMessage });
+		}
+	}
+);
+
 console.log('API routes module (routes.ts) initialized with core endpoints.');
 export default router;
