@@ -3,10 +3,19 @@
 	import { onMount } from 'svelte';
 	import apiClient from '$lib/api';
 	import type { MaterialRequest } from '$lib/types'; // Using the full type for details
+	import { authStore, type AuthUser } from '$lib/stores/auth';
+	import { goto } from '$app/navigation';
+
+	let currentUser: AuthUser | null = null;
+	authStore.subscribe((auth) => (currentUser = auth.user));
 
 	let request: MaterialRequest | null = null;
 	let isLoading = true;
 	let errorMessage = '';
+
+	// For supplier interest
+	let isExpressingInterest = false;
+	let interestMessage = '';
 
 	onMount(async () => {
 		const requestId = $page.params.id;
@@ -26,6 +35,40 @@
 			isLoading = false;
 		}
 	});
+
+	async function handleExpressInterest() {
+		if (!request || !currentUser || currentUser.userType !== 'supplier') return;
+
+		isExpressingInterest = true;
+		interestMessage = '';
+		try {
+			const result = await apiClient.sendInterest({
+				targetUserId: request.customerId,
+				materialRequestId: request.id,
+				predefinedMessageKey: 'SUPPLIER_INTEREST_IN_MATERIAL_REQUEST'
+			});
+			interestMessage = result.message || 'Interest sent successfully!';
+			// Refresh the request data to show that interest has been expressed
+			await fetchRequestDetails(request.id);
+			// Give user time to read the message, then go to chat
+			setTimeout(() => {
+				goto(`/chat/${result.chatId}`);
+			}, 2000);
+		} catch (error: any) {
+			interestMessage = error.data?.message || 'Failed to send interest.';
+		} finally {
+			isExpressingInterest = false;
+		}
+	}
+
+	async function fetchRequestDetails(id: string) {
+		try {
+			request = (await apiClient.getMaterialRequestById(id)) as MaterialRequest;
+		} catch (error: any) {
+			console.error('Failed to fetch material request:', error);
+			errorMessage = error.data?.message || 'Could not load the material request.';
+		}
+	}
 
 	function formatDate(dateString: string | undefined) {
 		if (!dateString) return 'Not specified';
@@ -117,6 +160,32 @@
 						{/if}
 					</div>
 				</div>
+
+				<!-- Action button for Suppliers -->
+				{#if currentUser?.userType === 'supplier' && request.status === 'open'}
+					<div class="rounded-xl bg-slate-700/60 p-6 text-center shadow-lg">
+						{#if request.interestedSuppliers?.includes(currentUser.id)}
+							<p class="font-semibold text-emerald-400">✓ You have expressed interest.</p>
+						{:else}
+							<button
+								on:click={handleExpressInterest}
+								disabled={isExpressingInterest}
+								class="w-full rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white shadow-md transition-colors hover:bg-emerald-600 disabled:opacity-50"
+							>
+								{isExpressingInterest ? 'Processing...' : 'Express Interest & Start Chat'}
+							</button>
+						{/if}
+						{#if interestMessage}
+							<p
+								class="mt-3 text-sm {interestMessage.startsWith('Error:')
+									? 'text-red-400'
+									: 'text-green-400'}"
+							>
+								{interestMessage}
+							</p>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}

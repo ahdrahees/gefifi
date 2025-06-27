@@ -361,12 +361,20 @@
 					{#if materialRequests.length > 0}
 						<div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
 							{#each materialRequests as mr (mr.id)}
-								<MaterialRequestCard
-									request={mr}
-									on:sendInterest={handleSendInterest}
-									showInterestButton={true}
-									currentUserId={currentUser?.id}
-								/>
+								<div
+									class="cursor-pointer"
+									on:click={() => goto(`/material-requests/${mr.id}`)}
+									on:keypress
+									role="link"
+									tabindex="0"
+								>
+									<MaterialRequestCard
+										request={mr}
+										on:sendInterest={handleSendInterest}
+										showInterestButton={true}
+										currentUserId={currentUser?.id}
+									/>
+								</div>
 							{/each}
 						</div>
 					{:else}
