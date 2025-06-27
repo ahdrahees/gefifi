@@ -191,4 +191,7 @@ export interface Project {
 	// Enriched properties, added on the backend before sending to client
 	workRequest?: WorkRequest;
 	materialRequest?: MaterialRequest;
+	customer?: User;
+	expert?: User;
+	supplier?: User;
 }

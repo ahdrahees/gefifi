@@ -207,69 +207,77 @@
 							class="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center"
 						>
 							<h2 class="text-2xl font-semibold text-sky-300">Work Progress</h2>
-							<a
-								href={`/contracts/${project.workComponent.contractId}`}
-								class="text-sm text-emerald-400 hover:underline">View Work Contract &rarr;</a
-							>
-						</div>
-						<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<div>
-								<p class="text-sm text-slate-400">Expert</p>
-								<p class="text-lg font-medium text-slate-100">
-									{project.expert?.profile?.fullName || 'N/A'}
-								</p>
-							</div>
-							<div>
-								<p class="text-sm text-slate-400">Status</p>
-								<p
-									class={`text-lg font-bold ${getStatusClass(project.workComponent.status, 'text')}`}
+							{#if project.workComponent}
+								<a
+									href={`/contracts/${project.workComponent.contractId}`}
+									class="text-sm text-emerald-400 hover:underline">View Work Contract &rarr;</a
 								>
-									{project.workComponent.status}
-								</p>
-							</div>
+							{/if}
 						</div>
-						{#if project.workComponent.chatId}
-							<div class="mt-4">
-								<button
-									on:click={() => goto(`/chat/${project.workComponent.chatId}`)}
-									class="w-full rounded-lg bg-sky-600 py-2 font-semibold text-white hover:bg-sky-500"
-									>Go to Chat with Expert</button
-								>
-							</div>
-						{/if}
-						{#if workStatusOptions.length > 0}
-							<div class="mt-4 border-t border-slate-600 pt-4">
-								<h4 class="text-md mb-2 font-semibold text-slate-200">Update Status</h4>
-								<div class="flex items-center gap-4">
-									<select
-										bind:value={selectedWorkStatus}
-										class="flex-grow rounded-lg border border-slate-600 bg-slate-700/80 p-2 text-slate-100"
+						{#if project.workComponent}
+							<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+								<div>
+									<p class="text-sm text-slate-400">
+										{currentUser?.userType === 'customer' ? 'Expert' : 'Customer'}
+									</p>
+									<p class="text-lg font-medium text-slate-100">
+										{currentUser?.userType === 'customer'
+											? project.expert?.profile?.fullName
+											: project.customer?.profile?.fullName || 'N/A'}
+									</p>
+								</div>
+								<div>
+									<p class="text-sm text-slate-400">Status</p>
+									<p
+										class={`text-lg font-bold ${getStatusClass(project.workComponent.status, 'text')}`}
 									>
-										{#each workStatusOptions as option}
-											<option value={option.value}>{option.label}</option>
-										{/each}
-									</select>
-									<button
-										on:click={() => handleUpdateStatus('work')}
-										disabled={isUpdatingStatus === 'work'}
-										class="rounded-lg bg-sky-500 px-4 py-2 font-semibold text-white hover:bg-sky-600 disabled:opacity-50"
-									>
-										{isUpdatingStatus === 'work' ? 'Updating...' : 'Update'}
-									</button>
+										{project.workComponent.status}
+									</p>
 								</div>
 							</div>
+							{#if project.workComponent.chatId}
+								<div class="mt-4">
+									<button
+										on:click={() => goto(`/chat/${project.workComponent.chatId}`)}
+										class="w-full rounded-lg bg-sky-600 py-2 font-semibold text-white hover:bg-sky-500"
+										>Go to Chat with Expert</button
+									>
+								</div>
+							{/if}
+							{#if workStatusOptions.length > 0}
+								<div class="mt-4 border-t border-slate-600 pt-4">
+									<h4 class="text-md mb-2 font-semibold text-slate-200">Update Status</h4>
+									<div class="flex items-center gap-4">
+										<select
+											bind:value={selectedWorkStatus}
+											class="flex-grow rounded-lg border border-slate-600 bg-slate-700/80 p-2 text-slate-100"
+										>
+											{#each workStatusOptions as option}
+												<option value={option.value}>{option.label}</option>
+											{/each}
+										</select>
+										<button
+											on:click={() => handleUpdateStatus('work')}
+											disabled={isUpdatingStatus === 'work'}
+											class="rounded-lg bg-sky-500 px-4 py-2 font-semibold text-white hover:bg-sky-600 disabled:opacity-50"
+										>
+											{isUpdatingStatus === 'work' ? 'Updating...' : 'Update'}
+										</button>
+									</div>
+								</div>
+							{/if}
+							<div class="mt-4 border-t border-slate-600 pt-4">
+								<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
+								<ul class="space-y-2 text-sm">
+									{#each project.workComponent.statusHistory.slice().reverse() as entry}
+										<li class="flex justify-between text-slate-400">
+											<span>{entry.status}</span>
+											<span>{new Date(entry.updatedAt).toLocaleString()}</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
 						{/if}
-						<div class="mt-4 border-t border-slate-600 pt-4">
-							<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
-							<ul class="space-y-2 text-sm">
-								{#each project.workComponent.statusHistory.slice().reverse() as entry}
-									<li class="flex justify-between text-slate-400">
-										<span>{entry.status}</span>
-										<span>{new Date(entry.updatedAt).toLocaleString()}</span>
-									</li>
-								{/each}
-							</ul>
-						</div>
 					</section>
 				{/if}
 
@@ -279,72 +287,80 @@
 							class="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center"
 						>
 							<h2 class="text-2xl font-semibold text-amber-300">Material Delivery</h2>
-							<a
-								href={`/contracts/${project.materialComponent.contractId}`}
-								class="text-sm text-emerald-400 hover:underline">View Material Contract &rarr;</a
-							>
-						</div>
-						<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<div>
-								<p class="text-sm text-slate-400">Supplier</p>
-								<p class="text-lg font-medium text-slate-100">
-									{project.supplier?.profile?.companyName || 'N/A'}
-								</p>
-							</div>
-							<div>
-								<p class="text-sm text-slate-400">Status</p>
-								<p
-									class={`text-lg font-bold ${getStatusClass(
-										project.materialComponent.status,
-										'text'
-									)}`}
+							{#if project.materialComponent}
+								<a
+									href={`/contracts/${project.materialComponent.contractId}`}
+									class="text-sm text-emerald-400 hover:underline">View Material Contract &rarr;</a
 								>
-									{project.materialComponent.status}
-								</p>
-							</div>
+							{/if}
 						</div>
-						{#if project.materialComponent.chatId}
-							<div class="mt-4">
-								<button
-									on:click={() => goto(`/chat/${project.materialComponent.chatId}`)}
-									class="w-full rounded-lg bg-amber-600 py-2 font-semibold text-white hover:bg-amber-500"
-									>Go to Chat with Supplier</button
-								>
-							</div>
-						{/if}
-						{#if materialStatusOptions.length > 0}
-							<div class="mt-4 border-t border-slate-600 pt-4">
-								<h4 class="text-md mb-2 font-semibold text-slate-200">Update Status</h4>
-								<div class="flex items-center gap-4">
-									<select
-										bind:value={selectedMaterialStatus}
-										class="flex-grow rounded-lg border border-slate-600 bg-slate-700/80 p-2 text-slate-100"
+						{#if project.materialComponent}
+							<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+								<div>
+									<p class="text-sm text-slate-400">
+										{currentUser?.userType === 'customer' ? 'Supplier' : 'Customer'}
+									</p>
+									<p class="text-lg font-medium text-slate-100">
+										{currentUser?.userType === 'customer'
+											? project.supplier?.profile?.companyName
+											: project.customer?.profile?.fullName || 'N/A'}
+									</p>
+								</div>
+								<div>
+									<p class="text-sm text-slate-400">Status</p>
+									<p
+										class={`text-lg font-bold ${getStatusClass(
+											project.materialComponent.status,
+											'text'
+										)}`}
 									>
-										{#each materialStatusOptions as option}
-											<option value={option.value}>{option.label}</option>
-										{/each}
-									</select>
-									<button
-										on:click={() => handleUpdateStatus('material')}
-										disabled={isUpdatingStatus === 'material'}
-										class="rounded-lg bg-amber-500 px-4 py-2 font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
-									>
-										{isUpdatingStatus === 'material' ? 'Updating...' : 'Update'}
-									</button>
+										{project.materialComponent.status}
+									</p>
 								</div>
 							</div>
+							{#if project.materialComponent.chatId}
+								<div class="mt-4">
+									<button
+										on:click={() => goto(`/chat/${project.materialComponent.chatId}`)}
+										class="w-full rounded-lg bg-amber-600 py-2 font-semibold text-white hover:bg-amber-500"
+										>Go to Chat with Supplier</button
+									>
+								</div>
+							{/if}
+							{#if materialStatusOptions.length > 0}
+								<div class="mt-4 border-t border-slate-600 pt-4">
+									<h4 class="text-md mb-2 font-semibold text-slate-200">Update Status</h4>
+									<div class="flex items-center gap-4">
+										<select
+											bind:value={selectedMaterialStatus}
+											class="flex-grow rounded-lg border border-slate-600 bg-slate-700/80 p-2 text-slate-100"
+										>
+											{#each materialStatusOptions as option}
+												<option value={option.value}>{option.label}</option>
+											{/each}
+										</select>
+										<button
+											on:click={() => handleUpdateStatus('material')}
+											disabled={isUpdatingStatus === 'material'}
+											class="rounded-lg bg-amber-500 px-4 py-2 font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+										>
+											{isUpdatingStatus === 'material' ? 'Updating...' : 'Update'}
+										</button>
+									</div>
+								</div>
+							{/if}
+							<div class="mt-4 border-t border-slate-600 pt-4">
+								<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
+								<ul class="space-y-2 text-sm">
+									{#each project.materialComponent.statusHistory.slice().reverse() as entry}
+										<li class="flex justify-between text-slate-400">
+											<span>{entry.status}</span>
+											<span>{new Date(entry.updatedAt).toLocaleString()}</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
 						{/if}
-						<div class="mt-4 border-t border-slate-600 pt-4">
-							<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
-							<ul class="space-y-2 text-sm">
-								{#each project.materialComponent.statusHistory.slice().reverse() as entry}
-									<li class="flex justify-between text-slate-400">
-										<span>{entry.status}</span>
-										<span>{new Date(entry.updatedAt).toLocaleString()}</span>
-									</li>
-								{/each}
-							</ul>
-						</div>
 					</section>
 				{/if}
 			</div>
