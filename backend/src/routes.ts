@@ -1424,48 +1424,46 @@ router.get('/projects', authenticateToken, async (req: AuthenticatedRequest, res
 		const userIds = new Set<string>();
 
 		userContracts.forEach((c) => {
-			if (c.requestType === 'work' && c.workRequestId) {
-				workRequestIds.add(c.workRequestId);
-			}
-			// Assuming material contracts will also have a reference ID, for now using workRequestId
-			// This part will need refinement when material contract creation is implemented
-			if (c.requestType === 'material' && c.workRequestId) {
-				// This assumes material contracts are linked via workRequestId for now
-				workRequestIds.add(c.workRequestId);
-			}
+			if (c.workRequestId) workRequestIds.add(c.workRequestId);
+			if (c.materialRequestId) materialRequestIds.add(c.materialRequestId);
 			userIds.add(c.customerId);
 			userIds.add(c.expertSupplierId);
 		});
 
 		// 3. Fetch all required data in parallel
-		const [workRequests, allUsers] = await Promise.all([
+		const [workRequests, materialRequests, allUsers] = await Promise.all([
 			workRequestsDB.getByIds(Array.from(workRequestIds)),
+			materialRequestsDB.getByIds(Array.from(materialRequestIds)),
 			usersDB.getByIds(Array.from(userIds))
 		]);
 
 		// Create maps for easy lookup
 		const workRequestsMap = new Map(workRequests.map((wr: WorkRequest) => [wr.id, wr]));
+		const materialRequestsMap = new Map(materialRequests.map((mr: MaterialRequest) => [mr.id, mr]));
 		const usersMap = new Map(allUsers.map((u: User) => [u.id, u]));
 
 		// 4. Group contracts into projects
 		const projectsMap = new Map<string, any>();
 
 		for (const contract of userContracts) {
-			// The project ID is the Work Request ID for now
-			const projectId = contract.workRequestId;
-			if (!projectId) continue;
+			// A project is defined by a work request, OR a standalone material request.
+			const projectId = contract.workRequestId || contract.materialRequestId;
+			if (!projectId) continue; // Skip if contract has no request link
 
+			// Initialize project if it's the first time we see this projectId
 			if (!projectsMap.has(projectId)) {
 				const workRequest = workRequestsMap.get(projectId);
+				const materialRequest = materialRequestsMap.get(projectId);
 				projectsMap.set(projectId, {
 					id: projectId,
-					title: workRequest?.title || 'Project Title Missing',
+					title: workRequest?.title || materialRequest?.title || 'Project Title Missing',
 					workRequest: workRequest,
+					materialRequest: materialRequest,
 					customer: usersMap.get(contract.customerId)
-					// other fields will be added as we process contracts
 				});
 			}
 
+			// Add contract details to the project
 			const project = projectsMap.get(projectId);
 			if (contract.requestType === 'work') {
 				project.workContract = contract;
