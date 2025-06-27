@@ -170,3 +170,35 @@ export type ProjectSummary = {
 	contractDate: string;
 	workRequestId?: string;
 };
+
+/**
+ * Defines the structure for a project, which is a container for work and/or material components.
+ * This should align with the backend's Project interface.
+ */
+export type Project = {
+	id: string;
+	title: string;
+	customerId: string;
+	workComponent?: {
+		expertId: string;
+		contractId: string;
+		chatId?: string;
+		status: string; // Using string for flexibility on the client
+		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
+	};
+	materialComponent?: {
+		supplierId: string;
+		contractId: string;
+		chatId?: string;
+		status: string; // Using string for flexibility on the client
+		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
+	};
+	createdAt: string;
+	updatedAt: string;
+	// Frontend-enriched properties
+	workRequest?: WorkRequest;
+	materialRequest?: MaterialRequest;
+	customer?: AuthUser;
+	expert?: AuthUser;
+	supplier?: AuthUser;
+};

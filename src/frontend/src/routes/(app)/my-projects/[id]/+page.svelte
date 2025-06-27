@@ -1,318 +1,367 @@
-<!-- gefifi-2/src/frontend/src/routes/(app)/active-projects/[id]/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
+	import type { Project } from '$lib/types';
+	import WorkRequestCard from '$lib/components/ui/WorkRequestCard.svelte';
+	import MaterialRequestCard from '$lib/components/ui/MaterialRequestCard.svelte';
 
-	// TODO: Move these types to a central types.ts file
-	type ContractStatus =
-		| 'draft'
-		| 'awaiting_signatures'
-		| 'signed'
-		| 'in_progress'
-		| 'completed'
-		| 'disputed'
-		| 'cancelled'
-		| 'terminated';
-
-	type FullProjectDetails = {
-		contract: any;
-		workRequest?: any;
-		customer: any;
-		provider: any;
-	};
-
-	let project: FullProjectDetails | null = null;
-	let relevantChatId: string | null = null;
 	let currentUser: AuthUser | null = null;
 	authStore.subscribe((auth) => (currentUser = auth.user));
 
+	let project: Project | null = null;
 	let isLoading = true;
 	let errorMessage = '';
 
-	// For Status Update UI
-	let selectedStatus: ContractStatus;
-	let isUpdatingStatus = false;
-	let statusUpdateMessage: { type: 'success' | 'error'; text: string } | null = null;
 	let fromTab: 'ongoing' | 'completed' = 'ongoing';
 
-	async function fetchProjectDetails(id: string) {
+	// For Status Update UI
+	let isUpdatingStatus: 'work' | 'material' | false = false;
+	let statusUpdateMessage: { type: 'success' | 'error'; text: string } | null = null;
+	let selectedWorkStatus: string;
+	let selectedMaterialStatus: string;
+
+	async function fetchProjectDetails() {
+		const id = $page.params.id;
+		if (!id) {
+			errorMessage = 'Project ID not found in URL.';
+			isLoading = false;
+			return;
+		}
 		isLoading = true;
-		errorMessage = '';
 		try {
-			// Fetch the core contract using apiClient
-			const contractData = await apiClient.getContractById(id);
-			selectedStatus = contractData.status as ContractStatus;
-
-			// Fetch related data in parallel
-			const [workRequestRes, customerRes, providerRes] = await Promise.allSettled([
-				contractData.workRequestId
-					? apiClient.getWorkRequestById(contractData.workRequestId)
-					: Promise.resolve(null),
-				apiClient.getUserById(contractData.customerId),
-				apiClient.getUserById(contractData.expertSupplierId)
-			]);
-
-			project = {
-				contract: contractData,
-				workRequest: workRequestRes.status === 'fulfilled' ? workRequestRes.value : null,
-				customer: customerRes.status === 'fulfilled' ? customerRes.value : null,
-				provider: providerRes.status === 'fulfilled' ? providerRes.value : null
-			};
-
-			// After project is loaded, find the relevant chat
-			if (project) {
-				try {
-					const allChats = await apiClient.getUserChats();
-					const chat = allChats.find(
-						(c) =>
-							c.participants.length === 2 &&
-							c.participants.includes(project.contract.customerId) &&
-							c.participants.includes(project.contract.expertSupplierId)
-					);
-					if (chat) {
-						relevantChatId = chat.id;
-					}
-				} catch (chatError) {
-					console.warn('Could not determine chat room for this project.', chatError);
-				}
-			}
+			project = await apiClient.getProjectById(id);
+			if (project?.workComponent) selectedWorkStatus = project.workComponent.status;
+			if (project?.materialComponent) selectedMaterialStatus = project.materialComponent.status;
 		} catch (err: any) {
-			console.error('Failed to fetch project details:', err);
-			errorMessage = err.data?.message || err.message || 'An unknown error occurred.';
+			errorMessage = err.data?.message || 'Failed to load project details.';
 		} finally {
 			isLoading = false;
 		}
 	}
 
-	async function handleUpdateStatus() {
-		if (!project || !selectedStatus || project.contract.status === selectedStatus) {
+	onMount(() => {
+		const from = $page.url.searchParams.get('from');
+		if (from === 'completed') fromTab = 'completed';
+		fetchProjectDetails();
+	});
+
+	async function handleUpdateStatus(component: 'work' | 'material') {
+		if (!project) return;
+
+		const newStatus = component === 'work' ? selectedWorkStatus : selectedMaterialStatus;
+		const currentStatus =
+			component === 'work' ? project.workComponent?.status : project.materialComponent?.status;
+
+		if (newStatus === currentStatus) {
 			statusUpdateMessage = { type: 'error', text: 'No new status selected.' };
 			return;
 		}
 
-		isUpdatingStatus = true;
+		isUpdatingStatus = component;
 		statusUpdateMessage = null;
 		try {
-			const result = await apiClient.updateContractStatus(project.contract.id, {
-				status: selectedStatus
+			const updatedProject = await apiClient.updateProjectStatus(project.id, {
+				component,
+				newStatus
 			});
-
-			// Update local state to reflect the change immediately
-			project.contract = { ...project.contract, ...result };
-			statusUpdateMessage = { type: 'success', text: 'Project status updated successfully!' };
+			project = { ...project, ...updatedProject };
+			statusUpdateMessage = { type: 'success', text: 'Status updated successfully!' };
 		} catch (error: any) {
-			console.error('Status update error:', error);
-			statusUpdateMessage = { type: 'error', text: error.data?.message || error.message };
+			statusUpdateMessage = { type: 'error', text: error.data?.message || 'Update failed.' };
 		} finally {
 			isUpdatingStatus = false;
 		}
 	}
 
-	onMount(() => {
-		const id = $page.params.id;
-		const from = $page.url.searchParams.get('from');
-		if (from === 'completed') {
-			fromTab = 'completed';
-		}
-
-		if (id) {
-			fetchProjectDetails(id);
-		} else {
-			errorMessage = 'Project ID not found in URL.';
-			isLoading = false;
-		}
-	});
-
-	// --- Computed properties and helpers ---
-	$: projectTitle =
-		project?.workRequest?.title || `Contract: ${project?.contract.id.substring(0, 8)}...`;
-	$: otherParty =
-		currentUser?.id === project?.contract.customerId ? project?.provider : project?.customer;
-
-	$: statusOptions = ((currentStatus: ContractStatus | undefined) => {
-		if (!currentStatus) return [];
-		const options: { value: ContractStatus; label: string }[] = [];
-		switch (currentStatus) {
-			case 'signed':
-				options.push({ value: 'in_progress', label: 'Start Work (In Progress)' });
-				options.push({ value: 'cancelled', label: 'Cancel Project' });
-				break;
-			case 'in_progress':
-				options.push({ value: 'completed', label: 'Mark as Completed' });
-				options.push({ value: 'disputed', label: 'Raise a Dispute' });
-				options.push({ value: 'cancelled', label: 'Cancel Project' });
-				break;
-			case 'disputed':
-				// From a dispute, can maybe go back to in_progress or get cancelled
-				options.push({ value: 'in_progress', label: 'Resolve Dispute (In Progress)' });
-				options.push({ value: 'cancelled', label: 'Cancel Project' });
-				break;
-		}
-		return options;
-	})(project?.contract.status);
-
 	function getStatusClass(status: string | undefined, type: 'badge' | 'text' = 'badge') {
-		if (!status) return '';
-		const classes = {
-			signed: { badge: 'bg-sky-500/20 text-sky-300 border-sky-500/50', text: 'text-sky-300' },
-			in_progress: {
+		const classes: Record<string, { badge: string; text: string }> = {
+			'Not Started': {
+				badge: 'bg-gray-500/20 text-gray-300 border-gray-500/50',
+				text: 'text-gray-300'
+			},
+			'Awaiting Dispatch': {
+				badge: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50',
+				text: 'text-yellow-300'
+			},
+			'In Progress': {
 				badge: 'bg-blue-500/20 text-blue-300 border-blue-500/50',
 				text: 'text-blue-300'
 			},
-			completed: {
+			Dispatched: {
+				badge: 'bg-blue-500/20 text-blue-300 border-blue-500/50',
+				text: 'text-blue-300'
+			},
+			'Awaiting Review': {
+				badge: 'bg-sky-500/20 text-sky-300 border-sky-500/50',
+				text: 'text-sky-300'
+			},
+			Delivered: {
+				badge: 'bg-sky-500/20 text-sky-300 border-sky-500/50',
+				text: 'text-sky-300'
+			},
+			Completed: {
 				badge: 'bg-green-600/30 text-green-300 border-green-600/60',
 				text: 'text-green-300'
 			},
-			disputed: {
+			Disputed: { badge: 'bg-red-500/20 text-red-300 border-red-500/50', text: 'text-red-300' },
+			'Issue Reported': {
 				badge: 'bg-red-500/20 text-red-300 border-red-500/50',
 				text: 'text-red-300'
 			},
-			cancelled: {
+			Cancelled: {
 				badge: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
 				text: 'text-slate-400'
 			},
-			default: { badge: 'bg-gray-500/20 text-gray-300', text: 'text-gray-300' }
+			Terminated: {
+				badge: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
+				text: 'text-slate-400'
+			},
+			default: { badge: 'bg-gray-700 text-gray-400', text: 'text-gray-400' }
 		};
-		return (classes[status] || classes.default)[type];
+		return status && classes[status] ? classes[status][type] : classes.default[type];
 	}
+
+	$: workStatusOptions = ((currentStatus: string | undefined) => {
+		if (!currentStatus) return [];
+		const options: { value: string; label: string }[] = [];
+		switch (currentStatus) {
+			case 'Not Started':
+				options.push({ value: 'In Progress', label: 'Start Work (In Progress)' });
+				options.push({ value: 'Cancelled', label: 'Cancel Project' });
+				break;
+			case 'In Progress':
+				if (currentUser?.userType !== 'customer') {
+					options.push({ value: 'Awaiting Review', label: 'Mark as Ready for Review' });
+				}
+				options.push({ value: 'Disputed', label: 'Raise a Dispute' });
+				break;
+			case 'Awaiting Review':
+				if (currentUser?.userType === 'customer') {
+					options.push({ value: 'Completed', label: 'Mark as Completed' });
+					options.push({ value: 'Disputed', label: 'Report Issue / Dispute' });
+				}
+				break;
+		}
+		return options;
+	})(project?.workComponent?.status);
+
+	$: materialStatusOptions = ((currentStatus: string | undefined) => {
+		if (!currentStatus) return [];
+		const options: { value: string; label: string }[] = [];
+		switch (currentStatus) {
+			case 'Awaiting Dispatch':
+				if (currentUser?.userType !== 'customer') {
+					options.push({ value: 'Dispatched', label: 'Mark as Dispatched' });
+				}
+				options.push({ value: 'Cancelled', label: 'Cancel Order' });
+				break;
+			case 'Dispatched':
+				if (currentUser?.userType === 'customer') {
+					options.push({ value: 'Delivered', label: 'Mark as Delivered' });
+				}
+				break;
+			case 'Delivered':
+				if (currentUser?.userType === 'customer') {
+					options.push({ value: 'Completed', label: 'Mark as Completed' });
+					options.push({ value: 'Issue Reported', label: 'Report Issue' });
+				}
+				break;
+		}
+		return options;
+	})(project?.materialComponent?.status);
 </script>
 
-<div class="space-y-6">
+<div class="space-y-6 pb-12">
+	<header>
+		<button
+			on:click={() => goto(`/my-projects?tab=${fromTab}`)}
+			class="mb-2 text-sm text-sky-400 hover:underline"
+		>
+			&larr; Back to {fromTab === 'completed' ? 'Completed' : 'Ongoing'} Projects
+		</button>
+		{#if isLoading}
+			<div class="mt-1 h-10 w-3/4 animate-pulse rounded bg-slate-700"></div>
+		{:else if project}
+			<h1 class="text-3xl font-bold text-emerald-400" title={project.title}>
+				{project.title}
+			</h1>
+		{/if}
+	</header>
+
 	{#if isLoading}
-		<div class="flex h-96 items-center justify-center">
-			<p class="text-xl text-slate-300">Loading Project Details...</p>
-		</div>
+		<div class="text-center text-slate-300">Loading project details...</div>
 	{:else if errorMessage}
 		<div class="rounded-lg bg-red-600/30 p-6 text-center text-red-200">
 			<h2 class="text-xl font-bold">Error</h2>
 			<p>{errorMessage}</p>
-			<button
-				on:click={() => goto(`/my-projects?tab=${fromTab}`)}
-				class="mt-4 rounded-md bg-sky-500 px-4 py-2">Back to Projects</button
-			>
 		</div>
 	{:else if project}
-		<header class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-			<div>
-				<button
-					on:click={() => goto(`/my-projects?tab=${fromTab}`)}
-					class="mb-2 text-sm text-sky-400 hover:underline"
-				>
-					&larr; Back to {fromTab === 'completed' ? 'Completed' : 'Ongoing'} Projects
-				</button>
-				<h1 class="text-3xl font-bold text-emerald-400" title={projectTitle}>
-					{projectTitle}
-				</h1>
-			</div>
-			<a
-				href={relevantChatId ? `/chat/${relevantChatId}` : '#'}
-				class="rounded-lg bg-emerald-500 px-5 py-2.5 font-semibold text-white shadow-md transition hover:bg-emerald-600 {relevantChatId
-					? ''
-					: 'cursor-not-allowed opacity-50'}"
-				aria-disabled={!relevantChatId}
-				on:click={(e) => {
-					if (!relevantChatId) e.preventDefault();
-				}}
-			>
-				Go to Chat Room
-			</a>
-		</header>
-
-		<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-			<!-- Left/Main Column -->
-			<div class="space-y-6 lg:col-span-2">
-				<!-- Project Overview -->
-				<div class="rounded-xl bg-slate-700/50 p-6">
-					<h2 class="mb-4 text-2xl font-semibold text-sky-300">Project Overview</h2>
-					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-						<div>
-							<p class="text-sm text-slate-400">Project With</p>
-							<p class="text-lg font-medium text-slate-100">
-								{otherParty?.profile?.fullName || otherParty?.profile?.companyName || 'N/A'}
-							</p>
-						</div>
-						<div>
-							<p class="text-sm text-slate-400">Current Status</p>
-							<p class={`text-lg font-bold ${getStatusClass(project.contract.status, 'text')}`}>
-								{project.contract.status.replace(/_/g, ' ')}
-							</p>
-						</div>
-						<div>
-							<p class="text-sm text-slate-400">Contract Date</p>
-							<p class="text-lg font-medium text-slate-100">
-								{new Date(project.contract.contractDate).toLocaleDateString()}
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<!-- Status Update Section (Customer Only) -->
-				{#if currentUser?.userType === 'customer' && statusOptions.length > 0}
-					<div class="rounded-xl bg-slate-700/50 p-6">
-						<h3 class="mb-3 text-xl font-semibold text-sky-300">Update Project Status</h3>
-						{#if statusUpdateMessage}
-							<p
-								class="mb-3 rounded p-2 text-sm {statusUpdateMessage.type === 'success'
-									? 'bg-emerald-500/20 text-emerald-300'
-									: 'bg-red-500/20 text-red-300'}"
+		<div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
+			<div class="flex flex-col gap-8 lg:col-span-2">
+				{#if project.workComponent && (currentUser?.userType === 'customer' || currentUser?.userType === 'expert')}
+					<section class="rounded-xl bg-slate-700/50 p-6 shadow-lg">
+						<div
+							class="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center"
+						>
+							<h2 class="text-2xl font-semibold text-sky-300">Work Progress</h2>
+							<a
+								href={`/contracts/${project.workComponent.contractId}`}
+								class="text-sm text-emerald-400 hover:underline">View Work Contract &rarr;</a
 							>
-								{statusUpdateMessage.text}
-							</p>
+						</div>
+						<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+							<div>
+								<p class="text-sm text-slate-400">Expert</p>
+								<p class="text-lg font-medium text-slate-100">
+									{project.expert?.profile?.fullName || 'N/A'}
+								</p>
+							</div>
+							<div>
+								<p class="text-sm text-slate-400">Status</p>
+								<p
+									class={`text-lg font-bold ${getStatusClass(project.workComponent.status, 'text')}`}
+								>
+									{project.workComponent.status}
+								</p>
+							</div>
+						</div>
+						{#if project.workComponent.chatId}
+							<div class="mt-4">
+								<button
+									on:click={() => goto(`/chat/${project.workComponent.chatId}`)}
+									class="w-full rounded-lg bg-sky-600 py-2 font-semibold text-white hover:bg-sky-500"
+									>Go to Chat with Expert</button
+								>
+							</div>
 						{/if}
-						<div class="flex items-center gap-4">
-							<select
-								bind:value={selectedStatus}
-								class="flex-grow rounded-lg border border-slate-600 bg-slate-700/80 p-2.5 text-slate-100"
-							>
-								{#each statusOptions as option}
-									<option value={option.value}>{option.label}</option>
+						{#if workStatusOptions.length > 0}
+							<div class="mt-4 border-t border-slate-600 pt-4">
+								<h4 class="text-md mb-2 font-semibold text-slate-200">Update Status</h4>
+								<div class="flex items-center gap-4">
+									<select
+										bind:value={selectedWorkStatus}
+										class="flex-grow rounded-lg border border-slate-600 bg-slate-700/80 p-2 text-slate-100"
+									>
+										{#each workStatusOptions as option}
+											<option value={option.value}>{option.label}</option>
+										{/each}
+									</select>
+									<button
+										on:click={() => handleUpdateStatus('work')}
+										disabled={isUpdatingStatus === 'work'}
+										class="rounded-lg bg-sky-500 px-4 py-2 font-semibold text-white hover:bg-sky-600 disabled:opacity-50"
+									>
+										{isUpdatingStatus === 'work' ? 'Updating...' : 'Update'}
+									</button>
+								</div>
+							</div>
+						{/if}
+						<div class="mt-4 border-t border-slate-600 pt-4">
+							<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
+							<ul class="space-y-2 text-sm">
+								{#each project.workComponent.statusHistory.slice().reverse() as entry}
+									<li class="flex justify-between text-slate-400">
+										<span>{entry.status}</span>
+										<span>{new Date(entry.updatedAt).toLocaleString()}</span>
+									</li>
 								{/each}
-							</select>
-							<button
-								on:click={handleUpdateStatus}
-								disabled={isUpdatingStatus || selectedStatus === project.contract.status}
-								class="rounded-lg bg-sky-500 px-5 py-2.5 font-semibold text-white shadow-md hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								{isUpdatingStatus ? 'Updating...' : 'Update'}
-							</button>
+							</ul>
 						</div>
-					</div>
+					</section>
 				{/if}
 
-				<!-- Work Request Details -->
-				{#if project.workRequest}
-					<div class="rounded-xl bg-slate-700/50 p-6">
-						<h3 class="mb-4 text-2xl font-semibold text-sky-300">Original Work Request</h3>
-						<p class="whitespace-pre-wrap text-slate-300">{project.workRequest.description}</p>
-						<!-- Add more work request details here if needed -->
-					</div>
+				{#if project.materialComponent && (currentUser?.userType === 'customer' || currentUser?.userType === 'supplier')}
+					<section class="rounded-xl bg-slate-700/50 p-6 shadow-lg">
+						<div
+							class="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center"
+						>
+							<h2 class="text-2xl font-semibold text-amber-300">Material Delivery</h2>
+							<a
+								href={`/contracts/${project.materialComponent.contractId}`}
+								class="text-sm text-emerald-400 hover:underline">View Material Contract &rarr;</a
+							>
+						</div>
+						<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+							<div>
+								<p class="text-sm text-slate-400">Supplier</p>
+								<p class="text-lg font-medium text-slate-100">
+									{project.supplier?.profile?.companyName || 'N/A'}
+								</p>
+							</div>
+							<div>
+								<p class="text-sm text-slate-400">Status</p>
+								<p
+									class={`text-lg font-bold ${getStatusClass(
+										project.materialComponent.status,
+										'text'
+									)}`}
+								>
+									{project.materialComponent.status}
+								</p>
+							</div>
+						</div>
+						{#if project.materialComponent.chatId}
+							<div class="mt-4">
+								<button
+									on:click={() => goto(`/chat/${project.materialComponent.chatId}`)}
+									class="w-full rounded-lg bg-amber-600 py-2 font-semibold text-white hover:bg-amber-500"
+									>Go to Chat with Supplier</button
+								>
+							</div>
+						{/if}
+						{#if materialStatusOptions.length > 0}
+							<div class="mt-4 border-t border-slate-600 pt-4">
+								<h4 class="text-md mb-2 font-semibold text-slate-200">Update Status</h4>
+								<div class="flex items-center gap-4">
+									<select
+										bind:value={selectedMaterialStatus}
+										class="flex-grow rounded-lg border border-slate-600 bg-slate-700/80 p-2 text-slate-100"
+									>
+										{#each materialStatusOptions as option}
+											<option value={option.value}>{option.label}</option>
+										{/each}
+									</select>
+									<button
+										on:click={() => handleUpdateStatus('material')}
+										disabled={isUpdatingStatus === 'material'}
+										class="rounded-lg bg-amber-500 px-4 py-2 font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+									>
+										{isUpdatingStatus === 'material' ? 'Updating...' : 'Update'}
+									</button>
+								</div>
+							</div>
+						{/if}
+						<div class="mt-4 border-t border-slate-600 pt-4">
+							<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
+							<ul class="space-y-2 text-sm">
+								{#each project.materialComponent.statusHistory.slice().reverse() as entry}
+									<li class="flex justify-between text-slate-400">
+										<span>{entry.status}</span>
+										<span>{new Date(entry.updatedAt).toLocaleString()}</span>
+									</li>
+								{/each}
+							</ul>
+						</div>
+					</section>
 				{/if}
 			</div>
 
-			<!-- Right/Side Column -->
-			<div class="space-y-6">
-				<div class="rounded-xl bg-slate-700/50 p-6">
-					<h3 class="mb-4 text-xl font-semibold text-sky-300">Contract Summary</h3>
+			<div class="space-y-8 lg:col-span-1">
+				{#if project.workRequest}
 					<div>
-						<h4 class="font-semibold text-slate-200">Work Details</h4>
-						<p class="mb-3 text-sm whitespace-pre-wrap text-slate-300">
-							{project.contract.workDetails}
-						</p>
-						<h4 class="font-semibold text-slate-200">Agreement</h4>
-						<p class="text-sm whitespace-pre-wrap text-slate-300">
-							{project.contract.agreementSummary}
-						</p>
+						<h3 class="mb-3 text-xl font-semibold text-sky-300">Original Work Request</h3>
+						<WorkRequestCard request={project.workRequest} />
 					</div>
-					<a
-						href={`/contracts/${project.contract.id}`}
-						class="mt-4 inline-block text-sm font-medium text-emerald-400 hover:underline"
-					>
-						View Full Contract &rarr;
-					</a>
-				</div>
+				{/if}
+				{#if project.materialRequest}
+					<div>
+						<h3 class="mb-3 text-xl font-semibold text-amber-300">Original Material Request</h3>
+						<MaterialRequestCard request={project.materialRequest} />
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}

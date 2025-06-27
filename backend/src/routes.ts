@@ -5,6 +5,7 @@ import {
 	UserProfile,
 	WorkRequest,
 	MaterialRequest,
+	Project,
 	Chat,
 	Message,
 	Contract
@@ -24,6 +25,7 @@ import { OAuth2Client } from 'google-auth-library';
 const usersDB = new FirestoreCollection<User>('users');
 const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
 const materialRequestsDB = new FirestoreCollection<MaterialRequest>('materialRequests');
+const projectsDB = new FirestoreCollection<Project>('projects');
 const chatsDB = new FirestoreCollection<Chat>('chats');
 const messagesDB = new FirestoreCollection<Message>('messages');
 const contractsDB = new FirestoreCollection<Contract>('contracts');
@@ -1285,11 +1287,72 @@ router.put(
 
 				if (customerHasSigned && providerHasSigned) {
 					updates.status = 'signed';
+					const updatedContract = await contractsDB.update(contractId, updates);
+
+					// This check is crucial to prevent trying to process a null object
+					if (!updatedContract) {
+						return res.status(500).json({ message: 'Failed to update contract after signing.' });
+					}
+
+					// --- PROJECT CREATION/UPDATE LOGIC ---
+					// When a contract is fully signed, create or update the corresponding project.
+					const projectId = updatedContract.workRequestId || updatedContract.materialRequestId;
+					if (projectId) {
+						const project = await projectsDB.findById(projectId);
+						const workRequest = updatedContract.workRequestId
+							? await workRequestsDB.findById(updatedContract.workRequestId)
+							: null;
+						const materialRequest = updatedContract.materialRequestId
+							? await materialRequestsDB.findById(updatedContract.materialRequestId)
+							: null;
+
+						const projectUpdate: Partial<Project> = {
+							updatedAt: now
+						};
+
+						const historyEntry = { status: 'Not Started', updatedAt: now, updatedBy: user.id };
+
+						if (updatedContract.requestType === 'work') {
+							projectUpdate.workComponent = {
+								expertId: updatedContract.expertSupplierId,
+								contractId: updatedContract.id,
+								status: 'Not Started',
+								statusHistory: [historyEntry]
+							};
+						} else {
+							// 'material'
+							projectUpdate.materialComponent = {
+								supplierId: updatedContract.expertSupplierId,
+								contractId: updatedContract.id,
+								status: 'Awaiting Dispatch',
+								statusHistory: [historyEntry]
+							};
+						}
+
+						if (project) {
+							// Project exists, just add the new component
+							await projectsDB.update(projectId, projectUpdate);
+						} else {
+							// Project doesn't exist, create it
+							const newProject: Project = {
+								id: projectId,
+								title: workRequest?.title || materialRequest?.title || 'Project',
+								customerId: updatedContract.customerId,
+								createdAt: now,
+								updatedAt: now,
+								...projectUpdate
+							};
+							await projectsDB.create(newProject);
+						}
+					}
+					// --- END PROJECT LOGIC ---
+
+					res.status(200).json(updatedContract);
 				} else {
 					updates.status = 'awaiting_signatures';
+					const updatedContract = await contractsDB.update(contractId, updates);
+					res.status(200).json(updatedContract);
 				}
-				const updatedContract = await contractsDB.update(contractId, updates);
-				res.status(200).json(updatedContract);
 			} else {
 				res.status(400).json({
 					message:
@@ -1408,78 +1471,91 @@ router.get('/projects', authenticateToken, async (req: AuthenticatedRequest, res
 	try {
 		const user = req.user as JwtPayload;
 
-		// 1. Fetch all contracts involving the current user
-		const allContracts = await contractsDB.getAll();
-		const userContracts = allContracts.filter(
-			(c) => c.customerId === user.id || c.expertSupplierId === user.id
+		// 1. Fetch all projects where the user is involved.
+		const allProjects = await projectsDB.getAll();
+		const userProjects = allProjects.filter(
+			(p) =>
+				p.customerId === user.id ||
+				p.workComponent?.expertId === user.id ||
+				p.materialComponent?.supplierId === user.id
 		);
 
-		if (userContracts.length === 0) {
-			return res.status(200).json([]);
+		// 2. Tailor the response based on the user's role
+		if (user.userType === 'expert') {
+			const expertProjects = userProjects
+				.filter((p) => p.workComponent?.expertId === user.id)
+				.map((p) => ({ ...p, materialComponent: undefined })); // Strip material component
+			return res.status(200).json(expertProjects);
 		}
 
-		// 2. Gather all unique IDs needed for fetching additional data
-		const workRequestIds = new Set<string>();
-		const materialRequestIds = new Set<string>();
-		const userIds = new Set<string>();
-
-		userContracts.forEach((c) => {
-			if (c.workRequestId) workRequestIds.add(c.workRequestId);
-			if (c.materialRequestId) materialRequestIds.add(c.materialRequestId);
-			userIds.add(c.customerId);
-			userIds.add(c.expertSupplierId);
-		});
-
-		// 3. Fetch all required data in parallel
-		const [workRequests, materialRequests, allUsers] = await Promise.all([
-			workRequestsDB.getByIds(Array.from(workRequestIds)),
-			materialRequestsDB.getByIds(Array.from(materialRequestIds)),
-			usersDB.getByIds(Array.from(userIds))
-		]);
-
-		// Create maps for easy lookup
-		const workRequestsMap = new Map(workRequests.map((wr: WorkRequest) => [wr.id, wr]));
-		const materialRequestsMap = new Map(materialRequests.map((mr: MaterialRequest) => [mr.id, mr]));
-		const usersMap = new Map(allUsers.map((u: User) => [u.id, u]));
-
-		// 4. Group contracts into projects
-		const projectsMap = new Map<string, any>();
-
-		for (const contract of userContracts) {
-			// A project is defined by a work request, OR a standalone material request.
-			const projectId = contract.workRequestId || contract.materialRequestId;
-			if (!projectId) continue; // Skip if contract has no request link
-
-			// Initialize project if it's the first time we see this projectId
-			if (!projectsMap.has(projectId)) {
-				const workRequest = workRequestsMap.get(projectId);
-				const materialRequest = materialRequestsMap.get(projectId);
-				projectsMap.set(projectId, {
-					id: projectId,
-					title: workRequest?.title || materialRequest?.title || 'Project Title Missing',
-					workRequest: workRequest,
-					materialRequest: materialRequest,
-					customer: usersMap.get(contract.customerId)
-				});
-			}
-
-			// Add contract details to the project
-			const project = projectsMap.get(projectId);
-			if (contract.requestType === 'work') {
-				project.workContract = contract;
-				project.expert = usersMap.get(contract.expertSupplierId);
-			} else if (contract.requestType === 'material') {
-				project.materialContract = contract;
-				project.supplier = usersMap.get(contract.expertSupplierId);
-			}
+		if (user.userType === 'supplier') {
+			const supplierProjects = userProjects
+				.filter((p) => p.materialComponent?.supplierId === user.id)
+				.map((p) => ({ ...p, workComponent: undefined })); // Strip work component
+			return res.status(200).json(supplierProjects);
 		}
 
-		const projects = Array.from(projectsMap.values());
-		res.status(200).json(projects);
+		// For customers, return the full project objects
+		res.status(200).json(userProjects);
 	} catch (error: unknown) {
 		console.error('Error fetching aggregated projects:', error);
 		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
 		res.status(500).json({ message: 'Failed to fetch projects.', error: errorMessage });
+	}
+});
+
+router.get('/projects/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+	try {
+		const projectId = req.params.id;
+		const project = await projectsDB.findById(projectId);
+
+		if (!project) {
+			return res.status(404).json({ message: 'Project not found.' });
+		}
+
+		// Basic authorization: user must be part of the project
+		const user = req.user as JwtPayload;
+		if (
+			user.id !== project.customerId &&
+			user.id !== project.workComponent?.expertId &&
+			user.id !== project.materialComponent?.supplierId
+		) {
+			return res.status(403).json({ message: 'You are not authorized to view this project.' });
+		}
+
+		// Enrich project with full request details and chat IDs
+		const [allChats, workRequest, materialRequest] = await Promise.all([
+			chatsDB.getAll(),
+			project.workComponent ? workRequestsDB.findById(project.id) : Promise.resolve(null),
+			project.materialComponent ? materialRequestsDB.findById(project.id) : Promise.resolve(null)
+		]);
+
+		project.workRequest = workRequest || undefined;
+		project.materialRequest = materialRequest || undefined;
+
+		// Find and attach chat IDs
+		if (project.workComponent) {
+			const workChat = allChats.find(
+				(c) =>
+					c.participants.includes(project.customerId) &&
+					c.participants.includes(project.workComponent!.expertId)
+			);
+			if (workChat) project.workComponent.chatId = workChat.id;
+		}
+		if (project.materialComponent) {
+			const materialChat = allChats.find(
+				(c) =>
+					c.participants.includes(project.customerId) &&
+					c.participants.includes(project.materialComponent!.supplierId)
+			);
+			if (materialChat) project.materialComponent.chatId = materialChat.id;
+		}
+
+		res.status(200).json(project);
+	} catch (error: unknown) {
+		console.error(`Error fetching project ${req.params.id}:`, error);
+		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+		res.status(500).json({ message: 'Failed to fetch project.', error: errorMessage });
 	}
 });
 
