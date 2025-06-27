@@ -337,6 +337,15 @@ const apiClient = {
 	// --- Projects ---
 	getProjects: (): Promise<any[]> => {
 		return request<any[]>('/projects', 'GET', undefined, true);
+	},
+	getProjectById: (id: string): Promise<any> => {
+		return request<any>(`/projects/${id}`, 'GET', undefined, true);
+	},
+	updateProjectStatus: (
+		id: string,
+		payload: { component: 'work' | 'material'; newStatus: string }
+	): Promise<any> => {
+		return request<any>(`/projects/${id}/status`, 'PUT', payload, true);
 	}
 };
 

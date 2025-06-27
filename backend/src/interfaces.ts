@@ -120,8 +120,13 @@ export interface Contract extends Identifiable {
 		| 'disputed'
 		| 'cancelled'
 		| 'terminated';
+	statusHistory?: {
+		status: string;
+		updatedAt: string;
+		updatedBy: string; // User ID of who made the change
+	}[];
 	createdAt: string; // ISO 8601 date string (when contract record was created)
-	updatedAt: string; // ISO 8601 date string
+	updatedAt: string; // ISO 8601 date string (when contract was last updated)
 	// attachments?: string[]; // Paths to any attached documents
 	// createdBy: string; // User ID of who initiated the contract creation
 }
@@ -146,4 +151,44 @@ export interface MaterialRequest {
 	createdAt: string;
 	updatedAt: string;
 	interestedSuppliers: string[];
+}
+
+/**
+ * Defines the structure for a project, which is a container for work and/or material components.
+ */
+export interface Project {
+	id: string; // Corresponds to the originating request ID (work or material)
+	title: string;
+	customerId: string;
+	workComponent?: {
+		expertId: string;
+		contractId: string;
+		chatId?: string;
+		status:
+			| 'Not Started'
+			| 'In Progress'
+			| 'Awaiting Review'
+			| 'Completed'
+			| 'Disputed'
+			| 'Cancelled';
+		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
+	};
+	materialComponent?: {
+		supplierId: string;
+		contractId: string;
+		chatId?: string;
+		status:
+			| 'Awaiting Dispatch'
+			| 'Dispatched'
+			| 'Delivered'
+			| 'Completed'
+			| 'Issue Reported'
+			| 'Cancelled';
+		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
+	};
+	createdAt: string;
+	updatedAt: string;
+	// Enriched properties, added on the backend before sending to client
+	workRequest?: WorkRequest;
+	materialRequest?: MaterialRequest;
 }
