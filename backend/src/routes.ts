@@ -1523,15 +1523,26 @@ router.get('/projects/:id', authenticateToken, async (req: AuthenticatedRequest,
 			return res.status(403).json({ message: 'You are not authorized to view this project.' });
 		}
 
-		// Enrich project with full request details and chat IDs
-		const [allChats, workRequest, materialRequest] = await Promise.all([
+		// Enrich project with full request details and user profiles
+		const participantIds = new Set<string>([project.customerId]);
+		if (project.workComponent) participantIds.add(project.workComponent.expertId);
+		if (project.materialComponent) participantIds.add(project.materialComponent.supplierId);
+
+		const [allChats, workRequest, materialRequest, users] = await Promise.all([
 			chatsDB.getAll(),
 			project.workComponent ? workRequestsDB.findById(project.id) : Promise.resolve(null),
-			project.materialComponent ? materialRequestsDB.findById(project.id) : Promise.resolve(null)
+			project.materialComponent ? materialRequestsDB.findById(project.id) : Promise.resolve(null),
+			usersDB.getByIds(Array.from(participantIds))
 		]);
+
+		const usersMap = new Map(users.map((u) => [u.id, u]));
 
 		project.workRequest = workRequest || undefined;
 		project.materialRequest = materialRequest || undefined;
+		project.customer = usersMap.get(project.customerId);
+		if (project.workComponent) project.expert = usersMap.get(project.workComponent.expertId);
+		if (project.materialComponent)
+			project.supplier = usersMap.get(project.materialComponent.supplierId);
 
 		// Find and attach chat IDs
 		if (project.workComponent) {
