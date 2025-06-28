@@ -9,11 +9,8 @@
 	<!-- Navigation Bar -->
 	<nav class="sticky top-0 z-50 bg-slate-900/80 shadow-lg backdrop-blur-md">
 		<div class="container mx-auto flex items-center justify-between px-6 py-4">
-			<a
-				href="/"
-				class="text-3xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
+			<a href="/">
+				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-9 w-auto sm:h-10" />
 			</a>
 			<div class="space-x-2 sm:space-x-4">
 				<a

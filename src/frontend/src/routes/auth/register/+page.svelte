@@ -190,13 +190,10 @@
 >
 	<div class="w-full max-w-lg">
 		<div class="mb-6 text-center sm:mb-8">
-			<a
-				href="/"
-				class="text-5xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
+			<a href="/">
+				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="mx-auto h-16 w-auto" />
 			</a>
-			<h1 class="mt-2 text-2xl text-sky-300">Create Your Account</h1>
+			<h1 class="mt-4 text-2xl text-sky-300">Create Your Account</h1>
 			<p class="text-sm text-slate-400">Join GEFIFI to connect with the best in construction.</p>
 		</div>
 
