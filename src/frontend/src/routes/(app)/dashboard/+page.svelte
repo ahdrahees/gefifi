@@ -175,14 +175,18 @@
 	}
 
 	async function handleSendInterest(event: CustomEvent) {
-		const { customerId, materialRequestId } = event.detail;
-		if (!customerId || !materialRequestId) return;
+		const { customerId, materialRequestId, workRequestId } = event.detail;
+
+		if (!customerId || (!materialRequestId && !workRequestId)) return;
 
 		try {
 			const result = await apiClient.sendInterest({
 				targetUserId: customerId,
 				materialRequestId: materialRequestId,
-				predefinedMessageKey: 'SUPPLIER_INTEREST_IN_MATERIAL_REQUEST'
+				workRequestId: workRequestId,
+				predefinedMessageKey: workRequestId
+					? 'PROVIDER_INTEREST_IN_WORK_REQUEST'
+					: 'SUPPLIER_INTEREST_IN_MATERIAL_REQUEST'
 			});
 			// Optionally, redirect to the newly created/updated chat
 			if (result.chatId) {
@@ -336,17 +340,14 @@
 						Available Work Requests ({workRequests.length})
 					</h2>
 					{#if workRequests.length > 0}
-						<div class="scrollable-content flex-grow space-y-3 overflow-y-auto pr-2">
+						<div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
 							{#each workRequests as wr (wr.id)}
-								<!-- This part would be refactored to use a WorkRequestCard component -->
-								<div
-									class="cursor-pointer rounded-lg bg-slate-600/50 p-4 shadow transition-all hover:bg-slate-500/50"
-									on:click={() => goto(`/work-requests/${wr.id}`)}
-									title="Click to view details"
-								>
-									<h3 class="truncate font-semibold text-emerald-400">{wr.title}</h3>
-									<!-- Content omitted for brevity -->
-								</div>
+								<WorkRequestCard
+									request={wr}
+									showInterestButton={true}
+									on:sendInterest={handleSendInterest}
+									currentUserId={currentUser?.id}
+								/>
 							{/each}
 						</div>
 					{:else}
