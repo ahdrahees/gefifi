@@ -225,6 +225,14 @@
 											? project.expert?.profile?.fullName
 											: project.customer?.profile?.fullName || 'N/A'}
 									</p>
+									{#if currentUser?.userType === 'customer' && project.expert}
+										<p class="text-xs text-slate-400">
+											{project.expert.profile?.expertise || ''}
+											{#if project.expert.profile?.location}
+												&middot; {project.expert.profile.location}
+											{/if}
+										</p>
+									{/if}
 								</div>
 								<div>
 									<p class="text-sm text-slate-400">Status</p>
@@ -266,17 +274,19 @@
 									</div>
 								</div>
 							{/if}
-							<div class="mt-4 border-t border-slate-600 pt-4">
-								<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
-								<ul class="space-y-2 text-sm">
-									{#each project.workComponent.statusHistory.slice().reverse() as entry}
-										<li class="flex justify-between text-slate-400">
-											<span>{entry.status}</span>
-											<span>{new Date(entry.updatedAt).toLocaleString()}</span>
-										</li>
-									{/each}
-								</ul>
-							</div>
+							{#if project.workComponent.statusHistory}
+								<div class="mt-4 border-t border-slate-600 pt-4">
+									<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
+									<ul class="space-y-2 text-sm">
+										{#each project.workComponent.statusHistory.slice().reverse() as entry}
+											<li class="flex justify-between text-slate-400">
+												<span>{entry.status}</span>
+												<span>{new Date(entry.updatedAt).toLocaleString()}</span>
+											</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
 						{/if}
 					</section>
 				{/if}
@@ -305,6 +315,14 @@
 											? project.supplier?.profile?.companyName
 											: project.customer?.profile?.fullName || 'N/A'}
 									</p>
+									{#if currentUser?.userType === 'customer' && project.supplier}
+										<p class="text-xs text-slate-400">
+											{project.supplier.profile?.category || ''}
+											{#if project.supplier.profile?.location}
+												&middot; {project.supplier.profile.location}
+											{/if}
+										</p>
+									{/if}
 								</div>
 								<div>
 									<p class="text-sm text-slate-400">Status</p>
@@ -349,17 +367,19 @@
 									</div>
 								</div>
 							{/if}
-							<div class="mt-4 border-t border-slate-600 pt-4">
-								<h4 class="text-md mb-2 font-semibold text-slate-200">History</h4>
-								<ul class="space-y-2 text-sm">
-									{#each project.materialComponent.statusHistory.slice().reverse() as entry}
-										<li class="flex justify-between text-slate-400">
-											<span>{entry.status}</span>
-											<span>{new Date(entry.updatedAt).toLocaleString()}</span>
-										</li>
-									{/each}
-								</ul>
-							</div>
+							{#if project.materialComponent.statusHistory}
+								<div class="mt-4 border-t border-slate-600 pt-4">
+									<h4 class="text-md font-semibold text-slate-200">History</h4>
+									<ul class="space-y-2 text-sm">
+										{#each project.materialComponent.statusHistory.slice().reverse() as entry}
+											<li class="flex justify-between text-slate-400">
+												<span>{entry.status}</span>
+												<span>{new Date(entry.updatedAt).toLocaleString()}</span>
+											</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
 						{/if}
 					</section>
 				{/if}
