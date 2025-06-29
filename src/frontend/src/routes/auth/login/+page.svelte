@@ -127,7 +127,7 @@
 </script>
 
 <div
-	class="flex min-h-full flex-col justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 px-6 py-12 lg:px-8"
+	class="flex min-h-screen flex-col justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 px-6 py-12 lg:px-8"
 >
 	<div class="sm:mx-auto sm:w-full sm:max-w-md">
 		<a href="/">
