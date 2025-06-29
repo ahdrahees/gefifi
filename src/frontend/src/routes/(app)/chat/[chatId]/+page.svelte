@@ -218,7 +218,16 @@
 			return;
 		}
 		try {
-			const fetchedMessages = await apiClient.getChatMessages(cId);
+			const response = await fetch(`${API_BASE_URL}/api/chat/${cId}/messages`, {
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			if (!response.ok) {
+				const errorData = await response
+					.json()
+					.catch(() => ({ message: 'Failed to fetch messages.' }));
+				throw new Error(errorData.message);
+			}
+			const fetchedMessages = await response.json();
 			// TODO: Enrich messages with sender details (name, avatar) by fetching user profiles based on senderId
 			// This is a common N+1 problem, so backend might ideally provide sender details with messages.
 			messages = fetchedMessages.map((msg: any) => ({ ...msg }));
