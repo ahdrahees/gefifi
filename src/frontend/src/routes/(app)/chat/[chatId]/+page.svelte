@@ -356,6 +356,14 @@
 		}
 	}
 
+	function handleKeyPress(event: KeyboardEvent) {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault(); // Prevent default Enter behavior (new line)
+			handleSendMessage();
+		}
+		// If Shift+Enter, the textarea will handle the new line itself.
+	}
+
 	onMount(() => {
 		chatId = $page.params.chatId;
 		if (chatId) {
@@ -782,13 +790,14 @@
 				</svg>
 			</button>
 
-			<input
-				type="text"
+			<textarea
+				on:keydown={handleKeyPress}
 				bind:value={newMessageContent}
-				placeholder="Type your message..."
-				class="flex-1 rounded-lg border-slate-500/70 bg-slate-600 px-4 py-2.5 text-sm text-slate-100 transition-colors duration-150 outline-none placeholder:text-slate-400/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 sm:text-base"
+				placeholder="Type your message... (Shift + Enter for new line)"
+				rows="1"
+				class="flex-1 resize-none rounded-lg border-slate-500/70 bg-slate-600 px-4 py-2.5 text-sm text-slate-100 transition-colors duration-150 outline-none placeholder:text-slate-400/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 sm:text-base"
 				disabled={isSendingMessage || isLoading}
-			/>
+			></textarea>
 			<button
 				type="submit"
 				disabled={isUploadingImage ||
