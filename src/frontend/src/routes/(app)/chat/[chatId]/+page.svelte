@@ -6,6 +6,8 @@
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 	import ContractModal from '$lib/components/contracts/ContractModal.svelte';
+	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 
 	// Define UserProfile, similar to other pages, ensure it matches backend structure
 	type UserProfile = {
@@ -356,6 +358,16 @@
 		}
 	}
 
+	function parseAndSanitize(content: string): string {
+		if (typeof window !== 'undefined') {
+			// Ensure this only runs on the client-side where DOMPurify has access to the DOM
+			const dirty = marked.parse(content) as string;
+			return DOMPurify.sanitize(dirty);
+		}
+		// Return plain text if not in a browser environment (SSR fallback)
+		return content;
+	}
+
 	function handleKeyPress(event: KeyboardEvent) {
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault(); // Prevent default Enter behavior (new line)
@@ -683,7 +695,11 @@
 							</div>
 						{/if}
 						{#if message.content && message.content.trim()}
-							<p class="break-words whitespace-pre-wrap">{message.content}</p>
+							<div
+								class="prose prose-sm prose-headings:text-slate-200 prose-strong:text-white prose-a:text-emerald-400 hover:prose-a:text-emerald-300 prose-ul:text-slate-300 prose-ol:text-slate-300 max-w-none text-slate-100"
+							>
+								{@html parseAndSanitize(message.content)}
+							</div>
 						{/if}
 					</div>
 					<div
