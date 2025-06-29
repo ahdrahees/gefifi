@@ -8,6 +8,7 @@
 	import ContractModal from '$lib/components/contracts/ContractModal.svelte';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import apiClient from '$lib/api';
 
 	// Define UserProfile, similar to other pages, ensure it matches backend structure
 	type UserProfile = {
@@ -54,6 +55,10 @@
 	let chatId: string | null = null;
 	let newMessageContent = '';
 	let isSendingMessage = false;
+
+	// Polling State
+	let pollingInterval: NodeJS.Timeout | null = null;
+	let lastMessageTimestamp: string | null = null;
 
 	// Image Upload State
 	let fileInput: HTMLInputElement;
@@ -378,8 +383,9 @@
 
 	onMount(() => {
 		chatId = $page.params.chatId;
+		let unsubscribeAuth: (() => void) | null = null;
 		if (chatId) {
-			const unsubscribeAuth = authStore.subscribe(async (auth) => {
+			unsubscribeAuth = authStore.subscribe(async (auth) => {
 				// Make callback async
 				if (auth.token && auth.user && !auth.isLoading) {
 					token = auth.token;
@@ -387,19 +393,58 @@
 					// Fetch messages and chat details
 					await loadChatAndParticipantDetails(chatId!); // Load chat context first
 					await fetchMessages(chatId!); // Then messages, which will scroll on completion
-					unsubscribeAuth();
-					// TODO: Implement polling or WebSocket for real-time messages
+
+					// Start polling for new messages
+					startPolling(chatId!);
+
+					if (unsubscribeAuth) unsubscribeAuth();
 				} else if (!auth.isLoading && (!auth.token || !auth.user)) {
 					errorMessage = 'User not authenticated or details missing.';
 					isLoading = false;
-					unsubscribeAuth();
+					if (unsubscribeAuth) unsubscribeAuth();
 				}
 			});
 		} else {
 			errorMessage = 'Chat ID not found in URL.';
 			isLoading = false;
 		}
+
+		return () => {
+			if (unsubscribeAuth) {
+				unsubscribeAuth();
+			}
+			// Important: Stop polling when the component is destroyed
+			if (pollingInterval) {
+				clearInterval(pollingInterval);
+			}
+		};
 	});
+
+	function startPolling(cId: string) {
+		if (pollingInterval) clearInterval(pollingInterval); // Clear any existing interval
+
+		pollingInterval = setInterval(async () => {
+			if (!token || document.hidden) {
+				// Don't poll if the tab is not active or token is lost
+				return;
+			}
+			try {
+				const lastTimestamp = messages.length > 0 ? messages[messages.length - 1].timestamp : null;
+				if (!lastTimestamp) return; // Don't poll if there are no messages yet
+
+				const newMessages = await apiClient.getChatMessages(cId, lastTimestamp);
+
+				if (newMessages.length > 0) {
+					messages = [...messages, ...newMessages];
+					await tick();
+					scrollToBottom();
+				}
+			} catch (error) {
+				console.error('Polling error:', error);
+				// Optionally handle polling errors, e.g., stop polling after too many failures
+			}
+		}, 3000); // Poll every 3 seconds
+	}
 
 	afterUpdate(() => {
 		// This afterUpdate is now mostly for initial load or other reactive changes

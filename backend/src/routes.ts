@@ -930,31 +930,8 @@ router.post(
 		try {
 			const user = req.user as JwtPayload;
 			const chatId = req.params.chatId;
-			// Destructure content and optionally images from request body
-			const { content, images }: { content?: string; images?: string[] } = req.body;
+			const { since } = req.query as { since?: string };
 
-			// Validate that either content or images are provided and correctly formatted
-			const hasValidContent = content && typeof content === 'string' && content.trim() !== '';
-			const hasValidImages =
-				images &&
-				Array.isArray(images) &&
-				images.length > 0 &&
-				images.every((img: string) => typeof img === 'string');
-
-			if (!hasValidContent && !hasValidImages) {
-				return res.status(400).json({ message: 'Message content or images are required.' });
-			}
-			// If images are provided, but not in the correct format (e.g. not an array of strings)
-			if (images && Array.isArray(images) && images.length > 0 && !hasValidImages) {
-				return res.status(400).json({
-					message:
-						'Images must be an array of strings (file paths) and cannot be empty strings if the array is not empty.'
-				});
-			}
-			// Further check for empty strings within the images array if it's not empty.
-			// This is implicitly handled by `images.every(img => typeof img === 'string')` if we assume file paths must be non-empty.
-			// If paths can be empty strings and that's invalid, a more specific check might be needed,
-			// but typically file paths from an upload process won't be empty strings.
 			const chat = await chatsDB.findById(chatId);
 			if (!chat) {
 				return res.status(404).json({ message: 'Chat not found.' });
@@ -964,50 +941,23 @@ router.post(
 					.status(403)
 					.json({ message: 'Forbidden. You are not a participant of this chat.' });
 			}
-			const now = new Date().toISOString();
-			const messageId = crypto.randomUUID();
-			const newMessage: Message = {
-				id: messageId,
-				chatId: chatId,
-				senderId: user.id,
-				content: content || '', // Use provided content, or empty string if only images are sent
-				images: images && hasValidImages ? images : [], // Use validated images, or an empty array
-				timestamp: now
-			};
-			const createdMessage = await messagesDB.create(newMessage);
-			await chatsDB.update(chatId, { updatedAt: now });
-			res.status(201).json(createdMessage);
-		} catch (error: unknown) {
-			console.error('Error sending message:', error);
-			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-			res.status(500).json({ message: 'Failed to send message.', error: errorMessage });
-		}
-	}
-);
 
-router.get(
-	'/chat/:chatId/messages',
-	authenticateToken,
-	async (req: AuthenticatedRequest, res: Response) => {
-		try {
-			const user = req.user as JwtPayload;
-			const chatId = req.params.chatId;
-			const chat = await chatsDB.findById(chatId);
-			if (!chat) {
-				return res.status(404).json({ message: 'Chat not found.' });
+			let chatMessages: Message[];
+
+			if (since && !isNaN(new Date(since).getTime())) {
+				// Fetch only new messages since the last timestamp
+				chatMessages = await messagesDB.getSince(since, { chatId: chatId });
+			} else {
+				// Initial fetch: get all messages for the chat
+				const allMessages = await messagesDB.getAll();
+				chatMessages = allMessages.filter((msg: Message) => msg.chatId === chatId);
 			}
-			if (!chat.participants.includes(user.id)) {
-				return res
-					.status(403)
-					.json({ message: 'Forbidden. You are not a participant of this chat.' });
-			}
-			const allMessages = await messagesDB.getAll();
-			const chatMessages = allMessages
-				.filter((msg: Message) => msg.chatId === chatId)
-				.sort(
-					(a: Message, b: Message) =>
-						new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-				);
+
+			// Always sort by timestamp to ensure chronological order
+			chatMessages.sort(
+				(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+			);
+
 			res.status(200).json(chatMessages);
 		} catch (error: unknown) {
 			console.error(`Error fetching messages for chat ${req.params.chatId}:`, error);
