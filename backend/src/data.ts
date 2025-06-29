@@ -114,27 +114,6 @@ export class FirestoreCollection<T extends Identifiable> {
 	}
 
 	/**
-	 * Retrieves all documents from the collection created after a given timestamp.
-	 * @param timestamp ISO 8601 date string.
-	 * @param additional_filters Additional key-value pairs for 'where' clauses.
-	 * @returns A promise that resolves to an array of documents.
-	 */
-	public async getSince(
-		timestamp: string,
-		additional_filters: { [key: string]: any } = {}
-	): Promise<T[]> {
-		let query = this.collection.where('timestamp', '>', timestamp);
-		for (const key in additional_filters) {
-			query = query.where(key, '==', additional_filters[key]);
-		}
-		const snapshot = await query.get();
-		if (snapshot.empty) {
-			return [];
-		}
-		return snapshot.docs.map((doc) => doc.data() as T);
-	}
-
-	/**
 	 * Creates a new document in the collection. The item's ID will be used as the document ID.
 	 * @param item The data to create. Must include a unique 'id' property.
 	 * @returns A promise that resolves to the created item.
