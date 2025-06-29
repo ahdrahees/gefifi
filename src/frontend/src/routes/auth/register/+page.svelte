@@ -44,6 +44,35 @@
 		errorMessage = null; // Clear error when a selection is made
 	}
 
+	async function handleGoogleCredentialResponse(response: any) {
+		googleIsLoading = true;
+		errorMessage = null;
+
+		if (!selectedUserType) {
+			errorMessage =
+				'Please select your user type (Customer, Expert, or Supplier) before using Google Sign-In.';
+			googleIsLoading = false;
+			return;
+		}
+
+		try {
+			const result = await authStore.googleLogin({
+				googleTokenId: response.credential,
+				userTypeForNewUser: selectedUserType
+			});
+
+			if (result.isNewUser) {
+				goto('/auth/complete-profile', { replaceState: true });
+			} else {
+				goto('/dashboard', { replaceState: true });
+			}
+		} catch (error: any) {
+			errorMessage = error.message || 'An unexpected error occurred.';
+		} finally {
+			googleIsLoading = false;
+		}
+	}
+
 	async function handleRegister() {
 		isLoading = true;
 		errorMessage = null;
@@ -76,43 +105,8 @@
 		}
 	}
 
-	async function handleGoogleCredentialResponse(response: any) {
-		googleIsLoading = true;
-		errorMessage = null;
-
-		if (!selectedUserType) {
-			errorMessage =
-				'Please select your user type (Customer, Expert, or Supplier) before using Google Sign-In.';
-			googleIsLoading = false;
-			return;
-		}
-
-		try {
-			const result = await authStore.googleLogin({
-				googleTokenId: response.credential,
-				userTypeForNewUser: selectedUserType
-			});
-
-			if (result.isNewUser) {
-				goto('/auth/complete-profile', { replaceState: true });
-			} else {
-				goto('/dashboard', { replaceState: true });
-			}
-		} catch (error: any) {
-			errorMessage = error.message || 'An unexpected error occurred.';
-		} finally {
-			googleIsLoading = false;
-		}
-	}
-
-	let unsubscribeAuth: (() => void) | null = null;
 	onMount(() => {
-		// Redirect logic
-		const initialAuthState = $authStore;
-		if (initialAuthState.isAuthenticated && !initialAuthState.isLoading) {
-			goto('/dashboard', { replaceState: true });
-		}
-		unsubscribeAuth = authStore.subscribe((state) => {
+		const unsubscribeAuth = authStore.subscribe((state) => {
 			if (state.isAuthenticated && !state.isLoading) {
 				goto('/dashboard', { replaceState: true });
 			}
@@ -131,7 +125,7 @@
 					theme: 'outline',
 					size: 'large',
 					type: 'standard',
-					text: 'continue_with', // More appropriate for registration
+					text: 'continue_with',
 					shape: 'rectangular',
 					logo_alignment: 'left'
 				});
@@ -140,9 +134,7 @@
 			console.error('Google Client ID not found or Google script not loaded.');
 		}
 
-		return () => {
-			if (unsubscribeAuth) unsubscribeAuth();
-		};
+		return unsubscribeAuth;
 	});
 
 	let bgstyle =
