@@ -32,6 +32,7 @@
 		updatedAt: string; // From Chat object
 		// We will need to fetch actual participant names for display
 		displayName?: string;
+		avatarUrl?: string; // To store the other participant's avatar
 		// We might also fetch the last message for the snippet
 		lastMessage?: any;
 	};
@@ -181,6 +182,7 @@
 
 			const enrichedChats: ChatListItem[] = rawChats.map((chat) => {
 				let displayName = 'Chat';
+				let avatarUrl: string | undefined = undefined;
 				const otherParticipantIds = (chat.participants as string[]).filter(
 					(pId: string) => pId !== currentUser?.id
 				);
@@ -190,11 +192,13 @@
 					const otherPId = otherParticipantIds[0];
 					const otherUserProfile = fetchedUserProfiles.get(otherPId);
 					displayName = formatDisplayName(otherUserProfile);
+					avatarUrl = otherUserProfile?.profile?.avatarUrl;
 				} else if (
 					(chat.participants as string[]).length === 1 &&
 					chat.participants[0] === currentUser?.id
 				) {
 					displayName = 'Personal Notes / Self Chat';
+					avatarUrl = currentUser.profile?.avatarUrl; // Use own avatar for self-chat
 				}
 
 				return {
@@ -203,6 +207,7 @@
 					workRequestId: chat.workRequestId,
 					updatedAt: chat.updatedAt,
 					displayName: displayName,
+					avatarUrl: avatarUrl,
 					lastMessageSnippet: 'Tap to view messages...', // Placeholder
 					unreadCount: 0 // Placeholder, backend should provide this
 				};
@@ -308,24 +313,37 @@
 					class="focus:ring-opacity-75 block rounded-lg bg-slate-600/70 p-4 shadow-sm transition-all duration-150 ease-in-out hover:bg-slate-500/70 hover:shadow-md focus:ring-2 focus:ring-emerald-500 focus:outline-none"
 					aria-label="Open chat with {chat.displayName}"
 				>
-					<div class="mb-1.5 flex items-start justify-between">
-						<p class="truncate pr-2 text-base font-semibold text-sky-300" title={chat.displayName}>
-							{chat.displayName || 'Chat'}
-						</p>
-						{#if chat.unreadCount && chat.unreadCount > 0}
-							<span
-								class="shrink-0 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-bold text-white"
-							>
-								{chat.unreadCount}
-							</span>
-						{/if}
+					<div class="flex items-center gap-4">
+						<img
+							src={chat.avatarUrl || '/images/default-avatar.png'}
+							alt="Avatar for {chat.displayName}"
+							class="h-12 w-12 shrink-0 rounded-full border-2 border-slate-500 object-cover"
+							loading="lazy"
+						/>
+						<div class="w-full overflow-hidden">
+							<div class="mb-1.5 flex items-start justify-between">
+								<p
+									class="truncate pr-2 text-base font-semibold text-sky-300"
+									title={chat.displayName}
+								>
+									{chat.displayName || 'Chat'}
+								</p>
+								{#if chat.unreadCount && chat.unreadCount > 0}
+									<span
+										class="shrink-0 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-bold text-white"
+									>
+										{chat.unreadCount}
+									</span>
+								{/if}
+							</div>
+							<p class="mb-2 truncate text-sm text-slate-300" title={chat.lastMessageSnippet}>
+								{chat.lastMessageSnippet || 'No messages yet...'}
+							</p>
+							<p class="text-right text-xs text-slate-400/80">
+								Last activity: {formatDate(chat.updatedAt)}
+							</p>
+						</div>
 					</div>
-					<p class="mb-2 truncate text-sm text-slate-300" title={chat.lastMessageSnippet}>
-						{chat.lastMessageSnippet || 'No messages yet...'}
-					</p>
-					<p class="text-right text-xs text-slate-400/80">
-						Last activity: {formatDate(chat.updatedAt)}
-					</p>
 				</a>
 			{/each}
 		</div>

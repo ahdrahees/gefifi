@@ -127,11 +127,8 @@
 		class="fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col bg-slate-900 shadow-lg transition-transform duration-300 ease-in-out md:static md:inset-auto md:translate-x-0 md:transition-none"
 	>
 		<div class="flex h-20 shrink-0 items-center justify-center border-b border-slate-700/50 px-4">
-			<a
-				href="/dashboard"
-				class="text-3xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
+			<a href="/dashboard">
+				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-10 w-auto" />
 			</a>
 		</div>
 
@@ -235,7 +232,9 @@
 		<header
 			class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between bg-slate-900 p-4 shadow-md md:hidden"
 		>
-			<a href="/dashboard" class="text-xl font-bold text-emerald-400">GEFIFI</a>
+			<a href="/dashboard">
+				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-9 w-auto" />
+			</a>
 			<button
 				on:click={() => (sidebarOpen = !sidebarOpen)}
 				class="-mr-2 p-2 text-slate-300 hover:text-emerald-400"

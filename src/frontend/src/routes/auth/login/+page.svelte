@@ -127,19 +127,19 @@
 </script>
 
 <div
-	class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 p-4 font-sans text-gray-100"
+	class="flex min-h-screen flex-col justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 px-6 py-12 lg:px-8"
 >
-	<div class="w-full max-w-md">
-		<div class="mb-8 text-center">
-			<a
-				href="/"
-				class="text-5xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
-			</a>
-			<h1 class="mt-2 text-2xl text-sky-300">Welcome Back!</h1>
-			<p class="text-sm text-slate-400">Login to continue your construction journey.</p>
-		</div>
+	<div class="sm:mx-auto sm:w-full sm:max-w-md">
+		<a href="/">
+			<img
+				class="mx-auto h-16 w-auto"
+				src="/images/Gefifi-Logo.png"
+				alt="GEFIFI Construction Marketplace"
+			/>
+		</a>
+		<h2 class="mt-6 text-center text-2xl leading-9 font-bold tracking-tight text-sky-300">
+			Sign in to your account
+		</h2>
 
 		<form
 			on:submit|preventDefault={handleLogin}

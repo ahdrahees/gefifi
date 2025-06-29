@@ -305,9 +305,9 @@ const apiClient = {
 		// Define Chat[] type
 		return request<any>('/chat', 'POST', data, true);
 	},
-	getChatMessages: (chatId: string): Promise<any[]> => {
-		// Define Message[] type
-		return request<any[]>(`/chat/${chatId}/messages`, 'GET', undefined, true);
+	getChatMessages: (chatId: string, since?: string): Promise<any[]> => {
+		const endpoint = since ? `/chat/${chatId}/messages?since=${since}` : `/chat/${chatId}/messages`;
+		return request<any[]>(endpoint, 'GET', undefined, true);
 	},
 	sendChatMessage: (chatId: string, data: ChatMessageData): Promise<any> => {
 		// Define Message type

@@ -6,6 +6,9 @@
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 	import ContractModal from '$lib/components/contracts/ContractModal.svelte';
+	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
+	import apiClient from '$lib/api';
 
 	// Define UserProfile, similar to other pages, ensure it matches backend structure
 	type UserProfile = {
@@ -52,6 +55,10 @@
 	let chatId: string | null = null;
 	let newMessageContent = '';
 	let isSendingMessage = false;
+
+	// Polling State
+	let pollingInterval: NodeJS.Timeout | null = null;
+	let lastMessageTimestamp: string | null = null;
 
 	// Image Upload State
 	let fileInput: HTMLInputElement;
@@ -356,10 +363,29 @@
 		}
 	}
 
+	function parseAndSanitize(content: string): string {
+		if (typeof window !== 'undefined') {
+			// Ensure this only runs on the client-side where DOMPurify has access to the DOM
+			const dirty = marked.parse(content) as string;
+			return DOMPurify.sanitize(dirty);
+		}
+		// Return plain text if not in a browser environment (SSR fallback)
+		return content;
+	}
+
+	function handleKeyPress(event: KeyboardEvent) {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault(); // Prevent default Enter behavior (new line)
+			handleSendMessage();
+		}
+		// If Shift+Enter, the textarea will handle the new line itself.
+	}
+
 	onMount(() => {
 		chatId = $page.params.chatId;
+		let unsubscribeAuth: (() => void) | null = null;
 		if (chatId) {
-			const unsubscribeAuth = authStore.subscribe(async (auth) => {
+			unsubscribeAuth = authStore.subscribe(async (auth) => {
 				// Make callback async
 				if (auth.token && auth.user && !auth.isLoading) {
 					token = auth.token;
@@ -367,19 +393,58 @@
 					// Fetch messages and chat details
 					await loadChatAndParticipantDetails(chatId!); // Load chat context first
 					await fetchMessages(chatId!); // Then messages, which will scroll on completion
-					unsubscribeAuth();
-					// TODO: Implement polling or WebSocket for real-time messages
+
+					// Start polling for new messages
+					startPolling(chatId!);
+
+					if (unsubscribeAuth) unsubscribeAuth();
 				} else if (!auth.isLoading && (!auth.token || !auth.user)) {
 					errorMessage = 'User not authenticated or details missing.';
 					isLoading = false;
-					unsubscribeAuth();
+					if (unsubscribeAuth) unsubscribeAuth();
 				}
 			});
 		} else {
 			errorMessage = 'Chat ID not found in URL.';
 			isLoading = false;
 		}
+
+		return () => {
+			if (unsubscribeAuth) {
+				unsubscribeAuth();
+			}
+			// Important: Stop polling when the component is destroyed
+			if (pollingInterval) {
+				clearInterval(pollingInterval);
+			}
+		};
 	});
+
+	function startPolling(cId: string) {
+		if (pollingInterval) clearInterval(pollingInterval); // Clear any existing interval
+
+		pollingInterval = setInterval(async () => {
+			if (!token || document.hidden) {
+				// Don't poll if the tab is not active or token is lost
+				return;
+			}
+			try {
+				const lastTimestamp = messages.length > 0 ? messages[messages.length - 1].timestamp : null;
+				if (!lastTimestamp) return; // Don't poll if there are no messages yet
+
+				const newMessages = await apiClient.getChatMessages(cId, lastTimestamp);
+
+				if (newMessages.length > 0) {
+					messages = [...messages, ...newMessages];
+					await tick();
+					scrollToBottom();
+				}
+			} catch (error) {
+				console.error('Polling error:', error);
+				// Optionally handle polling errors, e.g., stop polling after too many failures
+			}
+		}, 3000); // Poll every 3 seconds
+	}
 
 	afterUpdate(() => {
 		// This afterUpdate is now mostly for initial load or other reactive changes
@@ -675,7 +740,11 @@
 							</div>
 						{/if}
 						{#if message.content && message.content.trim()}
-							<p class="break-words whitespace-pre-wrap">{message.content}</p>
+							<div
+								class="prose prose-sm prose-headings:text-slate-200 prose-strong:text-white prose-a:text-emerald-400 hover:prose-a:text-emerald-300 prose-ul:text-slate-300 prose-ol:text-slate-300 max-w-none text-slate-100"
+							>
+								{@html parseAndSanitize(message.content)}
+							</div>
 						{/if}
 					</div>
 					<div
@@ -782,13 +851,14 @@
 				</svg>
 			</button>
 
-			<input
-				type="text"
+			<textarea
+				on:keydown={handleKeyPress}
 				bind:value={newMessageContent}
-				placeholder="Type your message..."
-				class="flex-1 rounded-lg border-slate-500/70 bg-slate-600 px-4 py-2.5 text-sm text-slate-100 transition-colors duration-150 outline-none placeholder:text-slate-400/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 sm:text-base"
+				placeholder="Type your message... (Shift + Enter for new line)"
+				rows="1"
+				class="flex-1 resize-none rounded-lg border-slate-500/70 bg-slate-600 px-4 py-2.5 text-sm text-slate-100 transition-colors duration-150 outline-none placeholder:text-slate-400/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 sm:text-base"
 				disabled={isSendingMessage || isLoading}
-			/>
+			></textarea>
 			<button
 				type="submit"
 				disabled={isUploadingImage ||
