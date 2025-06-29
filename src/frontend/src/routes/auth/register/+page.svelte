@@ -2,8 +2,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/auth';
-	import type { AuthUser } from '$lib/types';
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import { page } from '$app/stores';
 
 	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -22,26 +23,53 @@
 		{
 			value: 'customer' as const,
 			label: 'Customer',
-			description: 'I need to find professionals or source materials for a project.',
-			icon: `...` // Placeholder for customer icon SVG
+			description: 'I need to find professionals or source materials for a project.'
 		},
 		{
 			value: 'expert' as const,
 			label: 'Expert',
-			description: 'I offer professional construction services and want to find work.',
-			icon: `...` // Placeholder for expert icon SVG
+			description: 'I offer professional construction services and want to find work.'
 		},
 		{
 			value: 'supplier' as const,
 			label: 'Supplier',
-			description: 'I provide construction materials and want to connect with customers.',
-			icon: `...` // Placeholder for supplier icon SVG
+			description: 'I provide construction materials and want to connect with customers.'
 		}
 	];
 
 	function selectUserType(type: 'customer' | 'expert' | 'supplier') {
 		selectedUserType = type;
 		errorMessage = null; // Clear error when a selection is made
+	}
+
+	async function handleRegister() {
+		isLoading = true;
+		errorMessage = null;
+
+		if (!selectedUserType) {
+			errorMessage = 'Please select a user type to continue.';
+			isLoading = false;
+			return;
+		}
+		if (password !== confirmPassword) {
+			errorMessage = 'Passwords do not match.';
+			isLoading = false;
+			return;
+		}
+
+		try {
+			await authStore.register({
+				email,
+				password,
+				userType: selectedUserType,
+				profile: {} // Profile is now collected on the complete-profile page
+			});
+			goto('/dashboard');
+		} catch (error: any) {
+			errorMessage = error.message || 'An unexpected error occurred during registration.';
+		} finally {
+			isLoading = false;
+		}
 	}
 
 	async function handleGoogleCredentialResponse(response: any) {
@@ -73,40 +101,13 @@
 		}
 	}
 
-	async function handleRegister() {
-		isLoading = true;
-		errorMessage = null;
-
-		if (!selectedUserType) {
-			errorMessage = 'Please select a user type to continue.';
-			isLoading = false;
-			return;
-		}
-		if (password !== confirmPassword) {
-			errorMessage = 'Passwords do not match.';
-			isLoading = false;
-			return;
-		}
-
-		try {
-			await authStore.register({
-				email,
-				password,
-				userType: selectedUserType,
-				profile: {} // Profile is now collected on the complete-profile page
-			});
-			// The authStore subscription will handle the redirect to /dashboard
-			// which will then be intercepted for new users to go to /auth/complete-profile
-			goto('/dashboard');
-		} catch (error: any) {
-			errorMessage = error.message || 'An unexpected error occurred during registration.';
-		} finally {
-			isLoading = false;
-		}
-	}
-
+	let unsubscribeAuth: (() => void) | null = null;
 	onMount(() => {
-		const unsubscribeAuth = authStore.subscribe((state) => {
+		const initialAuthState = get(authStore);
+		if (initialAuthState.isAuthenticated && !initialAuthState.isLoading) {
+			goto('/dashboard', { replaceState: true });
+		}
+		unsubscribeAuth = authStore.subscribe((state) => {
 			if (state.isAuthenticated && !state.isLoading) {
 				goto('/dashboard', { replaceState: true });
 			}
@@ -134,7 +135,9 @@
 			console.error('Google Client ID not found or Google script not loaded.');
 		}
 
-		return unsubscribeAuth;
+		return () => {
+			if (unsubscribeAuth) unsubscribeAuth();
+		};
 	});
 
 	let bgstyle =
@@ -169,7 +172,6 @@
 				</div>
 			{/if}
 
-			<!-- Step 1: User Type Selection -->
 			<div class="mb-6 space-y-4">
 				<h3 class="text-center font-semibold text-slate-300">I am a...</h3>
 				<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -181,7 +183,6 @@
 								? 'border-emerald-500 bg-emerald-500/20 shadow-lg'
 								: 'border-slate-600 bg-slate-700/50 hover:border-slate-500 hover:bg-slate-700'}"
 						>
-							<!-- Placeholder for icon -->
 							<span class="text-lg font-bold text-slate-100">{type.label}</span>
 							<span class="mt-1 text-xs text-slate-400">{type.description}</span>
 						</button>
@@ -189,8 +190,16 @@
 				</div>
 			</div>
 
-			<!-- Step 2: Account Details Form (conditionally rendered) -->
-			{#if selectedUserType}
+			<!-- This div will now always exist but will be hidden until a user type is selected -->
+			<div class:hidden={!selectedUserType} class="mt-6">
+				<div id="google-register-button" class="flex justify-center" data-text="signup_with"></div>
+
+				<div
+					class="my-6 flex items-center before:flex-1 before:border-t before:border-slate-600 after:flex-1 after:border-t after:border-slate-600"
+				>
+					<p class="mx-4 text-center text-sm font-semibold">OR</p>
+				</div>
+
 				<form class="space-y-6" on:submit|preventDefault={handleRegister}>
 					<div>
 						<label for="email" class="block text-sm leading-6 font-medium text-slate-300"
@@ -241,7 +250,8 @@
 							/>
 						</div>
 					</div>
-					<div>
+
+					<div class="pt-4">
 						<button
 							type="submit"
 							disabled={isLoading}
@@ -255,13 +265,7 @@
 						</button>
 					</div>
 				</form>
-				<div
-					class="my-6 flex items-center before:flex-1 before:border-t before:border-slate-600 after:flex-1 after:border-t after:border-slate-600"
-				>
-					<p class="mx-4 text-center text-sm font-semibold">OR</p>
-				</div>
-				<div id="google-register-button" class="flex justify-center" data-text="signup_with"></div>
-			{/if}
+			</div>
 		</div>
 	</div>
 </div>
