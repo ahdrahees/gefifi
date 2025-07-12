@@ -16,7 +16,9 @@ let firestore: Firestore | null = null;
 function getFirestoreClient(): Firestore {
 	if (!firestore) {
 		console.log('[Firestore] Client not initialized. Creating new instance...');
-		firestore = new Firestore();
+		firestore = new Firestore({
+			projectId: process.env.GCP_PROJECT_ID,
+		});
 		console.log('[Firestore] Client instance created successfully.');
 	}
 	return firestore;

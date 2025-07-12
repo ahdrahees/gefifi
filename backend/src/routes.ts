@@ -80,6 +80,44 @@ const validateProfileData = (
 	return { valid: true, validatedProfile };
 };
 
+// --- Helper: Send System Message to a Chat ---
+async function sendSystemMessage(
+	participant1Id: string,
+	participant2Id: string,
+	messageContent: string
+) {
+	try {
+		const allChats = await chatsDB.getAll();
+		const relevantChat = allChats.find(
+			(chat: Chat) =>
+				chat.participants.length === 2 &&
+				chat.participants.includes(participant1Id) &&
+				chat.participants.includes(participant2Id)
+		);
+
+		if (relevantChat) {
+			const now = new Date().toISOString();
+			const messageId = crypto.randomUUID();
+			const notificationMessage: Message = {
+				id: messageId,
+				chatId: relevantChat.id,
+				senderId: 'system',
+				content: `[System] ${messageContent}`,
+				timestamp: now
+			};
+			await messagesDB.create(notificationMessage);
+			await chatsDB.update(relevantChat.id, { updatedAt: now });
+			console.log(`[System Message] Sent notification to chat ${relevantChat.id}`);
+		} else {
+			console.warn(
+				`[System Message] Could not find a chat between ${participant1Id} and ${participant2Id} to send notification.`
+			);
+		}
+	} catch (error) {
+		console.error('[System Message] Failed to send chat notification:', error);
+	}
+}
+
 // --- Authentication Routes ---
 router.post('/auth/register', async (req: Request, res: Response) => {
 	try {
@@ -1151,24 +1189,9 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		const now = new Date().toISOString();
 		const contractId = crypto.randomUUID();
 
-		let initialCustomerSigned = false;
-		let initialExpertSupplierSigned = false;
-		let customerSigTimestamp: string | undefined = undefined;
-		let expertSigTimestamp: string | undefined = undefined;
-		let initialStatus: Contract['status'] = 'draft';
-
-		if (initiator.id === customerId) {
-			initialCustomerSigned = true;
-			customerSigTimestamp = now;
-			initialStatus = 'awaiting_signatures';
-		} else if (initiator.id === expertSupplierId) {
-			initialExpertSupplierSigned = true;
-			expertSigTimestamp = now;
-			initialStatus = 'awaiting_signatures';
-		}
-		// If, hypothetically, initiator could be both (e.g. self-contract which isn't the model here)
-		// and both flags became true, status should be 'signed'.
-		// For current model, one party signing on creation moves it to 'awaiting_signatures'.
+		const initialCustomerSigned = false;
+		const initialExpertSupplierSigned = false;
+		const initialStatus: Contract['status'] = 'draft';
 
 		const newContract: Partial<Contract> = {
 			id: contractId,
@@ -1188,13 +1211,6 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		if (workRequestId) newContract.workRequestId = workRequestId;
 		if (materialRequestId) newContract.materialRequestId = materialRequestId;
 
-		if (customerSigTimestamp) {
-			newContract.customerSignatureTimestamp = customerSigTimestamp;
-		}
-		if (expertSigTimestamp) {
-			newContract.expertSupplierSignatureTimestamp = expertSigTimestamp;
-		}
-
 		console.log(
 			'[POST /api/contracts] Attempting to create contract with data:',
 			JSON.stringify(newContract, null, 2)
@@ -1203,6 +1219,16 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		console.log(
 			'[POST /api/contracts] Successfully created contract in DB, ID:',
 			createdContract.id
+		);
+
+		// Send a system message to the chat
+		await sendSystemMessage(
+			createdContract.customerId,
+			createdContract.expertSupplierId,
+			`A new contract draft (ID: ${createdContract.id.substring(
+				0,
+				8
+			)}) has been created and is ready for review.`
 		);
 
 		// Optionally, update the status of the original request
@@ -1284,10 +1310,18 @@ router.put(
 			if (signedByCurrentUser) {
 				const customerHasSigned = updates.customerSigned || contract.customerSigned;
 				const providerHasSigned = updates.expertSupplierSigned || contract.expertSupplierSigned;
+				const signerRole = user.userType.charAt(0).toUpperCase() + user.userType.slice(1);
 
 				if (customerHasSigned && providerHasSigned) {
 					updates.status = 'signed';
 					const updatedContract = await contractsDB.update(contractId, updates);
+
+					// Send system message that the contract is fully signed
+					await sendSystemMessage(
+						contract.customerId,
+						contract.expertSupplierId,
+						`The contract has been fully signed by the ${signerRole} and is now active.`
+					);
 
 					// This check is crucial to prevent trying to process a null object
 					if (!updatedContract) {
@@ -1351,6 +1385,14 @@ router.put(
 				} else {
 					updates.status = 'awaiting_signatures';
 					const updatedContract = await contractsDB.update(contractId, updates);
+
+					// Send system message that one party has signed
+					await sendSystemMessage(
+						contract.customerId,
+						contract.expertSupplierId,
+						`The ${signerRole} has signed the contract. Awaiting other party's signature.`
+					);
+
 					res.status(200).json(updatedContract);
 				}
 			} else {
@@ -1421,41 +1463,11 @@ router.put(
 			}
 
 			// --- Chat Notification Logic ---
-			try {
-				const allChats = await chatsDB.getAll();
-				// Find a chat that exclusively contains these two participants.
-				const relevantChat = allChats.find(
-					(chat: Chat) =>
-						chat.participants.length === 2 &&
-						chat.participants.includes(contract.customerId) &&
-						chat.participants.includes(contract.expertSupplierId)
-				);
-
-				if (relevantChat) {
-					const messageId = crypto.randomUUID();
-					const notificationMessage: Message = {
-						id: messageId,
-						chatId: relevantChat.id,
-						senderId: 'system', // Indicates a system-generated message
-						content: `[System] The project status was updated to: ${newStatus.replace(/_/g, ' ')}.`,
-						timestamp: now
-					};
-					await messagesDB.create(notificationMessage);
-					await chatsDB.update(relevantChat.id, { updatedAt: now });
-					console.log(
-						`[Status Update] Sent notification to chat ${relevantChat.id} for contract ${contract.id}`
-					);
-				} else {
-					console.warn(
-						`[Status Update] Could not find a chat between ${contract.customerId} and ${contract.expertSupplierId} to send notification for contract ${contract.id}`
-					);
-				}
-			} catch (chatError) {
-				console.error(
-					`[Status Update] Failed to send chat notification for contract ${contract.id}:`,
-					chatError
-				);
-			}
+			await sendSystemMessage(
+				updatedContract.customerId,
+				updatedContract.expertSupplierId,
+				`The contract status was updated to: ${newStatus.replace(/_/g, ' ')}.`
+			);
 
 			res.status(200).json(updatedContract);
 		} catch (error: unknown) {
@@ -1603,7 +1615,7 @@ router.put(
 			const now = new Date().toISOString();
 			const historyEntry = { status: newStatus, updatedAt: now, updatedBy: user.id };
 
-			let updatePayload: Partial<Project> = { updatedAt: now };
+			const updatePayload: Partial<Project> = { updatedAt: now };
 
 			if (component === 'work' && project.workComponent) {
 				project.workComponent.status = newStatus as any; // Cast for now
@@ -1618,6 +1630,22 @@ router.put(
 			}
 
 			const updatedProject = await projectsDB.update(projectId, updatePayload);
+
+			// --- Chat Notification Logic ---
+			if (updatedProject) {
+				const recipientId =
+					component === 'work'
+						? updatedProject.workComponent?.expertId
+						: updatedProject.materialComponent?.supplierId;
+				if (recipientId) {
+					await sendSystemMessage(
+						updatedProject.customerId,
+						recipientId,
+						`The project's ${component} status was updated to: ${newStatus}.`
+					);
+				}
+			}
+
 			res.status(200).json(updatedProject);
 		} catch (error: unknown) {
 			console.error('Error updating project status:', error);

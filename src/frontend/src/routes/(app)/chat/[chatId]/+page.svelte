@@ -660,6 +660,13 @@
 			</div>
 		{:else}
 			{#each messages as message (message.id)}
+				{#if message.senderId === 'system'}
+					<div class="my-2 flex items-center justify-center space-x-2">
+						<div class="h-px flex-grow bg-slate-600/50"></div>
+						<span class="flex-shrink text-xs font-medium text-slate-400">{@html parseAndSanitize(message.content)}</span>
+						<div class="h-px flex-grow bg-slate-600/50"></div>
+					</div>
+				{:else}
 				<div
 					data-message-id={message.id}
 					class="flex flex-col space-y-0.5 {message.senderId === currentUser?.id
@@ -711,6 +718,7 @@
 						<span>{formatDate(message.timestamp)}</span>
 					</div>
 				</div>
+				{/if}
 			{/each}
 		{/if}
 	</div>
