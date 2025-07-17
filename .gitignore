@@ -29,11 +29,7 @@ vite.config.ts.timestamp-*
 /data/*
 
 # Notes
-Notes-for-me.md
-project-structure-prompt.md
-project-structure-update.md
-project-structure.md
-prompomt.md
+/z-notes
 
 # GCP credentials
 
@@ -41,3 +37,5 @@ prompomt.md
 /backend/uploads/*
 
 /backend/gcp-credentials.json
+
+firestore-migration
