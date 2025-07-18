@@ -27,7 +27,7 @@ const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
 const materialRequestsDB = new FirestoreCollection<MaterialRequest>('materialRequests');
 const projectsDB = new FirestoreCollection<Project>('projects');
 const chatsDB = new FirestoreCollection<Chat>('chats');
-const messagesDB = new FirestoreCollection<Message>('messages');
+
 const contractsDB = new FirestoreCollection<Contract>('contracts');
 
 const router = Router();
@@ -100,12 +100,11 @@ async function sendSystemMessage(
 			const messageId = crypto.randomUUID();
 			const notificationMessage: Message = {
 				id: messageId,
-				chatId: relevantChat.id,
 				senderId: 'system',
 				content: `[System] ${messageContent}`,
 				timestamp: now
 			};
-			await messagesDB.create(notificationMessage);
+			await chatsDB.createInSubcollection(relevantChat.id, 'messages', notificationMessage);
 			await chatsDB.update(relevantChat.id, { updatedAt: now });
 			console.log(`[System Message] Sent notification to chat ${relevantChat.id}`);
 		} else {
@@ -820,17 +819,18 @@ router.post(
 				existingChat = await chatsDB.create(newChat as Chat);
 			}
 
-			const messageId = crypto.randomUUID();
-			const newMessage: Message = {
-				id: messageId,
-				chatId: existingChat.id,
-				senderId: sender.id,
-				content: finalMessageContent,
-				timestamp: now
-			};
-			await messagesDB.create(newMessage);
-			existingChat.updatedAt = now;
-			await chatsDB.update(existingChat.id, { updatedAt: now });
+			if (existingChat && sender && targetUser) {
+				const messageId = crypto.randomUUID();
+				const newMessage: Message = {
+					id: messageId,
+					senderId: sender.id,
+					content: finalMessageContent,
+					timestamp: now
+				};
+				await chatsDB.createInSubcollection(existingChat.id, 'messages', newMessage);
+				existingChat.updatedAt = now;
+				await chatsDB.update(existingChat.id, { updatedAt: now });
+			}
 
 			if (workRequest) {
 				if (sender.userType === 'expert') {
@@ -864,7 +864,7 @@ router.post(
 			res.status(201).json({
 				message: 'Interest expressed successfully. Chat initiated/updated.',
 				chatId: existingChat.id,
-				initialMessage: newMessage
+				initialMessage: existingChat ? 'Message sent successfully' : 'Chat created successfully'
 			});
 		} catch (error: unknown) {
 			console.error('Error expressing interest:', error);
@@ -946,18 +946,43 @@ router.post('/chat', authenticateToken, async (req: AuthenticatedRequest, res: R
 			const messageId = crypto.randomUUID();
 			const initialMessage: Message = {
 				id: messageId,
-				chatId: createdChat.id,
 				senderId: user.id,
 				content: initialMessageContent,
 				timestamp: now
 			};
-			await messagesDB.create(initialMessage);
+			await chatsDB.createInSubcollection(createdChat.id, 'messages', initialMessage);
 		}
 		res.status(201).json(createdChat);
 	} catch (error: unknown) {
 		console.error('Error creating chat:', error);
 		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
 		res.status(500).json({ message: 'Failed to create chat.', error: errorMessage });
+	}
+});
+
+// --- GET Chat by ID ---
+router.get('/chat/:chatId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+	try {
+		const user = req.user as JwtPayload;
+		const chatId = req.params.chatId;
+
+		const chat = await chatsDB.findById(chatId);
+
+		if (!chat) {
+			return res.status(404).json({ message: 'Chat not found.' });
+		}
+
+		if (!chat.participants.includes(user.id)) {
+			return res
+				.status(403)
+				.json({ message: 'Forbidden. You are not a participant of this chat.' });
+		}
+
+		res.status(200).json(chat);
+	} catch (error: unknown) {
+		console.error(`Error fetching chat ${req.params.chatId}:`, error);
+		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+		res.status(500).json({ message: 'Failed to fetch chat details.', error: errorMessage });
 	}
 });
 
@@ -1006,13 +1031,12 @@ router.post(
 			const messageId = crypto.randomUUID();
 			const newMessage: Message = {
 				id: messageId,
-				chatId: chatId,
 				senderId: user.id,
 				content: content || '', // Use provided content, or empty string if only images are sent
 				images: images && hasValidImages ? images : [], // Use validated images, or an empty array
 				timestamp: now
 			};
-			const createdMessage = await messagesDB.create(newMessage);
+			const createdMessage = await chatsDB.createInSubcollection(chatId, 'messages', newMessage);
 			await chatsDB.update(chatId, { updatedAt: now });
 			res.status(201).json(createdMessage);
 		} catch (error: unknown) {
@@ -1039,14 +1063,36 @@ router.get(
 					.status(403)
 					.json({ message: 'Forbidden. You are not a participant of this chat.' });
 			}
-			const allMessages = await messagesDB.getAll();
-			const chatMessages = allMessages
-				.filter((msg: Message) => msg.chatId === chatId)
-				.sort(
+
+			// Get messages from subcollection with pagination (last 50 messages)
+			const limit = parseInt(req.query.limit as string) || 50;
+			const offset = parseInt(req.query.offset as string) || 0;
+
+			try {
+				const allMessages = await chatsDB.getAllFromSubcollection<Message>(chatId, 'messages');
+				const sortedMessages = allMessages.sort(
 					(a: Message, b: Message) =>
 						new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
 				);
-			res.status(200).json(chatMessages);
+
+				// Apply pagination
+				const paginatedMessages = sortedMessages.slice(offset, offset + limit);
+
+				res.status(200).json({
+					messages: paginatedMessages,
+					totalCount: sortedMessages.length,
+					hasMore: offset + limit < sortedMessages.length
+				});
+			} catch (subcollectionError: unknown) {
+				// Handle case where messages subcollection doesn't exist yet
+				console.log(`Messages subcollection not found for chat ${chatId}, returning empty array`);
+				console.log('Subcollection error:', subcollectionError);
+				res.status(200).json({
+					messages: [],
+					totalCount: 0,
+					hasMore: false
+				});
+			}
 		} catch (error: unknown) {
 			console.error(`Error fetching messages for chat ${req.params.chatId}:`, error);
 			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
@@ -1618,11 +1664,23 @@ router.put(
 			const updatePayload: Partial<Project> = { updatedAt: now };
 
 			if (component === 'work' && project.workComponent) {
-				project.workComponent.status = newStatus as any; // Cast for now
+				project.workComponent.status = newStatus as
+					| 'Not Started'
+					| 'In Progress'
+					| 'Awaiting Review'
+					| 'Completed'
+					| 'Disputed'
+					| 'Cancelled';
 				project.workComponent.statusHistory.push(historyEntry);
 				updatePayload.workComponent = project.workComponent;
 			} else if (component === 'material' && project.materialComponent) {
-				project.materialComponent.status = newStatus as any; // Cast for now
+				project.materialComponent.status = newStatus as
+					| 'Awaiting Dispatch'
+					| 'Dispatched'
+					| 'Delivered'
+					| 'Completed'
+					| 'Issue Reported'
+					| 'Cancelled';
 				project.materialComponent.statusHistory.push(historyEntry);
 				updatePayload.materialComponent = project.materialComponent;
 			} else {

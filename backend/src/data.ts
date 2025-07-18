@@ -1,6 +1,6 @@
 // gefifi-2/backend/src/data.ts
 import { Firestore } from '@google-cloud/firestore';
-import type { User, WorkRequest, Chat, Message, Contract } from './interfaces';
+import type { User, WorkRequest, Chat, Contract, MaterialRequest } from './interfaces';
 
 // --- Lazy Initializer for Firestore Client ---
 
@@ -17,7 +17,7 @@ function getFirestoreClient(): Firestore {
 	if (!firestore) {
 		console.log('[Firestore] Client not initialized. Creating new instance...');
 		firestore = new Firestore({
-			projectId: process.env.GCP_PROJECT_ID,
+			projectId: process.env.GCP_PROJECT_ID
 		});
 		console.log('[Firestore] Client instance created successfully.');
 	}
@@ -28,6 +28,7 @@ function getFirestoreClient(): Firestore {
 const COLLECTIONS = {
 	USERS: 'users',
 	WORK_REQUESTS: 'workRequests',
+	MATERIAL_REQUESTS: 'materialRequests',
 	CHATS: 'chats',
 	MESSAGES: 'messages',
 	CONTRACTS: 'contracts'
@@ -55,6 +56,63 @@ export class FirestoreCollection<T extends Identifiable> {
 	 */
 	private get collection() {
 		return getFirestoreClient().collection(this.collectionName);
+	}
+
+	/**
+	 * Creates a new document in a subcollection.
+	 * @param parentDocId The ID of the parent document
+	 * @param subcollectionName The name of the subcollection
+	 * @param item The data to create. Must include a unique 'id' property.
+	 * @returns A promise that resolves to the created item.
+	 */
+	public async createInSubcollection<S extends Identifiable>(
+		parentDocId: string,
+		subcollectionName: string,
+		item: S
+	): Promise<S> {
+		if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
+			throw new Error('Item must have a non-empty string id to be created.');
+		}
+		const docRef = this.collection.doc(parentDocId).collection(subcollectionName).doc(item.id);
+		await docRef.set(item);
+		return item;
+	}
+
+	/**
+	 * Retrieves all documents from a subcollection.
+	 * @param parentDocId The ID of the parent document
+	 * @param subcollectionName The name of the subcollection
+	 * @returns A promise that resolves to an array of all documents in the subcollection.
+	 */
+	public async getAllFromSubcollection<S extends Identifiable>(
+		parentDocId: string,
+		subcollectionName: string
+	): Promise<S[]> {
+		const snapshot = await this.collection.doc(parentDocId).collection(subcollectionName).get();
+		if (snapshot.empty) {
+			return [];
+		}
+		return snapshot.docs.map((doc) => doc.data() as S);
+	}
+
+	/**
+	 * Finds a document by its unique ID in a subcollection.
+	 * @param parentDocId The ID of the parent document
+	 * @param subcollectionName The name of the subcollection
+	 * @param id The ID of the document to find.
+	 * @returns A promise that resolves to the document data, or undefined if not found.
+	 */
+	public async findByIdInSubcollection<S extends Identifiable>(
+		parentDocId: string,
+		subcollectionName: string,
+		id: string
+	): Promise<S | undefined> {
+		const docRef = this.collection.doc(parentDocId).collection(subcollectionName).doc(id);
+		const doc = await docRef.get();
+		if (!doc.exists) {
+			return undefined;
+		}
+		return doc.data() as S;
 	}
 
 	/**
@@ -173,8 +231,11 @@ export class FirestoreCollection<T extends Identifiable> {
 // This provides type safety when using these handlers throughout the application.
 export const usersDB = new FirestoreCollection<User>(COLLECTIONS.USERS);
 export const workRequestsDB = new FirestoreCollection<WorkRequest>(COLLECTIONS.WORK_REQUESTS);
+export const materialRequestsDB = new FirestoreCollection<MaterialRequest>(
+	COLLECTIONS.MATERIAL_REQUESTS
+);
 export const chatsDB = new FirestoreCollection<Chat>(COLLECTIONS.CHATS);
-export const messagesDB = new FirestoreCollection<Message>(COLLECTIONS.MESSAGES);
+// messagesDB removed - messages are now stored in subcollections under chats
 export const contractsDB = new FirestoreCollection<Contract>(COLLECTIONS.CONTRACTS);
 
 console.log('[Firestore] Data handlers configured with lazy initialization.');

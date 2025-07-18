@@ -83,7 +83,6 @@ export interface Chat {
 
 export interface Message extends Identifiable {
 	// id: string; // From Identifiable
-	chatId: string; // ID of the chat this message belongs to
 	senderId: string; // User ID of the sender
 	content: string; // Text content of the message
 	images?: string[]; // Array of file paths for images sent in chat

@@ -10,6 +10,7 @@ node_modules
 .dfx
 .zed
 .cursor
+backend/dist
 
 # OS
 .DS_Store

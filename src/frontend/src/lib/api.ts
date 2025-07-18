@@ -2,6 +2,7 @@ import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { authStore, type AuthUser } from './stores/auth'; // Assuming AuthUser is exported from the auth store
 import { API_BASE_URL } from './config';
+import type { Chat, Message, MessagesResponse, UserInterestResponse } from './types';
 
 // Access VITE_API_URL (set in .env file at the root of the SvelteKit project, e.g., gefifi-2/frontend/.env or gefifi-2/.env)
 
@@ -290,28 +291,22 @@ const apiClient = {
 		// This should be an authenticated request as only logged-in users should be fetching profiles.
 		return request<AuthUser>(`/users/${userId}`, 'GET', undefined, true);
 	},
-	sendInterest: (
-		data: UserInterestData
-	): Promise<{ chatId: string; initialMessage: any; message?: string }> => {
+	sendInterest: (data: UserInterestData): Promise<UserInterestResponse> => {
 		return request('/users/interest', 'POST', data, true);
 	},
 
 	// --- Chat ---
-	getUserChats: (): Promise<any[]> => {
-		// Define Chat[] type
-		return request<any[]>('/chat', 'GET', undefined, true);
+	getUserChats: (): Promise<Chat[]> => {
+		return request<Chat[]>('/chat', 'GET', undefined, true);
 	},
-	createChat: (data: ChatData): Promise<any> => {
-		// Define Chat[] type
-		return request<any>('/chat', 'POST', data, true);
+	createChat: (data: ChatData): Promise<Chat> => {
+		return request<Chat>('/chat', 'POST', data, true);
 	},
-	getChatMessages: (chatId: string): Promise<any[]> => {
-		// Define Message[] type
-		return request<any[]>(`/chat/${chatId}/messages`, 'GET', undefined, true);
+	getChatMessages: (chatId: string): Promise<MessagesResponse> => {
+		return request<MessagesResponse>(`/chat/${chatId}/messages`, 'GET', undefined, true);
 	},
-	sendChatMessage: (chatId: string, data: ChatMessageData): Promise<any> => {
-		// Define Message type
-		return request<any>(`/chat/${chatId}/messages`, 'POST', data, true);
+	sendChatMessage: (chatId: string, data: ChatMessageData): Promise<Message> => {
+		return request<Message>(`/chat/${chatId}/messages`, 'POST', data, true);
 	},
 
 	// --- Contracts ---
