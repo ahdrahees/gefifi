@@ -88,7 +88,7 @@ app.post('/api/upload', upload.single('file'), async (req: Request, res: Respons
 
 // --- Error Handling Middleware (Basic) ---
 // This should be one of the last middleware functions added.
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 	console.error('Global error handler:', err.stack);
 	// If the error is from Multer (e.g., file too large)
 	if (err instanceof multer.MulterError) {

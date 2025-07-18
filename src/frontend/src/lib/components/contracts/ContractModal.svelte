@@ -12,6 +12,7 @@
 	const dispatch = createEventDispatcher();
 
 	function closeModal() {
+		show = false;
 		dispatch('close');
 	}
 

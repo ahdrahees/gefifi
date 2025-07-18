@@ -114,11 +114,28 @@ export type Chat = {
  */
 export type Message = {
 	id: string;
-	chatId: string;
 	senderId: string;
 	content: string;
 	images?: string[];
 	timestamp: string;
+};
+
+/**
+ * Response type for paginated messages API
+ */
+export type MessagesResponse = {
+	messages: Message[];
+	totalCount: number;
+	hasMore: boolean;
+};
+
+/**
+ * Response type for user interest API
+ */
+export type UserInterestResponse = {
+	chatId: string;
+	initialMessage: string;
+	message?: string;
 };
 
 // --- Contract and Project Types ---
