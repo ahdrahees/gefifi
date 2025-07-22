@@ -20,6 +20,8 @@ import {
 } from './auth';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
+import { getSignedAudioUrl } from './file-storage';
+import admin from 'firebase-admin';
 
 // Initialize databases
 const usersDB = new FirestoreCollection<User>('users');
@@ -357,6 +359,36 @@ router.post('/auth/google', async (req: Request, res: Response) => {
 		}
 	}
 });
+
+// --- Firebase Token Exchange Endpoint ---
+router.post(
+	'/auth/firebase-token',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+
+			if (!user || !user.id) {
+				return res.status(401).json({ message: 'Invalid user authentication.' });
+			}
+
+			// Generate a Firebase custom token for the authenticated user
+			const firebaseToken = await admin.auth().createCustomToken(user.id, {
+				userType: user.userType,
+				email: user.email
+			});
+
+			res.status(200).json({ firebaseToken });
+		} catch (error: unknown) {
+			console.error('Firebase token generation error:', error);
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
+			res.status(500).json({
+				message: 'Failed to generate Firebase token.',
+				error: errorMessage
+			});
+		}
+	}
+);
 
 // --- Work Request Endpoints ---
 router.get('/work-requests', async (req: Request, res: Response) => {
@@ -993,19 +1025,41 @@ router.post(
 		try {
 			const user = req.user as JwtPayload;
 			const chatId = req.params.chatId;
-			// Destructure content and optionally images from request body
-			const { content, images }: { content?: string; images?: string[] } = req.body;
+			// Destructure content, images, and voice message data from request body
+			const {
+				content,
+				images,
+				audioType,
+				audioUrl,
+				audioDuration
+			}: {
+				content?: string;
+				images?: string[];
+				audioType?: 'voice';
+				audioUrl?: string;
+				audioDuration?: number;
+			} = req.body;
 
-			// Validate that either content or images are provided and correctly formatted
+			// Validate that either content, images, or voice message are provided and correctly formatted
 			const hasValidContent = content && typeof content === 'string' && content.trim() !== '';
 			const hasValidImages =
 				images &&
 				Array.isArray(images) &&
 				images.length > 0 &&
 				images.every((img: string) => typeof img === 'string');
+			const hasValidVoiceMessage =
+				audioType === 'voice' &&
+				audioUrl &&
+				typeof audioUrl === 'string' &&
+				audioUrl.trim() !== '' &&
+				audioDuration &&
+				typeof audioDuration === 'number' &&
+				audioDuration > 0;
 
-			if (!hasValidContent && !hasValidImages) {
-				return res.status(400).json({ message: 'Message content or images are required.' });
+			if (!hasValidContent && !hasValidImages && !hasValidVoiceMessage) {
+				return res
+					.status(400)
+					.json({ message: 'Message content, images, or voice message are required.' });
 			}
 			// If images are provided, but not in the correct format (e.g. not an array of strings)
 			if (images && Array.isArray(images) && images.length > 0 && !hasValidImages) {
@@ -1032,9 +1086,15 @@ router.post(
 			const newMessage: Message = {
 				id: messageId,
 				senderId: user.id,
-				content: content || '', // Use provided content, or empty string if only images are sent
+				content: content || '', // Use provided content, or empty string if only images/voice are sent
 				images: images && hasValidImages ? images : [], // Use validated images, or an empty array
-				timestamp: now
+				timestamp: now,
+				// Add voice message fields if present
+				...(hasValidVoiceMessage && {
+					audioType: audioType,
+					audioUrl: audioUrl,
+					audioDuration: audioDuration
+				})
 			};
 			const createdMessage = await chatsDB.createInSubcollection(chatId, 'messages', newMessage);
 			await chatsDB.update(chatId, { updatedAt: now });
@@ -1078,8 +1138,27 @@ router.get(
 				// Apply pagination
 				const paginatedMessages = sortedMessages.slice(offset, offset + limit);
 
+				// Generate signed URLs for voice messages
+				const messagesWithSignedUrls = await Promise.all(
+					paginatedMessages.map(async (message) => {
+						if (message.audioType === 'voice' && message.audioUrl) {
+							try {
+								const signedUrl = await getSignedAudioUrl(message.audioUrl, 15);
+								return {
+									...message,
+									signedAudioUrl: signedUrl
+								};
+							} catch (error) {
+								console.error(`Failed to generate signed URL for message ${message.id}:`, error);
+								return message; // Return message without signed URL if generation fails
+							}
+						}
+						return message;
+					})
+				);
+
 				res.status(200).json({
-					messages: paginatedMessages,
+					messages: messagesWithSignedUrls,
 					totalCount: sortedMessages.length,
 					hasMore: offset + limit < sortedMessages.length
 				});

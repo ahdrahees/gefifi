@@ -87,6 +87,10 @@ export interface Message extends Identifiable {
 	content: string; // Text content of the message
 	images?: string[]; // Array of file paths for images sent in chat
 	timestamp: string; // ISO 8601 date string (when message was sent)
+	// Voice message support
+	audioType?: 'voice'; // Type of audio message
+	audioUrl?: string; // Private GCS path for audio file
+	audioDuration?: number; // Duration in seconds
 	// type?: 'text' | 'image' | 'file' | 'system'; // System messages for contract creation, etc.
 	// readBy?: string[]; // Array of User IDs who have read the message
 }

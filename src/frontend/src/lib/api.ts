@@ -295,6 +295,12 @@ const apiClient = {
 		return request('/users/interest', 'POST', data, true);
 	},
 
+	// --- Auth ---
+	getFirebaseToken: (): Promise<{ firebaseToken: string }> => {
+		// This endpoint requires the user's session JWT, which is sent automatically by the request helper.
+		return request('/auth/firebase-token', 'POST', undefined, true);
+	},
+
 	// --- Chat ---
 	getUserChats: (): Promise<Chat[]> => {
 		return request<Chat[]>('/chat', 'GET', undefined, true);
