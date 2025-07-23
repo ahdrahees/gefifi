@@ -1,7 +1,9 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
-// Initialize Firebase Admin SDK
+// Initialize Firebase Admin SDK.
+// It will automatically use the correct credentials in a deployed environment.
+// For the emulator, we rely on the GOOGLE_APPLICATION_CREDENTIALS env var.
 admin.initializeApp();
 
 // Get Firestore and Storage instances
@@ -11,17 +13,19 @@ const storage = admin.storage();
 // Interface for the function request data
 interface SignedUrlRequest {
 	path: string;
-	chatId?: string;
+	chatId?: string; // Optional chatId, can be extracted from path
 }
 
 /**
- * Cloud Function to generate signed URLs for audio files.
- * This is a callable function, invoked directly from the frontend client SDK.
+ * A callable Cloud Function to generate time-limited signed URLs for private audio files.
+ * This function ensures that only authenticated users who are participants in a specific
+ * chat can access the audio messages for that chat.
  */
 export const getSignedAudioUrl = functions
-	.region('us-central1')
+	.region('asia-south1') // Specify a region for consistency
 	.https.onCall(async (data: SignedUrlRequest, context) => {
-		// 1. Check authentication
+		// 1. --- Authentication Check ---
+		// Ensure the user is authenticated via Firebase Auth.
 		if (!context.auth) {
 			throw new functions.https.HttpsError(
 				'unauthenticated',
@@ -30,34 +34,32 @@ export const getSignedAudioUrl = functions
 		}
 
 		const userId = context.auth.uid;
-		const { path, chatId } = data;
+		const { path } = data;
 
-		// 2. Validate input data
-		if (!path || typeof path !== 'string') {
+		// 2. --- Input Validation ---
+		// Ensure the file path is provided and is a non-empty string.
+		if (!path || typeof path !== 'string' || path.trim() === '') {
 			throw new functions.https.HttpsError(
 				'invalid-argument',
-				'File path is required and must be a string.'
+				'The "path" argument is required and must be a non-empty string.'
 			);
 		}
 
-		// Extract chatId from path if not provided
-		let extractedChatId = chatId;
-		if (!extractedChatId) {
-			const pathParts = path.split('/');
-			if (pathParts.length >= 2) {
-				extractedChatId = pathParts[0];
-			}
-		}
-
-		if (!extractedChatId) {
+		// The path should be in the format 'chatId/messageId.extension'.
+		// We extract the chatId from the path for security verification.
+		const pathParts = path.split('/');
+		if (pathParts.length < 2) {
 			throw new functions.https.HttpsError(
 				'invalid-argument',
-				'Chat ID could not be determined from the file path.'
+				'The "path" must be in the format "chatId/fileName".'
 			);
 		}
+		const extractedChatId = pathParts[0];
 
 		try {
-			// 3. Verify user is a participant in the chat
+			// 3. --- Authorization Check ---
+			// Verify that the authenticated user is a participant in the requested chat.
+			// This is the critical security step.
 			const chatDoc = await db.collection('chats').doc(extractedChatId).get();
 
 			if (!chatDoc.exists) {
@@ -66,54 +68,71 @@ export const getSignedAudioUrl = functions
 
 			const chatData = chatDoc.data();
 			if (!chatData?.participants?.includes(userId)) {
+				// If the user is not in the chat's participant list, deny access.
 				throw new functions.https.HttpsError(
 					'permission-denied',
-					'User is not a participant in this chat.'
+					'You are not a participant in this chat.'
 				);
 			}
 
-			// 4. Generate signed URL
-			const bucketName = process.env.GCS_AUDIO_BUCKET_NAME || 'gefifi-audio-messages';
+			// 4. --- Signed URL Generation ---
+			// Get the bucket name from the environment configuration.
+			// In production, this uses the config set via `firebase functions:config:set`.
+			// In the emulator, it falls back to the .env file (`process.env`).
+			const bucketName =
+				functions.config().gefifi?.gcs_audio_bucket_name || process.env.GCS_AUDIO_BUCKET_NAME;
+
+			if (!bucketName) {
+				functions.logger.error(
+					"GCS_AUDIO_BUCKET_NAME is not configured. Deploy with 'firebase functions:config:set gefifi.gcs_audio_bucket_name=...'"
+				);
+				throw new functions.https.HttpsError('internal', 'Server configuration error.');
+			}
+
 			const bucket = storage.bucket(bucketName);
 			const file = bucket.file(path);
 
+			// Check if the file actually exists in the bucket before generating a URL.
 			const [exists] = await file.exists();
 			if (!exists) {
-				throw new functions.https.HttpsError('not-found', 'Audio file not found.');
+				throw new functions.https.HttpsError(
+					'not-found',
+					'The requested audio file does not exist.'
+				);
 			}
 
+			// Generate a signed URL that is valid for 15 minutes.
 			const expirationTime = Date.now() + 15 * 60 * 1000; // 15 minutes
 			const [url] = await file.getSignedUrl({
 				action: 'read',
 				expires: expirationTime
 			});
 
-			functions.logger.info('Generated signed URL for audio file', {
-				userId,
-				chatId: extractedChatId,
-				path,
-				expiresAt: new Date(expirationTime).toISOString()
-			});
+			// Log the successful generation for debugging purposes.
+			functions.logger.info(`Generated signed URL for user ${userId} for path ${path}`);
 
+			// Return the signed URL and its expiration date to the client.
 			return {
 				url,
 				expiresAt: new Date(expirationTime).toISOString()
 			};
-		} catch (error) {
-			functions.logger.error('Error generating signed audio URL', {
-				userId,
-				chatId: extractedChatId,
-				path,
-				error: error instanceof Error ? error.message : String(error)
-			});
+		} catch (error: unknown) {
+			// Log the detailed error on the server for debugging.
+			functions.logger.error(
+				`Error generating signed URL for user ${userId} and path ${path}:`,
+				error
+			);
 
+			// If it's an error we've already thrown, re-throw it.
 			if (error instanceof functions.https.HttpsError) {
 				throw error;
 			}
 
+			// For any other unexpected errors, throw a generic internal error
+			// to avoid exposing implementation details to the client.
 			throw new functions.https.HttpsError(
 				'internal',
-				'Failed to generate signed URL for audio file.'
+				'An unexpected error occurred while trying to access the audio file.'
 			);
 		}
 	});
