@@ -61,84 +61,93 @@
 	};
 </script>
 
-<div
-	bind:this={messagesContainer}
-	on:scroll={handleScroll}
-	class="relative flex-1 overflow-y-auto p-4"
->
-	{#if isLoading}
-		<div class="flex h-full items-center justify-center">
-			<p class="text-slate-400">Loading messages...</p>
-		</div>
-	{:else if errorMessage}
-		<div class="flex h-full items-center justify-center">
-			<p class="text-center text-red-400">{errorMessage}</p>
-		</div>
-	{:else if groupedMessages.length === 0}
-		<div class="flex h-full items-center justify-center">
-			<p class="text-slate-500">No messages yet. Start the conversation!</p>
-		</div>
-	{:else}
-		<div class="space-y-2">
-			{#each groupedMessages as item (item.id)}
-				{#if item.type === 'date'}
-					<DateSeparator timestamp={item.data.timestamp} />
-				{:else if item.type === 'message'}
-					{@const message = item.data as Message}
-					<div
-						class="flex"
-						class:justify-end={message.senderId === currentUser?.id}
-						class:justify-start={message.senderId !== currentUser?.id}
-					>
+<!--
+  The fix for the scrolling button is this structure:
+  1. A parent div with `position: relative` that takes up all the flex space.
+  2. The scrolling container is inside and is absolutely positioned to fill the parent.
+  3. The button is a sibling of the scrolling container, so it's positioned relative
+     to the non-scrolling parent, making it appear fixed.
+-->
+<div class="relative flex-1">
+	<div
+		bind:this={messagesContainer}
+		on:scroll={handleScroll}
+		class="absolute inset-0 overflow-y-auto p-4"
+	>
+		{#if isLoading}
+			<div class="flex h-full items-center justify-center">
+				<p class="text-slate-400">Loading messages...</p>
+			</div>
+		{:else if errorMessage}
+			<div class="flex h-full items-center justify-center">
+				<p class="text-center text-red-400">{errorMessage}</p>
+			</div>
+		{:else if groupedMessages.length === 0}
+			<div class="flex h-full items-center justify-center">
+				<p class="text-slate-500">No messages yet. Start the conversation!</p>
+			</div>
+		{:else}
+			<div class="space-y-2">
+				{#each groupedMessages as item (item.id)}
+					{#if item.type === 'date'}
+						<DateSeparator timestamp={item.data.timestamp} />
+					{:else if item.type === 'message'}
+						{@const message = item.data as Message}
 						<div
-							class="max-w-md rounded-xl px-3 py-2 shadow-md"
-							class:rounded-br-none={message.senderId === currentUser?.id}
-							class:bg-emerald-600={message.senderId === currentUser?.id}
-							class:text-white={message.senderId === currentUser?.id}
-							class:rounded-bl-none={message.senderId !== currentUser?.id}
-							class:bg-slate-700={message.senderId !== currentUser?.id}
-							class:text-slate-100={message.senderId !== currentUser?.id}
+							class="flex"
+							class:justify-end={message.senderId === currentUser?.id}
+							class:justify-start={message.senderId !== currentUser?.id}
 						>
-							{#if message.audioType === 'voice'}
-								<AudioMessageView {message} />
-							{:else}
-								{#if message.images && message.images.length > 0}
-									<div class="mb-2 space-y-2">
-										{#each message.images as imageSrc, index (index)}
-											<img
-												src={imageSrc}
-												alt="Chat attachment"
-												class="max-w-xs rounded-lg border border-slate-600 object-contain"
-											/>
-										{/each}
-									</div>
-								{/if}
-								{#if message.content && message.content.trim()}
-									<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
-										{@html parseAndSanitize(message.content)}
-									</div>
-								{/if}
-							{/if}
 							<div
-								class="mt-1 text-xs"
-								class:text-right={message.senderId === currentUser?.id}
-								class:text-emerald-200={message.senderId === currentUser?.id}
-								class:text-left={message.senderId !== currentUser?.id}
-								class:text-slate-400={message.senderId !== currentUser?.id}
+								class="max-w-md rounded-xl px-3 py-2 shadow-md"
+								class:rounded-br-none={message.senderId === currentUser?.id}
+								class:bg-emerald-600={message.senderId === currentUser?.id}
+								class:text-white={message.senderId === currentUser?.id}
+								class:rounded-bl-none={message.senderId !== currentUser?.id}
+								class:bg-slate-700={message.senderId !== currentUser?.id}
+								class:text-slate-100={message.senderId !== currentUser?.id}
 							>
-								{formatTimestamp(message.timestamp)}
+								{#if message.audioType === 'voice'}
+									<AudioMessageView {message} />
+								{:else}
+									{#if message.images && message.images.length > 0}
+										<div class="mb-2 space-y-2">
+											{#each message.images as imageSrc (imageSrc)}
+												<img
+													src={imageSrc}
+													alt="Chat attachment"
+													class="max-w-xs rounded-lg border border-slate-600 object-contain"
+												/>
+											{/each}
+										</div>
+									{/if}
+									{#if message.content && message.content.trim()}
+										<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
+											{@html parseAndSanitize(message.content)}
+										</div>
+									{/if}
+								{/if}
+								<div
+									class="mt-1 text-xs"
+									class:text-right={message.senderId === currentUser?.id}
+									class:text-emerald-200={message.senderId === currentUser?.id}
+									class:text-left={message.senderId !== currentUser?.id}
+									class:text-slate-400={message.senderId !== currentUser?.id}
+								>
+									{formatTimestamp(message.timestamp)}
+								</div>
 							</div>
 						</div>
-					</div>
-				{/if}
-			{/each}
-		</div>
-	{/if}
+					{/if}
+				{/each}
+			</div>
+		{/if}
+	</div>
 
 	{#if !isNearBottom}
 		<button
 			on:click={() => scrollToBottom('smooth')}
-			class="absolute right-4 bottom-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-600/80 text-white backdrop-blur-sm transition-transform hover:scale-110"
+			class="absolute right-4 bottom-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-slate-600/40 text-white backdrop-blur-sm transition-transform hover:scale-110"
 			aria-label="Scroll to bottom"
 		>
 			<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
