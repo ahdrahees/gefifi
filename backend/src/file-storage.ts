@@ -124,7 +124,16 @@ export const uploadFile = async (
 		blobStream.end(file.buffer);
 	});
 
-	const filePath = `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${uniqueFilename}`;
+	let STORAGE_BASE_URL = 'https://storage.googleapis.com';
+
+	if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+		console.log(
+			`[FileStorage] Uploading file to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+		);
+		STORAGE_BASE_URL = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+	}
+
+	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${uniqueFilename}`;
 	return { filePath, fileName: uniqueFilename };
 };
 

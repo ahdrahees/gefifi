@@ -308,6 +308,9 @@ const apiClient = {
 	createChat: (data: ChatData): Promise<Chat> => {
 		return request<Chat>('/chat', 'POST', data, true);
 	},
+	getChatById: (chatId: string): Promise<Chat> => {
+		return request<Chat>(`/chat/${chatId}`, 'GET', undefined, true);
+	},
 	getChatMessages: (chatId: string): Promise<MessagesResponse> => {
 		return request<MessagesResponse>(`/chat/${chatId}/messages`, 'GET', undefined, true);
 	},

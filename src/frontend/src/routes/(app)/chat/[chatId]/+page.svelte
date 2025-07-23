@@ -1,389 +1,253 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/chat/[chatId]/+page.svelte -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
-	import { API_BASE_URL } from '$lib/config';
-	import { marked } from 'marked';
-	import DOMPurify from 'dompurify';
+	import apiClient, { ApiError } from '$lib/api';
+	import type { Message, Chat } from '$lib/types';
 
-	import ChatInputController from '$lib/components/chat/ChatInputController.svelte';
-	import AudioMessageView from '$lib/components/chat/AudioMessageView.svelte';
-	import type { Message, UserProfile, Chat } from '$lib/types';
+	// Import the new modular components
+	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+	import MessageList from '$lib/components/chat/MessageList.svelte';
+	import ChatInput from '$lib/components/chat/ChatInput.svelte';
+	import AudioRecordingForm from '$lib/components/chat/AudioRecordingForm.svelte';
+	import PermissionModal from '$lib/components/chat/PermissionModal.svelte';
+	import ContractModal from '$lib/components/contracts/ContractModal.svelte';
 
+	// --- Component Instances ---
+	let messageListComponent: MessageList;
+
+	// --- Core State ---
 	let currentUser: AuthUser | null = null;
-	let token: string | null = null;
 	let messages: Message[] = [];
 	let isLoading = true;
 	let errorMessage = '';
-	let chatId: string;
 	let isSendingMessage = false;
-
-	let currentChatDetails: Chat | null = null;
-	let otherParticipantProfile: UserProfile | null = null;
-	let chatPageTitle = 'Chat';
-
-	let messagesContainer: HTMLElement;
-	let shouldAutoScroll = true;
-	let isNearBottom = true;
 	let hasInitiatedLoad = false;
 
+	// --- Chat & Participant State ---
+	let chatId: string;
+	let currentChatDetails: Chat | null = null;
+	let otherParticipantProfile: AuthUser | null = null;
+
+	// --- UI & Interaction State ---
+	let chatPageTitle = 'Chat';
+	let newMessageContent = ''; // Bound to the ChatInput component
+
+	// --- Voice Recording State ---
+	let isRecording = false;
+	let permissionState: 'prompt' | 'granted' | 'denied' = 'prompt';
+
+	// --- Image Upload State ---
+	let selectedFile: File | null = null;
+	let uploadedImagePath: string | null = null;
+	let isUploadingImage = false;
+
+	// --- Contract Modal State ---
+	let showContractModal = false;
+
 	// --- SvelteKit Lifecycle & Reactive Data ---
-
-	// Subscribe to stores at the component level
 	$: chatId = $page.params.chatId;
-	$: ({ user: currentUser, token } = $authStore);
+	$: ({ user: currentUser } = $authStore);
 
-	// This reactive statement is the key fix. It will run whenever its dependencies
-	// (chatId, token, currentUser) change, ensuring we have all the data we need
-	// before trying to load the chat.
-	$: if (chatId && token && currentUser && !hasInitiatedLoad) {
-		hasInitiatedLoad = true; // Prevent re-triggering on minor reactive changes
-		console.log('[Debug] Reactive trigger: All data available. Loading chat details...');
+	// Key reactive statement for robust data loading
+	$: if (chatId && currentUser && !hasInitiatedLoad) {
+		hasInitiatedLoad = true;
 		loadChatAndParticipantDetails(chatId);
 	}
 
-	// --- Scrolling Logic ---
-
-	function checkIfNearBottom(): boolean {
-		if (!messagesContainer) return true;
-		const threshold = 150; // Pixels from the bottom
-		return (
-			messagesContainer.scrollHeight -
-				messagesContainer.scrollTop -
-				messagesContainer.clientHeight <
-			threshold
-		);
-	}
-
-	async function scrollToBottom(behavior: 'smooth' | 'auto' = 'auto') {
-		await tick(); // Wait for the DOM to update
-		if (messagesContainer) {
-			messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior });
+	// --- Date Grouping Logic (WhatsApp Style) ---
+	let groupedMessages: Array<{ type: 'date' | 'message'; id: string; data: any }> = [];
+	$: {
+		const groups: typeof groupedMessages = [];
+		let lastDate: string | null = null;
+		for (const message of messages) {
+			const messageDate = new Date(message.timestamp).toDateString();
+			if (messageDate !== lastDate) {
+				groups.push({ type: 'date', id: messageDate, data: { timestamp: message.timestamp } });
+				lastDate = messageDate;
+			}
+			groups.push({ type: 'message', id: message.id, data: message });
 		}
+		groupedMessages = groups;
 	}
 
-	function handleScroll() {
-		shouldAutoScroll = checkIfNearBottom();
-	}
-
-	// --- Data Loading Logic ---
-
+	// --- Data Loading ---
 	async function loadChatAndParticipantDetails(cId: string) {
-		if (!token || !currentUser) {
-			errorMessage = 'Authentication error. Cannot load chat.';
-			return;
-		}
 		isLoading = true;
 		errorMessage = '';
-
 		try {
-			console.log(`[Debug] Fetching details for chat ID: ${cId}`);
-			const chatRes = await fetch(`${API_BASE_URL}/api/chat/${cId}`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
+			// Fetch chat details and participant profile in parallel for speed
+			const [chatData, messagesData] = await Promise.all([
+				apiClient.getChatById(cId), // Assuming you create this API client method
+				apiClient.getChatMessages(cId)
+			]);
 
-			if (!chatRes.ok) {
-				const errorText = await chatRes.text();
-				throw new Error(
-					`Failed to load chat details. Server responded with ${chatRes.status}: ${errorText}`
-				);
-			}
-			currentChatDetails = await chatRes.json();
+			currentChatDetails = chatData;
+			messages = messagesData.messages || [];
 
-			const otherParticipantId = currentChatDetails?.participants.find(
-				(p) => p !== currentUser?.id
-			);
-
-			if (otherParticipantId) {
-				const userRes = await fetch(`${API_BASE_URL}/api/users/${otherParticipantId}`, {
-					headers: { Authorization: `Bearer ${token}` }
-				});
-				if (userRes.ok) {
-					otherParticipantProfile = await userRes.json();
-				}
+			const otherId = chatData.participants.find((p) => p !== currentUser?.id);
+			if (otherId) {
+				otherParticipantProfile = await apiClient.getUserById(otherId);
+				chatPageTitle =
+					otherParticipantProfile.profile?.fullName ||
+					otherParticipantProfile.profile?.companyName ||
+					'User';
 			}
 
-			chatPageTitle = getChatTitle();
-			await fetchMessages(cId);
+			messageListComponent?.scrollToBottom('auto');
 		} catch (err: any) {
-			console.error('[Debug] CRITICAL ERROR in loadChatAndParticipantDetails:', err);
 			errorMessage = err.message || 'Could not load chat information.';
 		} finally {
 			isLoading = false;
 		}
 	}
 
-	async function fetchMessages(cId: string) {
-		if (!token) return;
-		try {
-			const response = await fetch(`${API_BASE_URL}/api/chat/${cId}/messages`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (!response.ok) throw new Error('Failed to fetch messages.');
-			const data = await response.json();
-			messages = data.messages || [];
-			await scrollToBottom('auto');
-		} catch (err: any) {
-			throw err; // Re-throw to be caught by the parent function
-		}
-	}
-
 	// --- Message Sending Logic ---
+	const handleSendMessage = async () => {
+		if ((!newMessageContent.trim() && !uploadedImagePath) || isSendingMessage) return;
 
-	async function handleSendMessage(event: CustomEvent<{ content: string }>) {
-		if (!token || !chatId) return;
 		isSendingMessage = true;
-		shouldAutoScroll = true; // Always scroll when we send a message
+		const payload = {
+			content: newMessageContent.trim(),
+			...(uploadedImagePath && { images: [uploadedImagePath] })
+		};
+
+		// Reset input fields immediately
+		newMessageContent = '';
+		uploadedImagePath = null;
+		selectedFile = null;
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/chat/${chatId}/messages`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-				body: JSON.stringify(event.detail)
-			});
-			if (!response.ok) throw new Error('Failed to send message.');
-			const sentMessage: Message = await response.json();
+			const sentMessage = await apiClient.sendChatMessage(chatId, payload);
 			messages = [...messages, sentMessage];
-			if (shouldAutoScroll) await scrollToBottom('smooth');
-		} catch (err: any) {
+			messageListComponent?.scrollToBottom('smooth');
+		} catch (err) {
 			console.error('Send message error:', err);
+			// Restore content on failure
+			newMessageContent = payload.content;
+			uploadedImagePath = payload.images ? payload.images[0] : null;
 		} finally {
 			isSendingMessage = false;
 		}
-	}
+	};
 
-	async function handleSendVoiceMessage(
+	const handleSendVoiceMessage = async (
 		event: CustomEvent<{ audioUrl: string; audioDuration: number }>
-	) {
-		if (!token || !chatId) return;
+	) => {
+		isRecording = false;
 		isSendingMessage = true;
-		shouldAutoScroll = true;
 		try {
-			const payload = {
-				audioType: 'voice' as const,
+			const sentMessage = await apiClient.sendChatMessage(chatId, {
+				audioType: 'voice',
 				audioUrl: event.detail.audioUrl,
 				audioDuration: event.detail.audioDuration
-			};
-			const response = await fetch(`${API_BASE_URL}/api/chat/${chatId}/messages`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-				body: JSON.stringify(payload)
 			});
-			if (!response.ok) throw new Error('Failed to send voice message.');
-			const sentMessage: Message = await response.json();
 			messages = [...messages, sentMessage];
-			if (shouldAutoScroll) await scrollToBottom('smooth');
-		} catch (err: any) {
+			messageListComponent?.scrollToBottom('smooth');
+		} catch (err) {
 			console.error('Send voice message error:', err);
 		} finally {
 			isSendingMessage = false;
 		}
-	}
+	};
 
-	async function handleSendImage(event: CustomEvent<{ file: File }>) {
-		if (!token || !chatId) return;
-		const file = event.detail.file;
-		isSendingMessage = true;
-		shouldAutoScroll = true;
+	// --- Image Upload Logic ---
+	const handleSelectFile = async (event: CustomEvent<{ file: File }>) => {
+		selectedFile = event.detail.file;
+		isUploadingImage = true;
 		const formData = new FormData();
-		formData.append('file', file);
-
+		formData.append('file', selectedFile);
 		try {
-			const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
-				method: 'POST',
-				headers: { Authorization: `Bearer ${token}` },
-				body: formData
-			});
-			if (!uploadResponse.ok) throw new Error('Image upload failed.');
-			const uploadResult = await uploadResponse.json();
-			const imagePath = uploadResult.filePath;
-
-			const payload = { content: '', images: [imagePath] };
-			const messageResponse = await fetch(`${API_BASE_URL}/api/chat/${chatId}/messages`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-				body: JSON.stringify(payload)
-			});
-			if (!messageResponse.ok) throw new Error('Failed to send image message.');
-			const sentMessage: Message = await messageResponse.json();
-			messages = [...messages, sentMessage];
-			if (shouldAutoScroll) await scrollToBottom('smooth');
+			const result = await apiClient.uploadFile(formData);
+			uploadedImagePath = result.filePath;
 		} catch (err: any) {
-			console.error('Send image error:', err);
+			errorMessage = `Image upload failed: ${err.message}`;
+			handleRemoveImage();
 		} finally {
-			isSendingMessage = false;
+			isUploadingImage = false;
 		}
-	}
+	};
 
-	// --- Helper Functions ---
+	const handleRemoveImage = () => {
+		uploadedImagePath = null;
+		selectedFile = null;
+	};
 
-	function getChatTitle(): string {
-		if (!otherParticipantProfile) return 'Chat';
-		const { fullName, companyName } = otherParticipantProfile.profile || {};
-		return fullName || companyName || 'User';
-	}
-
-	function parseAndSanitize(content: string): string {
-		if (typeof window !== 'undefined') {
-			return DOMPurify.sanitize(marked.parse(content, { gfm: true, breaks: true }));
+	// --- Voice Recording Logic ---
+	const handleStartRecording = async () => {
+		try {
+			const result = await navigator.permissions.query({ name: 'microphone' as any });
+			if (result.state === 'granted') {
+				permissionState = 'granted';
+				isRecording = true;
+			} else if (result.state === 'prompt') {
+				await navigator.mediaDevices.getUserMedia({ audio: true });
+				permissionState = 'granted';
+				isRecording = true;
+			} else {
+				permissionState = 'denied';
+			}
+		} catch (error) {
+			permissionState = 'denied';
 		}
-		return content;
-	}
-
-	function formatTimestamp(timestamp: string): string {
-		const date = new Date(timestamp);
-		return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-	}
-
-	$: isNearBottom = checkIfNearBottom();
+	};
 </script>
 
 <div class="flex h-full flex-col bg-slate-900">
-	<!-- Header -->
-	<header
-		class="sticky top-0 z-20 border-b border-slate-700/50 bg-slate-800/60 p-3 backdrop-blur-sm"
-	>
-		<div class="flex items-center justify-between">
-			<div class="flex min-w-0 items-center gap-3">
-				<button
-					on:click={() => goto('/chat')}
-					class="flex-shrink-0 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
-					aria-label="Back to chat list"
-				>
-					<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M15 19l-7-7 7-7"
-						/>
-					</svg>
-				</button>
-				{#if isLoading}
-					<div class="h-10 w-10 flex-shrink-0 animate-pulse rounded-full bg-slate-700" />
-					<div class="min-w-0 flex-1 space-y-2">
-						<div class="h-4 w-32 animate-pulse rounded bg-slate-700" />
-						<div class="h-3 w-20 animate-pulse rounded bg-slate-700" />
-					</div>
-				{:else if otherParticipantProfile}
-					<img
-						src={otherParticipantProfile.profile?.avatarUrl || '/images/default-avatar.png'}
-						alt="Avatar"
-						class="h-10 w-10 flex-shrink-0 rounded-full border-2 border-slate-600 object-cover"
-					/>
-					<div class="min-w-0 flex-1">
-						<h2 class="truncate font-semibold text-slate-200">{chatPageTitle}</h2>
-						<p class="truncate text-sm text-slate-400">Online</p>
-					</div>
-				{/if}
-			</div>
+	<ChatHeader
+		{isLoading}
+		{chatPageTitle}
+		{otherParticipantProfile}
+		workRequestId={currentChatDetails?.workRequestId}
+		on:navigateBack={() => goto('/chat')}
+		on:openContractModal={() => (showContractModal = true)}
+	/>
 
-			{#if currentChatDetails?.workRequestId}
-				<button
-					on:click={() => goto(`/work-requests/${currentChatDetails?.workRequestId}`)}
-					class="flex-shrink-0 rounded-md bg-slate-700 px-3 py-2 text-sm font-semibold text-sky-300 transition-colors hover:bg-slate-600"
-					aria-label="View associated work request"
-				>
-					View Request
-				</button>
-			{/if}
-		</div>
-	</header>
+	<MessageList
+		bind:this={messageListComponent}
+		{isLoading}
+		{errorMessage}
+		{groupedMessages}
+		{currentUser}
+	/>
 
-	<!-- Message List -->
-	<div
-		bind:this={messagesContainer}
-		on:scroll={handleScroll}
-		class="relative flex-1 overflow-y-auto p-4"
-	>
-		{#if isLoading}
-			<div class="flex h-full items-center justify-center">
-				<p class="text-slate-400">Loading messages...</p>
-			</div>
-		{:else if errorMessage}
-			<div class="flex h-full items-center justify-center">
-				<p class="text-center text-red-400">{errorMessage}</p>
-			</div>
-		{:else if messages.length === 0}
-			<div class="flex h-full items-center justify-center">
-				<p class="text-slate-500">No messages yet. Start the conversation!</p>
-			</div>
+	<!-- Input Area: Switches between recording and text input -->
+	<div class="border-t border-slate-700/50 bg-slate-800">
+		{#if isRecording}
+			<AudioRecordingForm
+				bind:isSending={isSendingMessage}
+				on:cancel={() => (isRecording = false)}
+				on:send={handleSendVoiceMessage}
+			/>
 		{:else}
-			<div class="space-y-4">
-				{#each messages as message (message.id)}
-					<div
-						class="flex"
-						class:justify-end={message.senderId === currentUser?.id}
-						class:justify-start={message.senderId !== currentUser?.id}
-					>
-						<div
-							class="max-w-md rounded-xl px-3 py-2 shadow-md"
-							class:rounded-br-none={message.senderId === currentUser?.id}
-							class:bg-emerald-600={message.senderId === currentUser?.id}
-							class:text-white={message.senderId === currentUser?.id}
-							class:rounded-bl-none={message.senderId !== currentUser?.id}
-							class:bg-slate-700={message.senderId !== currentUser?.id}
-							class:text-slate-100={message.senderId !== currentUser?.id}
-						>
-							{#if message.audioType === 'voice'}
-								<AudioMessageView {message} />
-							{:else}
-								{#if message.images && message.images.length > 0}
-									<div class="mb-2 space-y-2">
-										{#each message.images as imageSrc}
-											<img
-												src={imageSrc}
-												alt="Chat attachment"
-												class="max-w-xs rounded-lg border border-slate-600 object-contain"
-											/>
-										{/each}
-									</div>
-								{/if}
-								{#if message.content && message.content.trim()}
-									<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
-										{@html parseAndSanitize(message.content)}
-									</div>
-								{/if}
-							{/if}
-							<div
-								class="mt-1 text-xs"
-								class:text-right={message.senderId === currentUser?.id}
-								class:text-emerald-200={message.senderId === currentUser?.id}
-								class:text-left={message.senderId !== currentUser?.id}
-								class:text-slate-400={message.senderId !== currentUser?.id}
-							>
-								{formatTimestamp(message.timestamp)}
-							</div>
-						</div>
-					</div>
-				{/each}
-			</div>
-		{/if}
-
-		{#if !isNearBottom}
-			<button
-				on:click={() => scrollToBottom('smooth')}
-				class="absolute right-4 bottom-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-600/80 text-white backdrop-blur-sm transition-transform hover:scale-110"
-				aria-label="Scroll to bottom"
-			>
-				<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-					<path
-						fill-rule="evenodd"
-						d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-						clip-rule="evenodd"
-					/>
-				</svg>
-			</button>
+			<ChatInput
+				bind:value={newMessageContent}
+				bind:isSending={isSendingMessage}
+				bind:isUploadingImage
+				bind:uploadedImagePath
+				bind:selectedFile
+				on:sendMessage={handleSendMessage}
+				on:startRecording={handleStartRecording}
+				on:selectFile={handleSelectFile}
+				on:removeImage={handleRemoveImage}
+			/>
 		{/if}
 	</div>
-
-	<!-- Message Input Controller -->
-	<ChatInputController
-		bind:isSending={isSendingMessage}
-		on:sendMessage={handleSendMessage}
-		on:sendVoiceMessage={handleSendVoiceMessage}
-		on:sendImage={handleSendImage}
-	/>
 </div>
+
+<!-- Modals -->
+{#if showContractModal && currentChatDetails?.workRequestId && otherParticipantProfile && currentUser}
+	<ContractModal
+		bind:show={showContractModal}
+		workRequestId={currentChatDetails.workRequestId}
+		otherPartyId={otherParticipantProfile.id}
+		otherPartyName={chatPageTitle}
+		userType={currentUser.userType}
+		on:close={() => (showContractModal = false)}
+	/>
+{/if}
+
+{#if permissionState === 'denied'}
+	<PermissionModal on:close={() => (permissionState = 'prompt')} />
+{/if}

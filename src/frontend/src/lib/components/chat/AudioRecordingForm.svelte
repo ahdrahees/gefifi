@@ -44,9 +44,9 @@
 			container: waveformEl,
 			waveColor: '#64748b', // slate-500
 			progressColor: '#10b981', // emerald-500
-			barWidth: 3,
+			barWidth: 2.5,
 			barGap: 2,
-			barRadius: 3,
+			barRadius: 30,
 			height: 48
 		});
 
