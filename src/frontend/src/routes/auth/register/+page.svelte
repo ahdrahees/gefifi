@@ -4,7 +4,6 @@
 	import { authStore } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import { page } from '$app/stores';
 
 	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
