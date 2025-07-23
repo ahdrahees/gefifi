@@ -2,6 +2,8 @@ import { writable, type Writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import apiClient, { ApiError } from '$lib/api'; // Import the API client and ApiError
 import type { AuthUser } from '$lib/types'; // Import central AuthUser type
+import { auth } from '$lib/firebase'; // Import the central Firebase auth service
+import { signInWithCustomToken, signOut } from 'firebase/auth';
 export type { AuthUser }; // Re-export AuthUser for other modules
 
 export interface AuthState {
@@ -46,13 +48,17 @@ function parseJwt(token: string): { exp?: number; [key: string]: any } | null {
 }
 
 // Helper function to update the store and localStorage
-function updateAuthData(token: string | null, user: AuthUser | null, error: string | null = null) {
+async function updateAuthData(
+	token: string | null,
+	user: AuthUser | null,
+	error: string | null = null
+) {
 	const newAuthState: AuthState = {
 		isAuthenticated: !!(token && user),
 		user,
 		token,
 		error,
-		isLoading: false // Finished loading/updating
+		isLoading: false
 	};
 	store.set(newAuthState);
 
@@ -60,9 +66,16 @@ function updateAuthData(token: string | null, user: AuthUser | null, error: stri
 		if (token && user) {
 			localStorage.setItem('authToken', token);
 			localStorage.setItem('authUser', JSON.stringify(user));
+			// New: Silently sign into Firebase in the background
+			await signInToFirebase(token);
 		} else {
 			localStorage.removeItem('authToken');
 			localStorage.removeItem('authUser');
+			// New: Sign out of Firebase when logging out
+			if (auth.currentUser) {
+				await signOut(auth);
+				console.log('[Firebase] User signed out.');
+			}
 		}
 	}
 }
@@ -117,18 +130,31 @@ async function loadUserFromStorage() {
 	}
 }
 
-// Logout function
-function logout() {
-	if (browser) {
-		// This is crucial for allowing users to switch Google accounts.
-		// It tells Google's library to forget the previous sign-in and not to
-		// automatically select that user next time the sign-in page is visited.
-		window.google?.accounts?.id?.disableAutoSelect();
-		console.log('Google auto sign-in disabled.');
+// New: Firebase Sign-In Logic
+async function signInToFirebase(sessionToken: string) {
+	try {
+		console.log('[Firebase] Requesting custom token from backend...');
+		const response = await apiClient.getFirebaseToken(); // API client will use the sessionToken
+		const firebaseToken = response.firebaseToken;
+
+		if (firebaseToken) {
+			console.log('[Firebase] Signing in with custom token...');
+			await signInWithCustomToken(auth, firebaseToken);
+			console.log('[Firebase] Silent sign-in successful. User is authenticated.');
+		}
+	} catch (error) {
+		console.error('Firebase silent sign-in failed:', error);
+		// This is not a critical failure for the app's main auth,
+		// but voice messages will not work.
 	}
-	updateAuthData(null, null);
-	// To redirect after logout, use `goto` from `$app/navigation` in the component calling logout.
-	// e.g., if (browser) { import('$app/navigation').then(({goto}) => goto('/auth/login')); }
+}
+
+// Logout function
+async function logout() {
+	if (browser) {
+		window.google?.accounts?.id?.disableAutoSelect();
+	}
+	await updateAuthData(null, null);
 }
 
 // Define types for credentials and user data for API calls
@@ -148,7 +174,7 @@ async function login(credentials: LoginCredentials): Promise<AuthUser> {
 	try {
 		const response = await apiClient.login(credentials);
 		if (response.user && response.token) {
-			updateAuthData(response.token, response.user);
+			await updateAuthData(response.token, response.user);
 			return response.user;
 		} else {
 			// This case should ideally be caught by apiClient's error handling
@@ -162,7 +188,7 @@ async function login(credentials: LoginCredentials): Promise<AuthUser> {
 			errorMessage = err.message;
 		}
 		// Ensure user is logged out in the store's state on error
-		updateAuthData(null, null, errorMessage);
+		await updateAuthData(null, null, errorMessage);
 		throw new Error(errorMessage); // Re-throw for the component to handle
 	}
 }
@@ -172,7 +198,7 @@ async function register(userData: RegisterUserData): Promise<AuthUser> {
 	try {
 		const response = await apiClient.register(userData);
 		if (response.user && response.token) {
-			updateAuthData(response.token, response.user);
+			await updateAuthData(response.token, response.user);
 			return response.user;
 		} else {
 			throw new Error('Registration response was incomplete.');
@@ -184,7 +210,7 @@ async function register(userData: RegisterUserData): Promise<AuthUser> {
 		} else if (err instanceof Error) {
 			errorMessage = err.message;
 		}
-		updateAuthData(null, null, errorMessage);
+		await updateAuthData(null, null, errorMessage);
 		throw new Error(errorMessage);
 	}
 }
@@ -207,7 +233,7 @@ async function googleLogin(payload: GoogleLoginPayload): Promise<GoogleAuthRespo
 	try {
 		const response = await apiClient.googleLogin(payload);
 		if (response.user && response.token) {
-			updateAuthData(response.token, response.user);
+			await updateAuthData(response.token, response.user);
 			return response; // Return the full response including isNewUser
 		} else {
 			throw new Error('Google Sign-In response was incomplete.');
@@ -219,7 +245,7 @@ async function googleLogin(payload: GoogleLoginPayload): Promise<GoogleAuthRespo
 		} else if (err instanceof Error) {
 			errorMessage = err.message;
 		}
-		updateAuthData(null, null, errorMessage);
+		await updateAuthData(null, null, errorMessage);
 		throw new Error(errorMessage);
 	}
 }

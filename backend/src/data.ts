@@ -16,9 +16,25 @@ let firestore: Firestore | null = null;
 function getFirestoreClient(): Firestore {
 	if (!firestore) {
 		console.log('[Firestore] Client not initialized. Creating new instance...');
-		firestore = new Firestore({
-			projectId: process.env.GCP_PROJECT_ID
-		});
+
+		const options: { projectId?: string; host?: string; port?: number; ssl?: boolean } = {
+			projectId: process.env.GCP_PROJECT_ID || process.env.FIREBASE_PROJECT_ID
+		};
+
+		// If running in a development environment and the Firestore emulator host is set,
+		// connect to the emulator instead of the production database.
+		if (process.env.NODE_ENV !== 'production' && process.env.FIRESTORE_EMULATOR_HOST) {
+			const [host, portStr] = process.env.FIRESTORE_EMULATOR_HOST.split(':');
+			const port = parseInt(portStr, 10);
+
+			options.host = host;
+			options.port = port;
+			options.ssl = false; // Use http for emulator connection
+
+			console.log(`[Firestore] Connecting to Firestore Emulator at ${host}:${port}`);
+		}
+
+		firestore = new Firestore(options);
 		console.log('[Firestore] Client instance created successfully.');
 	}
 	return firestore;

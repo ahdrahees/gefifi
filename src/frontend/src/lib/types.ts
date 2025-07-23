@@ -118,6 +118,11 @@ export type Message = {
 	content: string;
 	images?: string[];
 	timestamp: string;
+	// Voice message support
+	audioType?: 'voice';
+	audioUrl?: string;
+	audioDuration?: number;
+	signedAudioUrl?: string; // Temporary signed URL for playback
 };
 
 /**

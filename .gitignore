@@ -35,8 +35,7 @@ vite.config.ts.timestamp-*
 # GCP credentials
 
 # Ignore uploaded files in backend/uploads
-/backend/uploads/*
 
-/backend/gcp-credentials.json
+gcp-credentials.json
 
 firestore-migration
