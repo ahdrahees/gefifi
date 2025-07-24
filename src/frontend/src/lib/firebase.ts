@@ -33,7 +33,7 @@ if (!getApps().length) {
 // --- Services ---
 // Get a reference to the Auth and Functions services.
 const auth: Auth = getAuth(app);
-const functions: Functions = getFunctions(app);
+const functions: Functions = getFunctions(app, 'asia-south1');
 
 // --- Emulator Connection ---
 // This is the crucial part. It tells the Firebase SDK
