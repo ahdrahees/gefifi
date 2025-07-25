@@ -67,11 +67,12 @@
 >
 	<div class="w-full max-w-lg">
 		<div class="mb-6 text-center sm:mb-8">
-			<a
-				href="/"
-				class="text-5xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
+			<a href="/">
+				<img
+					class="mx-auto h-16 w-auto"
+					src="/images/Gefifi-Logo.png"
+					alt="GEFIFI Construction Marketplace"
+				/>
 			</a>
 			<h2 class="mt-2 text-2xl text-sky-300">Complete Your Profile</h2>
 			<p class="mt-1 text-sm text-slate-400">
