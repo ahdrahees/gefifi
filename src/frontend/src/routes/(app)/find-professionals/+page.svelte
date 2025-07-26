@@ -6,6 +6,7 @@
 	import apiClient from '$lib/api';
 	import ProfessionalCard from '$lib/components/ui/ProfessionalCard.svelte';
 	import SendInterestModal from '$lib/components/modals/SendInterestModal.svelte';
+	import { page } from '$app/stores';
 
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
@@ -31,6 +32,10 @@
 			isLoading = false;
 			return;
 		}
+
+		// params are passed from material/Expert request
+		selectedType = ($page.url.searchParams.get('type') as 'expert' | 'supplier') || 'all';
+
 		await fetchData();
 	});
 
