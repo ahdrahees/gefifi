@@ -4,16 +4,17 @@
 	import GeneralModal from '$lib/components/ui/GeneralModal.svelte';
 	import apiClient from '$lib/api';
 	import { authStore } from '$lib/stores/auth';
-	import type { AuthUser, WorkRequest } from '$lib/types';
+	import type { AuthUser, WorkRequest, MaterialRequest } from '$lib/types';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 
 	export let show: boolean = false;
 	export let targetProfessionalId: string;
 	export let targetProfessionalName: string;
+	export let professionalType: 'expert' | 'supplier';
 
-	// Define a simple type for WorkRequest for the dropdown, using Pick for conciseness
-	type CustomerWorkRequest = Pick<WorkRequest, 'id' | 'title' | 'status'>;
+	// A generic type for the dropdown list to handle both request types
+	type CustomerRequest = Pick<WorkRequest | MaterialRequest, 'id' | 'title' | 'status'>;
 
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
@@ -30,57 +31,68 @@
 	let formSuccess: string | null = null;
 
 	let isPreselected: boolean = false;
-
-	// For "Discuss Specific Project"
-	let customerWorkRequests: CustomerWorkRequest[] = [];
-	let isLoadingWorkRequests = false;
-	let selectedWorkRequestId: string | undefined = undefined;
+	let customerOpenRequests: CustomerRequest[] = [];
+	let isLoadingRequests = false;
+	let selectedRequestId: string | undefined = undefined;
 	let customMessage: string = '';
 
-	async function fetchCustomerWorkRequests() {
+	// --- Dynamic UI text based on professional type ---
+	$: requestTypeLabel = professionalType === 'expert' ? 'Expert Request' : 'Material Request';
+	$: discussLabel = `Discuss a Specific ${requestTypeLabel}`;
+	$: placeholderText =
+		professionalType === 'expert'
+			? "e.g., I'd like to discuss my upcoming renovation..."
+			: "e.g., I'm looking for a quote on cement and steel...";
+
+	async function fetchCustomerOpenRequests() {
 		if (!currentUser || !token || currentUser.userType !== 'customer') return;
-		isLoadingWorkRequests = true;
+		isLoadingRequests = true;
 		try {
-			// Assuming apiClient.getWorkRequests() fetches all for the user or can be filtered
-			// Or, if a specific endpoint exists, use that. For now, filter client-side.
-			const allRequests = await apiClient.getWorkRequests(); // This is authed
-			customerWorkRequests = allRequests
-				.filter((wr) => wr.customerId === currentUser?.id && wr.status === 'open') // Filter for current customer and 'open' status
-				.map((wr) => ({ id: wr.id, title: wr.title, status: wr.status }));
+			if (professionalType === 'expert') {
+				const allRequests = await apiClient.getWorkRequests();
+				customerOpenRequests = allRequests
+					.filter((wr) => wr.customerId === currentUser?.id && wr.status === 'open')
+					.map((wr) => ({ id: wr.id, title: wr.title, status: wr.status }));
+			} else {
+				// Assumes an equivalent apiClient method for material requests
+				const allRequests = await apiClient.getMaterialRequests();
+				customerOpenRequests = allRequests
+					.filter((mr) => mr.customerId === currentUser?.id && mr.status === 'open')
+					.map((mr) => ({ id: mr.id, title: mr.title, status: mr.status }));
+			}
 		} catch (error: any) {
-			console.error('Failed to fetch customer work requests:', error);
-			// Silently fail for this non-critical list, or show a small error
+			console.error(`Failed to fetch customer ${professionalType} requests:`, error);
+			// Silently fail for this non-critical list
 		} finally {
-			isLoadingWorkRequests = false;
+			isLoadingRequests = false;
+		}
+	}
+
+	function resetState() {
+		formError = null;
+		formSuccess = null;
+		customMessage = '';
+		isLoading = false;
+
+		// URL query params are passed from material/Expert request
+		const preselectedId = $page.url.searchParams.get('request-id');
+		selectedRequestId = preselectedId || undefined;
+		isPreselected = !!preselectedId;
+
+		if (currentUser?.userType === 'customer') {
+			fetchCustomerOpenRequests();
 		}
 	}
 
 	onMount(() => {
 		if (show) {
-			// Reset state when modal is shown
-			formError = null;
-			formSuccess = null;
-
-			// params are passed from material/Expert request
-			selectedWorkRequestId = $page.url.searchParams.get('request-id') || undefined;
-			isPreselected = selectedWorkRequestId !== undefined;
-
-			customMessage = '';
-			if (currentUser?.userType === 'customer') {
-				fetchCustomerWorkRequests();
-			}
+			resetState();
 		}
 	});
 
-	// Re-fetch if modal is reshown and was hidden
-	$: if (
-		show &&
-		currentUser?.userType === 'customer' &&
-		customerWorkRequests.length === 0 &&
-		!isLoadingWorkRequests &&
-		!formSuccess
-	) {
-		fetchCustomerWorkRequests();
+	// Re-fetch if modal is re-shown and was hidden
+	$: if (show) {
+		resetState();
 	}
 
 	async function handleSendQuickGreeting() {
@@ -111,31 +123,40 @@
 		formError = null;
 		formSuccess = null;
 
-		if (!customMessage.trim() && !selectedWorkRequestId) {
-			formError = 'Please write a note or select a project to discuss.';
+		if (!customMessage.trim() && !selectedRequestId) {
+			formError = 'Please write a note or select a request to discuss.';
 			isLoading = false;
 			return;
 		}
 
 		let messageToSend = customMessage.trim();
-		if (selectedWorkRequestId && customerWorkRequests.length > 0) {
-			const selectedWR = customerWorkRequests.find((wr) => wr.id === selectedWorkRequestId);
-			if (selectedWR) {
-				const wrBlurb = `Regarding project: "${selectedWR.title}"`;
-				messageToSend = messageToSend ? `${wrBlurb}. ${messageToSend}` : wrBlurb;
+		if (selectedRequestId && customerOpenRequests.length > 0) {
+			const selectedRequest = customerOpenRequests.find((req) => req.id === selectedRequestId);
+			if (selectedRequest) {
+				const reqBlurb = `Regarding ${requestTypeLabel.toLowerCase()}: "${selectedRequest.title}"`;
+				messageToSend = messageToSend ? `${reqBlurb}. ${messageToSend}` : reqBlurb;
 			}
 		}
+
 		if (!messageToSend) {
-			// Fallback if only WR was selected but something went wrong with title
-			messageToSend = `I'm interested in discussing a project.`;
+			messageToSend = `I'm interested in discussing a ${requestTypeLabel.toLowerCase()}.`;
 		}
 
 		try {
-			const result = await apiClient.sendInterest({
+			const payload: any = {
 				targetUserId: targetProfessionalId,
-				workRequestId: selectedWorkRequestId, // Optional
 				initialMessageContent: messageToSend
-			});
+			};
+
+			if (selectedRequestId) {
+				if (professionalType === 'expert') {
+					payload.workRequestId = selectedRequestId;
+				} else {
+					payload.materialRequestId = selectedRequestId;
+				}
+			}
+
+			const result = await apiClient.sendInterest(payload);
 			formSuccess = result.message || 'Interest sent! Redirecting to chat...';
 			dispatch('interestSent', { chatId: result.chatId });
 			setTimeout(() => {
@@ -201,8 +222,8 @@
 						disabled={isLoading}
 						class="w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
 					>
-						{#if isLoading && !customMessage && !selectedWorkRequestId}Processing...{:else}Send
-							Quick Greeting{/if}
+						{#if isLoading && !customMessage && !selectedRequestId}Processing...{:else}Send Quick
+							Greeting{/if}
 					</button>
 				</div>
 
@@ -215,33 +236,32 @@
 
 			<!-- Option 2: Detailed Interest -->
 			<div class="space-y-4 rounded-lg bg-slate-700/50 p-4 shadow">
-				<!-- display only if not preselected by passing URL query parameters -->
-				{#if !isPreselected}
-					<h3 class="text-md font-semibold text-sky-300">Discuss a Specific Project</h3>
-				{/if}
+				<h3 class="text-md font-semibold text-sky-300">{discussLabel}</h3>
 
 				{#if currentUser?.userType === 'customer'}
 					<div class="form-group">
-						<label for="work-request-select" class="mb-1 block text-sm font-medium text-slate-300"
-							>Select an existing project (Optional):</label
+						<label for="request-select" class="mb-1 block text-sm font-medium text-slate-300"
+							>Select an existing {requestTypeLabel.toLowerCase()} (Optional):</label
 						>
-						{#if isLoadingWorkRequests}
-							<p class="text-xs text-slate-400">Loading your projects...</p>
-						{:else if customerWorkRequests.length > 0}
+						{#if isLoadingRequests}
+							<p class="text-xs text-slate-400">Loading your requests...</p>
+						{:else if customerOpenRequests.length > 0}
 							<select
-								id="work-request-select"
-								bind:value={selectedWorkRequestId}
+								id="request-select"
+								bind:value={selectedRequestId}
 								disabled={isLoading}
-								class="w-full appearance-none rounded-md border border-slate-600 bg-slate-600 px-3 py-2 text-sm text-slate-100 shadow-inner focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+								class="w-full appearance-none rounded-md border border-slate-600 bg-slate-600 px-3 py-2 text-sm text-slate-100 shadow-inner focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
 								style="background-image: url('data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%2364748b\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e'); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em;"
 							>
 								<option value={undefined}>-- None --</option>
-								{#each customerWorkRequests as wr (wr.id)}
-									<option value={wr.id}>{wr.title} (Status: {wr.status})</option>
+								{#each customerOpenRequests as req (req.id)}
+									<option value={req.id}>{req.title} (Status: {req.status})</option>
 								{/each}
 							</select>
 						{:else}
-							<p class="text-xs text-slate-400">You have no open work requests to link.</p>
+							<p class="text-xs text-slate-400">
+								You have no open {requestTypeLabel.toLowerCase()}s to link.
+							</p>
 						{/if}
 					</div>
 				{/if}
@@ -256,7 +276,7 @@
 						rows="3"
 						disabled={isLoading}
 						class="w-full rounded-md border border-slate-600 bg-slate-600 px-3 py-2 text-sm text-slate-100 shadow-inner placeholder:text-slate-400/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-						placeholder="e.g., I'd like to discuss my upcoming renovation..."
+						placeholder={placeholderText}
 					></textarea>
 				</div>
 				<button
@@ -264,12 +284,11 @@
 					disabled={isLoading}
 					class="w-full rounded-md bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
 				>
-					{#if isLoading && (customMessage || selectedWorkRequestId)}Processing...{:else}Send
-						Detailed Interest{/if}
+					{#if isLoading && (customMessage || selectedRequestId)}Processing...{:else}Send Detailed
+						Interest{/if}
 				</button>
 			</div>
 		{/if}
-		<!-- end !formSuccess block -->
 	</div>
 
 	<svelte:fragment slot="footer">

@@ -17,7 +17,8 @@
 	function handleSendInterestClick() {
 		dispatch('sendInterest', {
 			userId: professional.id,
-			userName: getProfessionalName(professional)
+			userName: getProfessionalName(professional),
+			userType: professional.userType
 		});
 	}
 

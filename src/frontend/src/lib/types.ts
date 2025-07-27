@@ -13,17 +13,23 @@
 
 /**
  * Defines the structure for a user's profile data.
- * This is nested within the main User object.
+ * This is nested within the main User object. All fields are optional
+ * to accommodate different user types and profile completion levels.
  */
 export type UserProfile = {
+	// --- Common Fields (Can apply to any user type) ---
 	fullName?: string;
-	companyName?: string;
 	avatarUrl?: string;
 	location?: string;
 	phoneNumber?: string;
-	expertise?: string; // For 'expert'
-	experience?: string; // For 'expert' & 'supplier'
-	category?: string; // For 'supplier'
+	experience?: string; // e.g., "5 years"
+
+	// --- Expert-Specific Fields ---
+	expertise?: string; // e.g., "Plumbing", "Electrical Work"
+
+	// --- Supplier-Specific Fields ---
+	companyName?: string; // e.g., "ABC Building Materials"
+	category?: string; // e.g., "Cement & Steel", "Paints & Finishes"
 };
 
 /**
