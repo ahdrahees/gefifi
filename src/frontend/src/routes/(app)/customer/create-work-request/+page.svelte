@@ -207,7 +207,7 @@
 
 			formMessage = {
 				type: 'success',
-				text: 'Work request created successfully! Redirecting to dashboard...'
+				text: 'Work request created successfully! Redirecting to home...'
 			};
 
 			// Reset form fields to initial state after successful submission and before redirect
@@ -226,7 +226,7 @@
 			fileInputKey = Date.now(); // Reset file input to clear selection
 
 			setTimeout(() => {
-				goto('/dashboard');
+				goto('/home');
 			}, 2000); // 2 seconds delay to show message
 		} catch (error: any) {
 			console.error('Failed to create work request:', error);

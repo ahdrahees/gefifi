@@ -302,16 +302,22 @@
 				{#if currentUser && currentUser.id === workRequest.customerId}
 					<section class="flex flex-wrap justify-center gap-4 border-t border-slate-600/70 pt-6">
 						{#if workRequest.status === 'open'}
+							<a
+								href="/find-professionals?type=expert"
+								class="rounded-lg bg-sky-500 px-6 py-2.5 text-base font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-sky-600 hover:shadow-lg"
+							>
+								Find Expert
+							</a>
 							<!-- <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-5 rounded-lg">Edit Request</button> -->
 							<!-- <button class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-5 rounded-lg">Cancel Request</button> -->
-							<p class="text-sm text-slate-400">
+							<!-- <p class="text-sm text-slate-400">
 								TODO: Add Edit/Cancel options for 'open' requests.
-							</p>
+							</p> -->
 						{/if}
 						<!-- TODO: Display interested experts/suppliers -->
-						<p class="text-sm text-slate-400">
+						<!-- <p class="text-sm text-slate-400">
 							TODO: List interested experts/suppliers for this request.
-						</p>
+						</p> -->
 					</section>
 				{/if}
 			</div>
@@ -340,4 +346,18 @@
 
 <style lang="postcss">
 	/* Add any page-specific styles here if needed */
+
+	/* Add any page-specific styles here if needed */
+
+	/* add a button or a tag that can find the expert. that button should navigate to
+`/find-professionals?type=expert`. find a appropriate place to put this button or anchor. it looks
+good and match with the current UI of the user and design 203
+<a
+		href="/find-professionals?type=expert"
+		class="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-600"
+>
+		Find Expert
+</a>
+
+*/
 </style>

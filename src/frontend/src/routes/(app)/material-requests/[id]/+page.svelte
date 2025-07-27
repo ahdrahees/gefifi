@@ -186,6 +186,18 @@
 						{/if}
 					</div>
 				{/if}
+
+				<!-- Find Supplier Button -->
+				{#if currentUser?.userType === 'customer' && request.status === 'open'}
+					<div class="rounded-xl bg-slate-700/60 p-6 text-center shadow-lg">
+						<a
+							href="/find-professionals?type=supplier"
+							class="block w-full rounded-lg bg-sky-500 px-6 py-3 font-semibold text-white shadow-md transition-colors hover:bg-sky-600"
+						>
+							Find a Supplier
+						</a>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
