@@ -29,7 +29,7 @@
 			// Define routes that require authentication
 			// These are typically routes that fall under the (app) layout group.
 			const protectedAppRoutePatterns = [
-				'/dashboard', // Matches /dashboard and /dashboard/*
+				'/home', // Matches /home and /home/*
 				'/chat', // Matches /chat and /chat/*
 				'/contracts', // Matches /contracts and /contracts/*
 				'/customer/create-request' // Specific customer route
@@ -55,10 +55,10 @@
 			}
 
 			if (authPages.includes(currentPath) && isLoggedIn) {
-				// console.log(`[RootLayout Client] User logged in, trying to access auth page ${currentPath}. Redirecting to /dashboard.`);
-				if (currentPath !== '/dashboard') {
-					// Prevent loop if already on dashboard
-					goto('/dashboard', { replaceState: true });
+				// console.log(`[RootLayout Client] User logged in, trying to access auth page ${currentPath}. Redirecting to /home.`);
+				if (currentPath !== '/home') {
+					// Prevent loop if already on homepage
+					goto('/home', { replaceState: true });
 				}
 			}
 		});

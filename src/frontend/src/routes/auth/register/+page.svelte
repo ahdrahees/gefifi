@@ -65,7 +65,7 @@
 				userType: selectedUserType,
 				profile: {} // Profile is now collected on the complete-profile page
 			});
-			goto('/dashboard');
+			goto('/home');
 		} catch (error: any) {
 			errorMessage = error.message || 'An unexpected error occurred during registration.';
 		} finally {
@@ -93,7 +93,7 @@
 			if (result.isNewUser) {
 				goto('/auth/complete-profile', { replaceState: true });
 			} else {
-				goto('/dashboard', { replaceState: true });
+				goto('/home', { replaceState: true });
 			}
 		} catch (error: any) {
 			errorMessage = error.message || 'An unexpected error occurred.';
@@ -106,11 +106,11 @@
 	onMount(() => {
 		const initialAuthState = get(authStore);
 		if (initialAuthState.isAuthenticated && !initialAuthState.isLoading) {
-			goto('/dashboard', { replaceState: true });
+			goto('/home', { replaceState: true });
 		}
 		unsubscribeAuth = authStore.subscribe((state) => {
 			if (state.isAuthenticated && !state.isLoading) {
-				goto('/dashboard', { replaceState: true });
+				goto('/home', { replaceState: true });
 			}
 		});
 

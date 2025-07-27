@@ -1,4 +1,4 @@
-<!-- gefifi-2/src/frontend/src/routes/(app)/dashboard/+page.svelte -->
+<!-- gefifi-2/src/frontend/src/routes/(app)/home/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
@@ -66,7 +66,7 @@
 		errorMessage = '';
 		if (!currentUser || !token) {
 			// Should not happen due to layout protection, but good practice
-			errorMessage = 'User not authenticated. Cannot load dashboard data.';
+			errorMessage = 'User not authenticated. Cannot load home page data.';
 			isLoading = false;
 			return;
 		}
@@ -90,16 +90,16 @@
 			const rawChatsFromAPI: any[] = await chatsRes.json();
 			activeContracts = await contractsRes.json();
 
-			// Enrich chats for dashboard display names
-			const dashboardOtherParticipantIds = new Set<string>();
+			// Enrich chats for homepage display names
+			const homepageOtherParticipantIds = new Set<string>();
 			rawChatsFromAPI.forEach((chat) => {
 				(chat.participants as string[])
 					.filter((pId: string) => pId !== currentUser?.id)
-					.forEach((pId: string) => dashboardOtherParticipantIds.add(pId));
+					.forEach((pId: string) => homepageOtherParticipantIds.add(pId));
 			});
 
 			await Promise.all(
-				Array.from(dashboardOtherParticipantIds).map(async (pId) => {
+				Array.from(homepageOtherParticipantIds).map(async (pId) => {
 					if (!fetchedUserProfiles.has(pId) && token) {
 						try {
 							const userRes = await fetch(`${API_BASE_URL}/api/users/${pId}`, { headers });
@@ -108,12 +108,12 @@
 								fetchedUserProfiles.set(pId, userData);
 							} else {
 								console.warn(
-									`Dashboard: Failed to fetch profile for user ${pId}: ${userRes.statusText}`
+									`Home: Failed to fetch profile for user ${pId}: ${userRes.statusText}`
 								);
 								fetchedUserProfiles.set(pId, { id: pId, email: '', userType: 'unknown' }); // Basic fallback
 							}
 						} catch (e) {
-							console.error(`Dashboard: Error fetching profile for user ${pId}`, e);
+							console.error(`Home: Error fetching profile for user ${pId}`, e);
 							fetchedUserProfiles.set(pId, { id: pId, email: '', userType: 'unknown' }); // Basic fallback
 						}
 					}
@@ -167,8 +167,8 @@
 				materialRequests = mrRes.filter((req) => req.status === 'open');
 			}
 		} catch (err: any) {
-			console.error('Dashboard data fetch error:', err);
-			errorMessage = err.message || 'An error occurred while loading dashboard data.';
+			console.error('Homepage data fetch error:', err);
+			errorMessage = err.message || 'An error occurred while loading homepage data.';
 		} finally {
 			isLoading = false;
 		}
@@ -231,7 +231,7 @@
 		class="flex flex-col items-start justify-between space-y-3 sm:flex-row sm:items-center sm:space-y-0"
 	>
 		<h1 class="text-3xl font-bold text-emerald-400">
-			Dashboard
+			Home
 			{#if currentUser}
 				<span class="text-xl font-normal text-slate-400 capitalize">({currentUser.userType})</span>
 			{/if}
@@ -264,7 +264,7 @@
 					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 				></path>
 			</svg>
-			<p class="text-slate-300">Loading dashboard data...</p>
+			<p class="text-slate-300">Loading homepage data...</p>
 		</div>
 	{:else if errorMessage}
 		<div class="rounded-lg border border-red-700 bg-red-800/50 p-4 text-red-300">
@@ -466,7 +466,7 @@
   - Further refine UI/UX for each section.
   - Implement navigation to individual item details (e.g., specific work request, chat, contract). (Partially done with goto)
   - For chats, fetch participant names instead of IDs for better display.
-  - Add more specific dashboard components based on deeper user role needs.
+  - Add more specific homepage components based on deeper user role needs.
   - Enhance styling for a more "modern and professional" look - this is a good base.
   - Ensure all links and buttons are functional and lead to correct pages.
   - Icons for buttons (e.g., create new request button).

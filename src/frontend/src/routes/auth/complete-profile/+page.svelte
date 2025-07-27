@@ -51,8 +51,8 @@
 				...state,
 				user: updatedUser
 			}));
-			// Redirect to the main dashboard
-			goto('/dashboard');
+			// Redirect to the main home page
+			goto('/home');
 		} catch (error: any) {
 			errorMessage = error.data?.message || error.message || 'An unknown error occurred.';
 			console.error('Profile completion error:', error);

@@ -17,7 +17,7 @@
 	}
 
 	const navLinks: NavLink[] = [
-		{ href: '/dashboard', label: 'Dashboard', iconKey: 'dashboard', types: ['all'] },
+		{ href: '/home', label: 'Home', iconKey: 'home', types: ['all'] },
 		{ href: '/my-projects', label: 'My Projects', iconKey: 'activeProjects', types: ['all'] },
 		{
 			href: '/find-professionals',
@@ -51,7 +51,7 @@
 	});
 
 	const icons = {
-		dashboard: `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-5 h-5'><path stroke-linecap='round' stroke-linejoin='round' d='M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25A2.25 2.25 0 0113.5 8.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z' /></svg>`,
+		home: `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-5 h-5'><path stroke-linecap='round' stroke-linejoin='round' d='M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25A2.25 2.25 0 0113.5 8.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z' /></svg>`,
 		activeProjects: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-construction-icon lucide-construction"><rect x="2" y="6" width="20" height="8" rx="1"/><path d="M17 14v7"/><path d="M7 14v7"/><path d="M17 3v3"/><path d="M7 3v3"/><path d="M10 14 2.3 6.3"/><path d="m14 6 7.7 7.7"/><path d="m8 6 8 8"/></svg>`,
 		findProfessionals: `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-5 h-5'><path stroke-linecap='round' stroke-linejoin='round' d='M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z' /></svg>`,
 		chat: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square-more-icon lucide-message-square-more"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/></svg>`,
@@ -81,7 +81,7 @@
 		class="fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col bg-slate-900 shadow-lg transition-transform duration-300 ease-in-out md:static md:inset-auto md:translate-x-0"
 	>
 		<div class="flex h-20 shrink-0 items-center justify-center border-b border-slate-700/50 px-4">
-			<a href="/dashboard">
+			<a href="/home">
 				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-10 w-auto" />
 			</a>
 		</div>
@@ -97,7 +97,7 @@
 						href={link.href}
 						class="group flex items-center space-x-3 rounded-lg px-3 py-2.5 transition-colors duration-150
 						{$page.url.pathname.startsWith(link.href) &&
-						(link.href !== '/dashboard' || $page.url.pathname === '/dashboard')
+						(link.href !== '/home' || $page.url.pathname === '/home')
 							? 'bg-emerald-600 text-white shadow-md'
 							: 'text-slate-300 hover:bg-slate-700/50 hover:text-emerald-300'}"
 						on:click={() => {
@@ -166,7 +166,7 @@
 		<header
 			class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between bg-slate-900 p-4 shadow-md md:hidden"
 		>
-			<a href="/dashboard">
+			<a href="/home">
 				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-9 w-auto" />
 			</a>
 			<button
@@ -201,9 +201,7 @@
 			{:else}
 				<div class="flex h-full flex-col items-center justify-center text-center">
 					<h2 class="mb-3 text-2xl font-semibold text-sky-300">Access Denied</h2>
-					<p class="mb-6 max-w-md text-slate-300">
-						Please log in to access your GEFIFI dashboard and features.
-					</p>
+					<p class="mb-6 max-w-md text-slate-300">Please log in to access GEFIFI app.</p>
 					<a
 						href="/auth/login"
 						class="rounded-lg bg-emerald-500 px-8 py-3 font-semibold text-white shadow-md transition-colors hover:bg-emerald-600"
