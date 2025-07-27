@@ -5,13 +5,21 @@
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
+	import UserProfile from '$lib/components/UserProfile.svelte';
 
+	// --- Component Assets ---
+	const contractIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>`;
+	const chatIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/></svg>`;
+
+	// --- Component State ---
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
-	let workRequest: any = null; // Store for the fetched work request
+	let workRequest: any = null;
 	let isLoading = true;
 	let errorMessage = '';
 	let workRequestId: string | null = null;
+	let contractedProfessionalId: string | null = null;
+	let chatMap = new Map<string, string>();
 
 	// For experts/suppliers to express interest
 	let isExpressingInterest = false;
@@ -25,6 +33,7 @@
 	async function fetchWorkRequestDetails(id: string) {
 		isLoading = true;
 		errorMessage = '';
+		contractedProfessionalId = null;
 		if (!token) {
 			errorMessage = 'Authentication token not available.';
 			isLoading = false;
@@ -41,14 +50,44 @@
 				);
 			}
 			workRequest = await response.json();
-			// TODO: Fetch customer details if not the current user, or expert/supplier details for interested parties
+
+			// If the current user is the customer, fetch their chats and check for contracts.
+			if (currentUser && workRequest && currentUser.id === workRequest.customerId) {
+				// Fetch chats to create a map from professionalId -> chatId
+				const chatsRes = await fetch(`${API_BASE_URL}/api/chat`, {
+					headers: { Authorization: `Bearer ${token}` }
+				});
+				if (chatsRes.ok) {
+					const chats = await chatsRes.json();
+					const newChatMap = new Map<string, string>();
+					for (const chat of chats) {
+						const otherParticipant = chat.participants.find(
+							(pId: string) => pId !== currentUser?.id
+						);
+						if (otherParticipant) {
+							newChatMap.set(otherParticipant, chat.id);
+						}
+					}
+					chatMap = newChatMap;
+				}
+
+				// If status is 'contracted', find the professional it's contracted with.
+				if (workRequest.status === 'contracted' && token) {
+					const contractsRes = await fetch(`${API_BASE_URL}/api/contracts`, {
+						headers: { Authorization: `Bearer ${token}` }
+					});
+					if (contractsRes.ok) {
+						const contracts = await contractsRes.json();
+						const currentContract = contracts.find((c: any) => c.workRequestId === workRequest.id);
+						if (currentContract) {
+							contractedProfessionalId = currentContract.expertSupplierId;
+						}
+					}
+				}
+			}
 		} catch (err: any) {
 			console.error('Fetch work request detail error:', err);
 			errorMessage = err.message;
-			if (err.message.toLowerCase().includes('not found')) {
-				// Optionally, redirect to a 404 page or the list page
-				// setTimeout(() => goto('/work-requests'), 3000);
-			}
 		} finally {
 			isLoading = false;
 		}
@@ -68,27 +107,19 @@
 		try {
 			const response = await fetch(`${API_BASE_URL}/api/users/interest`, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${token}`
-				},
+				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
 				body: JSON.stringify({
-					targetUserId: workRequest.customerId, // The customer who created the work request
+					targetUserId: workRequest.customerId,
 					workRequestId: workRequest.id,
 					predefinedMessageKey: 'PROVIDER_INTEREST_IN_WORK_REQUEST'
 				})
 			});
 			const result = await response.json();
-			if (!response.ok) {
-				throw new Error(result.message || 'Failed to express interest.');
-			}
+			if (!response.ok) throw new Error(result.message || 'Failed to express interest.');
+
 			interestMessage = result.message || 'Interest expressed successfully! Chat initiated.';
-			// Optionally, refresh work request data to show updated interested list or redirect to chat
-			if (result.chatId) {
-				// Give a moment for user to read message, then go to chat
-				setTimeout(() => goto(`/chat/${result.chatId}`), 2000);
-			}
-			// Refresh data to reflect interest (e.g. disable button)
+			if (result.chatId) setTimeout(() => goto(`/chat/${result.chatId}`), 2000);
+
 			fetchWorkRequestDetails(workRequest.id);
 		} catch (error: any) {
 			console.error('Error expressing interest:', error);
@@ -98,16 +129,12 @@
 		}
 	}
 
-	// TODO: Functions for customer: editWorkRequest, cancelWorkRequest
-	// TODO: Function for navigating to user profiles
-
 	onMount(() => {
 		workRequestId = $page.params.id;
 		if (workRequestId) {
-			// Ensure token is available before fetching
 			const unsubscribe = authStore.subscribe((auth) => {
 				if (auth.token && !auth.isLoading) {
-					token = auth.token; // Ensure token is up-to-date from store
+					token = auth.token;
 					currentUser = auth.user;
 					fetchWorkRequestDetails(workRequestId!);
 					unsubscribe();
@@ -148,6 +175,15 @@
 			workRequest.interestedExperts?.includes(currentUser.id)) ||
 			(currentUser.userType === 'supplier' &&
 				workRequest.interestedSuppliers?.includes(currentUser.id)));
+
+	$: interestedProfessionals = workRequest
+		? [
+				...new Set([
+					...(workRequest.interestedExperts || []),
+					...(workRequest.interestedSuppliers || [])
+				])
+			]
+		: [];
 </script>
 
 <div class="mx-auto max-w-4xl space-y-6">
@@ -158,25 +194,27 @@
 				xmlns="http://www.w3.org/2000/svg"
 				fill="none"
 				viewBox="0 0 24 24"
-				><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-				></circle><path
+			>
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+				></circle>
+				<path
 					class="opacity-75"
 					fill="currentColor"
 					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-				></path></svg
-			>
+				></path>
+			</svg>
 			<p class="text-xl text-slate-300">Loading Work Request Details...</p>
 		</div>
 	{:else if errorMessage}
 		<div class="rounded-lg border border-red-600 bg-red-700/30 p-6 text-center shadow-xl">
 			<h2 class="mb-3 text-2xl font-semibold text-red-300">Error Loading Details</h2>
 			<p class="mb-4 text-red-400">{errorMessage}</p>
-			<button
-				on:click={() => goto('/work-requests')}
+			<a
+				href="/work-requests"
 				class="rounded-lg bg-sky-500 px-6 py-2 font-medium text-white transition-colors hover:bg-sky-600"
 			>
 				Back to Work Requests
-			</button>
+			</a>
 		</div>
 	{:else if workRequest}
 		<article class="overflow-hidden rounded-xl bg-slate-700/50 shadow-2xl">
@@ -184,7 +222,7 @@
 				<h1 class="mb-2 text-3xl leading-tight font-bold text-emerald-400 sm:text-4xl">
 					{workRequest.title}
 				</h1>
-				<div class="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
+				<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-400">
 					<span
 						>Category: <span class="font-semibold text-sky-300"
 							>{workRequest.category || 'N/A'}</span
@@ -195,7 +233,7 @@
 							workRequest.status
 						)}"
 					>
-						Status: {workRequest.status.replace('_', ' ') || 'N/A'}
+						Status: {workRequest.status.replace(/_/g, ' ') || 'N/A'}
 					</span>
 				</div>
 			</header>
@@ -214,7 +252,7 @@
 								>
 									<img
 										src={imagePath}
-										alt="Work request image for {workRequest.title}"
+										alt="Work request for {workRequest.title}"
 										class="h-full w-full bg-slate-600 object-cover"
 										loading="lazy"
 									/>
@@ -256,17 +294,14 @@
 					</div>
 				</div>
 
-				<!-- Customer Information (Placeholder - requires fetching customer details) -->
 				{#if workRequest.customerId !== currentUser?.id}
 					<section class="border-t border-slate-600/70 pt-4">
-						<h2 class="mb-2 text-xl font-semibold text-sky-300">Posted By</h2>
-						<!-- TODO: Fetch and display customer name, avatar, link to profile -->
-						<p class="text-slate-300">Customer ID: {workRequest.customerId}</p>
-						<!-- <button class="text-emerald-400 hover:underline">View Customer Profile</button> -->
+						<h2 class="mb-3 text-xl font-semibold text-sky-300">Posted By</h2>
+						<UserProfile userId={workRequest.customerId} />
 					</section>
 				{/if}
 
-				<!-- Actions for Expert/Supplier -->
+				<!-- Actions for Expert/Supplier viewing the request -->
 				{#if currentUser && (currentUser.userType === 'expert' || currentUser.userType === 'supplier') && workRequest.customerId !== currentUser?.id}
 					{#if workRequest.status === 'open' || workRequest.status === 'awaiting_quotes'}
 						<section class="border-t border-slate-600/70 pt-6 text-center">
@@ -274,13 +309,11 @@
 								<p class="font-semibold text-emerald-400">
 									You have already expressed interest in this request.
 								</p>
-								<!-- TODO: Check if a chat already exists and link to it -->
-								<!-- <button on:click={() => goto('/chat/...')} class="mt-2 bg-sky-500 hover:bg-sky-600 text-white font-medium py-2 px-5 rounded-lg">Go to Chat</button> -->
 							{:else}
 								<button
 									on:click={handleExpressInterest}
 									disabled={isExpressingInterest}
-									class="rounded-lg bg-emerald-500 px-6 py-2.5 text-base font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-lg disabled:bg-slate-500"
+									class="rounded-lg bg-emerald-500 px-6 py-2.5 text-base font-semibold text-white shadow-md transition-all hover:bg-emerald-600 disabled:bg-slate-500"
 								>
 									{isExpressingInterest ? 'Processing...' : 'Express Interest & Start Chat'}
 								</button>
@@ -298,27 +331,88 @@
 					{/if}
 				{/if}
 
-				<!-- Actions for Customer -->
+				<!-- Actions for Customer who owns the request -->
 				{#if currentUser && currentUser.id === workRequest.customerId}
-					<section class="flex flex-wrap justify-center gap-4 border-t border-slate-600/70 pt-6">
-						{#if workRequest.status === 'open'}
-							<a
-								href="/find-professionals?type=expert"
-								class="rounded-lg bg-sky-500 px-6 py-2.5 text-base font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-sky-600 hover:shadow-lg"
-							>
-								Find Expert
-							</a>
-							<!-- <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-5 rounded-lg">Edit Request</button> -->
-							<!-- <button class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-5 rounded-lg">Cancel Request</button> -->
-							<!-- <p class="text-sm text-slate-400">
-								TODO: Add Edit/Cancel options for 'open' requests.
-							</p> -->
+					<div class="space-y-8 border-t border-slate-600/70 pt-6">
+						{#if contractedProfessionalId}
+							<section>
+								<h2 class="mb-4 text-center text-xl font-semibold text-sky-300">
+									Contracted Professional
+								</h2>
+								<div class="mx-auto max-w-lg rounded-lg bg-slate-800/50 p-4 shadow-md">
+									<UserProfile userId={contractedProfessionalId} />
+								</div>
+							</section>
+						{:else}
+							<section class="space-y-6">
+								<h2 class="mb-4 text-center text-xl font-semibold text-sky-300">
+									Interested Professionals
+								</h2>
+								{#if interestedProfessionals.length > 0}
+									<div class="mx-auto max-w-2xl space-y-4">
+										{#each interestedProfessionals as profId (profId)}
+											<div
+												class="flex flex-col items-center justify-between gap-4 rounded-lg bg-slate-800/50 p-4 shadow-md sm:flex-row"
+											>
+												<div class="w-full flex-grow self-start">
+													<UserProfile userId={profId} />
+												</div>
+												<div class="flex flex-shrink-0 items-center gap-2 self-center sm:self-auto">
+													{#if chatMap.has(profId)}
+														<a
+															href={`/chat/${chatMap.get(profId)}`}
+															class="group flex flex-col items-center"
+														>
+															<div
+																class="flex h-12 w-12 items-center justify-center rounded-full bg-sky-600 transition-colors group-hover:bg-sky-700"
+															>
+																<span class="h-6 w-6 text-white">{@html chatIcon}</span>
+															</div>
+															<span class="mt-1 text-xs text-slate-400 group-hover:text-sky-300"
+																>Chat</span
+															>
+														</a>
+													{/if}
+													<a
+														href={`/contracts/create?workRequestId=${workRequest.id}&professionalId=${profId}`}
+														class="group flex flex-col items-center"
+													>
+														<div
+															class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 transition-colors group-hover:bg-emerald-700"
+														>
+															<span class="h-6 w-6 text-white">{@html contractIcon}</span>
+														</div>
+														<span class="mt-1 text-xs text-slate-400 group-hover:text-emerald-300"
+															>Contract</span
+														>
+													</a>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{:else}
+									<div class="text-center">
+										<p class="text-slate-400">
+											No professionals have expressed interest yet. When they do, they will appear
+											here.
+										</p>
+									</div>
+								{/if}
+
+								<!-- "Invite More" button for open requests -->
+								{#if workRequest.status === 'open'}
+									<div class="text-center">
+										<a
+											href="/find-professionals?type=expert&request-id={workRequest.id}"
+											class="inline-block rounded-lg bg-sky-500 px-6 py-2 text-base font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-sky-600"
+										>
+											{`Invite ${interestedProfessionals.length > 0 ? 'More' : ''} Experts to Your Request`}
+										</a>
+									</div>
+								{/if}
+							</section>
 						{/if}
-						<!-- TODO: Display interested experts/suppliers -->
-						<!-- <p class="text-sm text-slate-400">
-							TODO: List interested experts/suppliers for this request.
-						</p> -->
-					</section>
+					</div>
 				{/if}
 			</div>
 			<footer class="bg-slate-800/60 p-4 text-center sm:p-6">
@@ -335,29 +429,12 @@
 			<p class="mt-2 text-slate-300">
 				The requested work order could not be loaded or does not exist.
 			</p>
-			<button
-				on:click={() => goto('/work-requests')}
+			<a
+				href="/work-requests"
 				class="mt-4 rounded-lg bg-emerald-500 px-5 py-2 font-medium text-white hover:bg-emerald-600"
-				>Back to List</button
 			>
+				Back to List
+			</a>
 		</div>
 	{/if}
 </div>
-
-<style lang="postcss">
-	/* Add any page-specific styles here if needed */
-
-	/* Add any page-specific styles here if needed */
-
-	/* add a button or a tag that can find the expert. that button should navigate to
-`/find-professionals?type=expert`. find a appropriate place to put this button or anchor. it looks
-good and match with the current UI of the user and design 203
-<a
-		href="/find-professionals?type=expert"
-		class="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-600"
->
-		Find Expert
-</a>
-
-*/
-</style>
