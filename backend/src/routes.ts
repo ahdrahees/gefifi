@@ -912,12 +912,41 @@ router.get('/chat', authenticateToken, async (req: AuthenticatedRequest, res: Re
 		const user = req.user as JwtPayload;
 		const allChats = await chatsDB.getAll();
 		const userChats = allChats.filter((chat: Chat) => chat.participants.includes(user.id));
-		userChats.sort(
-			(a: Chat, b: Chat) =>
+
+		// Enrich each chat with its last message
+		const enrichedChats = await Promise.all(
+			userChats.map(async (chat) => {
+				const messages = await chatsDB.getAllFromSubcollection<Message>(chat.id, 'messages');
+
+				let lastMessage = null;
+				if (messages.length > 0) {
+					// Sort messages by timestamp descending to find the most recent one
+					messages.sort(
+						(a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+					);
+					const latestMessage = messages[0];
+					lastMessage = {
+						id: latestMessage.id,
+						content: latestMessage.content,
+						timestamp: latestMessage.timestamp,
+						senderId: latestMessage.senderId
+					};
+				}
+
+				return {
+					...chat,
+					lastMessage: lastMessage
+				};
+			})
+		);
+
+		enrichedChats.sort(
+			(a: any, b: any) =>
 				new Date(b.updatedAt || b.createdAt).getTime() -
 				new Date(a.updatedAt || a.createdAt).getTime()
 		);
-		res.status(200).json(userChats);
+
+		res.status(200).json(enrichedChats);
 	} catch (error: unknown) {
 		console.error('Error fetching user chats:', error);
 		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
