@@ -6,6 +6,7 @@
 	import { authStore } from '$lib/stores/auth';
 	import type { AuthUser, WorkRequest } from '$lib/types';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 
 	export let show: boolean = false;
 	export let targetProfessionalId: string;
@@ -27,6 +28,8 @@
 	let isLoading: boolean = false;
 	let formError: string | null = null;
 	let formSuccess: string | null = null;
+
+	let isPreselected: boolean = false;
 
 	// For "Discuss Specific Project"
 	let customerWorkRequests: CustomerWorkRequest[] = [];
@@ -57,7 +60,11 @@
 			// Reset state when modal is shown
 			formError = null;
 			formSuccess = null;
-			selectedWorkRequestId = undefined;
+
+			// params are passed from material/Expert request
+			selectedWorkRequestId = $page.url.searchParams.get('request-id') || undefined;
+			isPreselected = selectedWorkRequestId !== undefined;
+
 			customMessage = '';
 			if (currentUser?.userType === 'customer') {
 				fetchCustomerWorkRequests();
@@ -180,31 +187,38 @@
 
 		{#if !formSuccess}
 			<!-- Hide form options if successfully submitted -->
-			<!-- Option 1: Quick Greeting -->
-			<div class="rounded-lg bg-slate-700/50 p-4 shadow">
-				<h3 class="text-md mb-2 font-semibold text-sky-300">Quick Greeting</h3>
-				<p class="mb-3 text-sm text-slate-300">
-					Send a general interest message to start a conversation.
-				</p>
-				<button
-					on:click={handleSendQuickGreeting}
-					disabled={isLoading}
-					class="w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
-				>
-					{#if isLoading && !customMessage && !selectedWorkRequestId}Processing...{:else}Send Quick
-						Greeting{/if}
-				</button>
-			</div>
 
-			<div class="my-4 flex items-center">
-				<span class="flex-grow border-t border-slate-600"></span>
-				<span class="mx-3 text-xs text-slate-400 uppercase">Or</span>
-				<span class="flex-grow border-t border-slate-600"></span>
-			</div>
+			<!-- display only if not preselected by passing URL query parameters -->
+			{#if !isPreselected}
+				<!-- Option 1: Quick Greeting -->
+				<div class="rounded-lg bg-slate-700/50 p-4 shadow">
+					<h3 class="text-md mb-2 font-semibold text-sky-300">Quick Greeting</h3>
+					<p class="mb-3 text-sm text-slate-300">
+						Send a general interest message to start a conversation.
+					</p>
+					<button
+						on:click={handleSendQuickGreeting}
+						disabled={isLoading}
+						class="w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						{#if isLoading && !customMessage && !selectedWorkRequestId}Processing...{:else}Send
+							Quick Greeting{/if}
+					</button>
+				</div>
+
+				<div class="my-4 flex items-center">
+					<span class="flex-grow border-t border-slate-600"></span>
+					<span class="mx-3 text-xs text-slate-400 uppercase">Or</span>
+					<span class="flex-grow border-t border-slate-600"></span>
+				</div>
+			{/if}
 
 			<!-- Option 2: Detailed Interest -->
 			<div class="space-y-4 rounded-lg bg-slate-700/50 p-4 shadow">
-				<h3 class="text-md font-semibold text-sky-300">Discuss a Specific Project</h3>
+				<!-- display only if not preselected by passing URL query parameters -->
+				{#if !isPreselected}
+					<h3 class="text-md font-semibold text-sky-300">Discuss a Specific Project</h3>
+				{/if}
 
 				{#if currentUser?.userType === 'customer'}
 					<div class="form-group">
