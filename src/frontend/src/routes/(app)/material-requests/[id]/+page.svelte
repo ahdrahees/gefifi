@@ -107,7 +107,7 @@
 				<div class="rounded-xl bg-slate-700/60 p-6 shadow-lg">
 					<h2 class="mb-4 text-xl font-semibold text-sky-300">Requested Items</h2>
 					<ul class="space-y-3">
-						{#each request.items as item}
+						{#each request.items as item, index (index)}
 							<li class="flex items-start justify-between rounded-lg bg-slate-800/50 p-3">
 								<div>
 									<p class="font-medium text-slate-100">{item.itemName}</p>
@@ -191,7 +191,7 @@
 				{#if currentUser?.userType === 'customer' && request.status === 'open'}
 					<div class="rounded-xl bg-slate-700/60 p-6 text-center shadow-lg">
 						<a
-							href="/find-professionals?type=supplier"
+							href={`/find-professionals?type=supplier&request-id=${request.id}`}
 							class="block w-full rounded-lg bg-sky-500 px-6 py-3 font-semibold text-white shadow-md transition-colors hover:bg-sky-600"
 						>
 							Find a Supplier
