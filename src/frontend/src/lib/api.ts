@@ -239,6 +239,24 @@ const apiClient = {
 		return request('/upload', 'POST', formData, false, true);
 	},
 
+	// --- Entity Attachments ---
+	uploadEntityAttachments: (
+		entityType: 'material-requests' | 'contracts' | 'work-requests',
+		entityId: string,
+		formData: FormData
+	): Promise<{
+		message: string;
+		attachments: Array<{
+			fileName: string;
+			filePath: string;
+			fileType: string;
+			size: number;
+		}>;
+		totalAttachments: number;
+	}> => {
+		return request(`/attachments/${entityType}/${entityId}`, 'POST', formData, true, true);
+	},
+
 	// --- Work Requests ---
 	getWorkRequests: (): Promise<WorkRequestResponse[]> => {
 		return request<WorkRequestResponse[]>('/work-requests', 'GET');

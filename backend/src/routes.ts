@@ -20,8 +20,9 @@ import {
 } from './auth';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { getSignedAudioUrl } from './file-storage';
+import { getSignedAudioUrl, uploadEntityAttachment } from './file-storage';
 import admin from 'firebase-admin';
+import multer from 'multer';
 
 // Initialize databases
 const usersDB = new FirestoreCollection<User>('users');
@@ -34,6 +35,55 @@ const contractsDB = new FirestoreCollection<Contract>('contracts');
 
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// --- Multer Configuration for Entity Attachments ---
+const attachmentUpload = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 25 * 1024 * 1024, // 25MB limit per file
+		files: 20 // Maximum files per request (higher than individual entity limits for flexibility)
+	},
+	fileFilter: (req, file, cb) => {
+		// Accept common construction-related file types
+		const allowedTypes = [
+			// Images
+			'image/jpeg',
+			'image/jpg',
+			'image/png',
+			'image/gif',
+			'image/webp',
+			// Documents
+			'application/pdf',
+			'application/msword',
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+			'application/vnd.ms-excel',
+			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			// CAD files (some browsers may not set MIME types correctly for these)
+			'application/octet-stream' // For .dwg, .dxf files
+		];
+
+		if (
+			allowedTypes.includes(file.mimetype) ||
+			file.originalname.toLowerCase().endsWith('.dwg') ||
+			file.originalname.toLowerCase().endsWith('.dxf')
+		) {
+			cb(null, true);
+		} else {
+			cb(
+				new Error(
+					`File type not allowed: ${file.mimetype}. Allowed types: images, PDF, Word, Excel, DWG, DXF.`
+				)
+			);
+		}
+	}
+});
+
+// Entity configuration for file limits
+const ENTITY_CONFIG = {
+	'material-requests': { maxFiles: 10, collection: materialRequestsDB },
+	contracts: { maxFiles: 15, collection: contractsDB },
+	'work-requests': { maxFiles: 10, collection: workRequestsDB }
+} as const;
 
 // --- Helper: Validate User Profile based on UserType ---
 const validateProfileData = (
@@ -567,20 +617,27 @@ router.post(
 			const now = new Date().toISOString();
 			const materialRequestId = crypto.randomUUID();
 
-			const newMaterialRequest: MaterialRequest = {
+			// Construct material request object, only including defined values (Firestore-safe)
+			const newMaterialRequest: any = {
 				id: materialRequestId,
 				customerId: user.id,
 				title,
 				description,
 				deliveryLocation,
-				deliveryDate,
-				linkedWorkRequestId,
 				items,
 				status: 'open',
 				createdAt: now,
 				updatedAt: now,
 				interestedSuppliers: []
 			};
+
+			// Only include optional fields if they have values
+			if (deliveryDate) {
+				newMaterialRequest.deliveryDate = deliveryDate;
+			}
+			if (linkedWorkRequestId) {
+				newMaterialRequest.linkedWorkRequestId = linkedWorkRequestId;
+			}
 
 			const createdMaterialRequest = await materialRequestsDB.create(newMaterialRequest);
 			res.status(201).json(createdMaterialRequest);
@@ -610,6 +667,123 @@ router.get('/material-requests/:id', async (req: Request, res: Response) => {
 		res.status(500).json({ message: 'Failed to fetch material request.', error: errorMessage });
 	}
 });
+
+// --- Generic Entity Attachment Endpoint ---
+router.post(
+	'/attachments/:entityType/:entityId',
+	authenticateToken,
+	attachmentUpload.array('files', 20),
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { entityType, entityId } = req.params;
+			const files = req.files as Express.Multer.File[];
+
+			// Validate entity type
+			if (!ENTITY_CONFIG[entityType as keyof typeof ENTITY_CONFIG]) {
+				return res.status(400).json({
+					message: `Invalid entity type: ${entityType}. Supported types: ${Object.keys(ENTITY_CONFIG).join(', ')}`
+				});
+			}
+
+			const config = ENTITY_CONFIG[entityType as keyof typeof ENTITY_CONFIG];
+
+			// Validate files were uploaded
+			if (!files || files.length === 0) {
+				return res
+					.status(400)
+					.json({ message: 'No files uploaded. Please select files to attach.' });
+			}
+
+			// Validate file count
+			if (files.length > config.maxFiles) {
+				return res.status(400).json({
+					message: `Too many files. Maximum ${config.maxFiles} files allowed for ${entityType}.`
+				});
+			}
+
+			// Validate entity exists and user has permission
+			const entity = await config.collection.findById(entityId);
+			if (!entity) {
+				return res.status(404).json({ message: `${entityType.slice(0, -1)} not found.` });
+			}
+
+			// Check user permission and get current attachments (entity-type specific)
+			let hasPermission = false;
+			let currentAttachments: any[] = [];
+
+			if (entityType === 'material-requests') {
+				const materialRequest = entity as MaterialRequest;
+				hasPermission = materialRequest.customerId === user.id;
+				currentAttachments = materialRequest.attachments || [];
+			} else if (entityType === 'work-requests') {
+				const workRequest = entity as WorkRequest;
+				hasPermission = workRequest.customerId === user.id;
+				// Work requests don't have attachments yet, but we'll prepare for future support
+				currentAttachments = [];
+			} else if (entityType === 'contracts') {
+				const contract = entity as Contract;
+				hasPermission = contract.customerId === user.id || contract.expertSupplierId === user.id;
+				// Contracts don't have attachments yet, but we'll prepare for future support
+				currentAttachments = [];
+			}
+
+			if (!hasPermission) {
+				return res.status(403).json({
+					message: `Forbidden. You don't have permission to add attachments to this ${entityType.slice(0, -1)}.`
+				});
+			}
+
+			// Upload files to GCS
+			const uploadPromises = files.map((file) =>
+				uploadEntityAttachment(file, entityType, entityId)
+			);
+			const uploadResults = await Promise.all(uploadPromises);
+
+			// Create attachment objects (Firestore-safe, no undefined values)
+			const newAttachments = uploadResults.map((result, index) => {
+				const file = files[index];
+				const attachment: any = {
+					fileName: file.originalname,
+					filePath: result.filePath,
+					fileType: file.mimetype,
+					size: file.size
+				};
+				return attachment;
+			});
+
+			// Get updated attachments list
+			const updatedAttachments = [...currentAttachments, ...newAttachments];
+
+			// Update entity with new attachments
+			const updateData: any = {
+				attachments: updatedAttachments,
+				updatedAt: new Date().toISOString()
+			};
+
+			await config.collection.update(entityId, updateData);
+
+			res.status(200).json({
+				message: `${files.length} attachment(s) uploaded successfully!`,
+				attachments: newAttachments,
+				totalAttachments: updatedAttachments.length
+			});
+		} catch (error: unknown) {
+			console.error('Error uploading entity attachments:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+
+			// Handle multer errors
+			if (errorMessage.includes('File type not allowed')) {
+				return res.status(400).json({ message: errorMessage });
+			}
+			if (errorMessage.includes('File too large')) {
+				return res.status(400).json({ message: 'File too large. Maximum file size is 25MB.' });
+			}
+
+			res.status(500).json({ message: 'Failed to upload attachments.', error: errorMessage });
+		}
+	}
+);
 
 // --- User List Endpoints ---
 router.get('/users/experts', async (_req: Request, res: Response) => {

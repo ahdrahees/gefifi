@@ -5,6 +5,7 @@
 	import type { MaterialRequest } from '$lib/types'; // Using the full type for details
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
+	import AttachmentList from '$lib/components/AttachmentList.svelte';
 
 	let currentUser: AuthUser | null = null;
 	authStore.subscribe((auth) => (currentUser = auth.user));
@@ -120,6 +121,13 @@
 						{/each}
 					</ul>
 				</div>
+
+				<!-- Attachments -->
+				{#if request.attachments && request.attachments.length > 0}
+					<div class="rounded-xl bg-slate-700/60 p-6 shadow-lg">
+						<AttachmentList attachments={request.attachments} />
+					</div>
+				{/if}
 			</div>
 
 			<!-- Side Panel -->

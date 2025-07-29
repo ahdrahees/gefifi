@@ -80,6 +80,16 @@ export type WorkRequest = {
 };
 
 /**
+ * Represents a file attachment, typically used in Material Requests or Contracts.
+ */
+export type Attachment = {
+	fileName: string;
+	filePath: string; // Public URL to the file in GCS
+	fileType: string; // MIME type
+	size: number; // in bytes
+};
+
+/**
  * Represents a request for materials, either standalone or linked to a WorkRequest.
  * This should align with the backend's MaterialRequest interface.
  */
@@ -91,6 +101,7 @@ export type MaterialRequest = {
 	deliveryLocation: string;
 	deliveryDate?: string;
 	linkedWorkRequestId?: string;
+	attachments?: Attachment[];
 	items: {
 		itemName: string;
 		quantity: string;
@@ -109,10 +120,17 @@ export type Chat = {
 	id: string;
 	participants: string[];
 	workRequestId?: string;
+	materialRequestId?: string;
 	createdAt: string;
 	updatedAt: string;
 	// Frontend-enriched properties can be added where this type is used
 	// e.g., displayName?: string;
+	lastMessage?: {
+		id: string;
+		content: string;
+		timestamp: string;
+		senderId: string;
+	};
 };
 
 /**
