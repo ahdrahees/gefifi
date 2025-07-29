@@ -70,7 +70,7 @@
 
 	function getFileIcon(fileName: string): string {
 		const extension = fileName.split('.').pop()?.toLowerCase() || '';
-		if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) return '🖼️';
+		if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) return '🖼️';
 		if (extension === 'pdf') return '📄';
 		if (['doc', 'docx'].includes(extension)) return '📝';
 		if (['xls', 'xlsx'].includes(extension)) return '📊';
@@ -78,11 +78,66 @@
 		return '📁';
 	}
 
-	function formatBytes(bytes: number, decimals = 2): string {
+	/**
+	 * Gets a more detailed file type description for display
+	 */
+	function getFileTypeDescription(fileName: string): string {
+		const extension = fileName.split('.').pop()?.toLowerCase() || '';
+		if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) return 'Image';
+		if (extension === 'pdf') return 'PDF Document';
+		if (['doc', 'docx'].includes(extension)) return 'Word Document';
+		if (['xls', 'xlsx'].includes(extension)) return 'Excel Spreadsheet';
+		if (extension === 'dwg') return 'AutoCAD Drawing';
+		if (extension === 'dxf') return 'DXF Drawing';
+		return 'Document';
+	}
+
+	/**
+	 * Gets color classes for file type badges (matches AttachmentList.svelte)
+	 */
+	function getFileTypeClasses(fileName: string): string {
+		const extension = fileName.split('.').pop()?.toLowerCase() || '';
+		if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+			return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+		}
+		if (extension === 'pdf') return 'bg-red-500/20 text-red-300 border-red-500/30';
+		if (['doc', 'docx'].includes(extension))
+			return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+		if (['xls', 'xlsx'].includes(extension))
+			return 'bg-green-500/20 text-green-300 border-green-500/30';
+		if (['dwg', 'dxf'].includes(extension))
+			return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
+		return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
+	}
+
+	/**
+	 * Checks if a file should display as a thumbnail image
+	 */
+	function shouldShowThumbnail(file: File): boolean {
+		// Show thumbnails for images
+		if (file.type.startsWith('image/')) return true;
+
+		// Check by extension for files that might not have correct MIME types
+		const extension = file.name.split('.').pop()?.toLowerCase() || '';
+		if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Creates a URL for file preview
+	 */
+	function createFilePreviewUrl(file: File): string {
+		return URL.createObjectURL(file);
+	}
+
+	function formatBytes(bytes: number, decimals = 1): string {
 		if (bytes === 0) return '0 Bytes';
 		const k = 1024;
 		const dm = decimals < 0 ? 0 : decimals;
-		const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+		const sizes = ['Bytes', 'KB', 'MB', 'GB'];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 	}
@@ -150,42 +205,116 @@
 	{/if}
 
 	{#if $files.length > 0}
-		<div class="space-y-3">
-			<h3 class="font-semibold text-slate-300">Selected Files:</h3>
-			<ul class="space-y-2">
+		<div class="space-y-4">
+			<!-- Header with icon and count -->
+			<div class="flex items-center gap-3">
+				<div class="flex items-center gap-2">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+						/>
+					</svg>
+					<h3 class="text-lg font-semibold text-slate-100">Selected Files</h3>
+				</div>
+				<span class="rounded-full bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300">
+					{$files.length}
+				</span>
+			</div>
+
+			<div class="grid gap-3">
 				{#each $files as file, i (i)}
-					<li class="flex items-center justify-between rounded-lg bg-slate-700/50 p-3 text-sm">
-						<div class="flex items-center space-x-3 overflow-hidden">
-							<span class="text-2xl">{getFileIcon(file.name)}</span>
-							<div class="flex flex-col overflow-hidden">
-								<span class="truncate font-medium text-slate-200" title={file.name}
-									>{file.name}</span
-								>
-								<span class="text-xs text-slate-400">{formatBytes(file.size)}</span>
+					<div
+						class="group relative overflow-hidden rounded-xl border border-slate-600/30 bg-gradient-to-r from-slate-800/50 to-slate-700/30 p-4 shadow-lg backdrop-blur-sm transition-all duration-200 hover:border-slate-500/50 hover:from-slate-700/60 hover:to-slate-600/40 hover:shadow-xl"
+					>
+						<!-- File Icon and Type Badge -->
+						<div class="flex items-center gap-4">
+							<div class="flex-shrink-0">
+								{#if shouldShowThumbnail(file)}
+									<!-- Image Thumbnail -->
+									<div class="h-12 w-12 overflow-hidden rounded-xl ring-1 ring-slate-600/50">
+										<img
+											src={createFilePreviewUrl(file)}
+											alt={file.name}
+											class="h-full w-full object-cover"
+											loading="lazy"
+											on:error={(e) => {
+												// Fallback to icon if image fails to load
+												const img = e.target as HTMLImageElement;
+												if (img) {
+													img.style.display = 'none';
+													const fallback = img.nextElementSibling as HTMLElement;
+													if (fallback) {
+														fallback.style.display = 'flex';
+													}
+												}
+											}}
+										/>
+										<!-- Fallback icon (hidden by default) -->
+										<div
+											class="hidden h-12 w-12 items-center justify-center rounded-xl bg-slate-700/50 text-2xl ring-1 ring-slate-600/50"
+										>
+											{getFileIcon(file.name)}
+										</div>
+									</div>
+								{:else}
+									<!-- Regular File Icon -->
+									<div
+										class="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-700/50 text-2xl ring-1 ring-slate-600/50"
+									>
+										{getFileIcon(file.name)}
+									</div>
+								{/if}
 							</div>
-						</div>
-						<button
-							type="button"
-							on:click={() => removeFile(i)}
-							class="ml-4 rounded-full p-1 text-slate-400 transition-colors hover:bg-red-500/20 hover:text-red-400"
-							title="Remove file"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								class="h-5 w-5"
-								viewBox="0 0 20 20"
-								fill="currentColor"
+
+							<!-- File Details -->
+							<div class="min-w-0 flex-1">
+								<h4
+									class="truncate text-sm font-semibold text-slate-100 transition-colors group-hover:text-white"
+									title={file.name}
+								>
+									{file.name}
+								</h4>
+
+								<div class="mt-1 flex items-center gap-3">
+									<span
+										class={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${getFileTypeClasses(file.name)}`}
+									>
+										{getFileTypeDescription(file.name)}
+									</span>
+									<span class="text-xs text-slate-400">
+										{formatBytes(file.size)}
+									</span>
+								</div>
+							</div>
+
+							<!-- Remove Button - Centered -->
+							<button
+								type="button"
+								on:click={() => removeFile(i)}
+								class="flex h-8 w-8 items-center justify-center rounded-full bg-red-600/10 text-red-400 shadow-sm transition-all duration-200 hover:scale-110 hover:bg-red-600/20 hover:text-red-300 focus:ring-2 focus:ring-red-500/50 focus:outline-none"
+								title="Remove file"
 							>
-								<path
-									fill-rule="evenodd"
-									d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-									clip-rule="evenodd"
-								/>
-							</svg>
-						</button>
-					</li>
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M6 18L18 6M6 6l12 12"
+									/>
+								</svg>
+							</button>
+						</div>
+
+						<!-- Subtle hover effect overlay -->
+						<div
+							class="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-emerald-500/5 to-sky-500/5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+						></div>
+					</div>
 				{/each}
-			</ul>
+			</div>
 		</div>
 	{/if}
 </div>
