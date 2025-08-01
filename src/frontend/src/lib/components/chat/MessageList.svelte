@@ -93,51 +93,79 @@
 						<DateSeparator timestamp={item.data.timestamp} />
 					{:else if item.type === 'message'}
 						{@const message = item.data as Message}
-						<div
-							class="flex"
-							class:justify-end={message.senderId === currentUser?.id}
-							class:justify-start={message.senderId !== currentUser?.id}
-						>
-							<div
-								class="max-w-md rounded-xl px-3 py-2 shadow-md"
-								class:rounded-br-none={message.senderId === currentUser?.id}
-								class:bg-emerald-600={message.senderId === currentUser?.id}
-								class:text-white={message.senderId === currentUser?.id}
-								class:rounded-bl-none={message.senderId !== currentUser?.id}
-								class:bg-slate-700={message.senderId !== currentUser?.id}
-								class:text-slate-100={message.senderId !== currentUser?.id}
-							>
-								{#if message.audioType === 'voice'}
-									<AudioMessageView {message} />
-								{:else}
-									{#if message.images && message.images.length > 0}
-										<div class="mb-2 space-y-2">
-											{#each message.images as imageSrc (imageSrc)}
-												<img
-													src={imageSrc}
-													alt="Chat attachment"
-													class="max-w-xs rounded-lg border border-slate-600 object-contain"
-												/>
-											{/each}
-										</div>
-									{/if}
-									{#if message.content && message.content.trim()}
-										<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
-											{@html parseAndSanitize(message.content)}
-										</div>
-									{/if}
-								{/if}
+						<!-- System Message -->
+						{#if message.senderId === 'system'}
+							<div class="flex items-center justify-center py-2">
 								<div
-									class="mt-1 text-xs"
-									class:text-right={message.senderId === currentUser?.id}
-									class:text-emerald-200={message.senderId === currentUser?.id}
-									class:text-left={message.senderId !== currentUser?.id}
-									class:text-slate-400={message.senderId !== currentUser?.id}
+									class="flex items-center justify-center gap-2 rounded-full bg-slate-700/50 px-4 py-2"
 								>
-									{formatTimestamp(message.timestamp)}
+									<svg
+										class="h-4 w-4 text-slate-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+										/>
+									</svg>
+
+									<span class="text-[11px] text-slate-400 sm:text-xs"
+										>{@html parseAndSanitize(message.content)}</span
+									>
 								</div>
 							</div>
-						</div>
+						{:else}
+							<!-- User Message -->
+							<div
+								class="flex"
+								class:justify-end={message.senderId === currentUser?.id}
+								class:justify-start={message.senderId !== currentUser?.id}
+							>
+								<div
+									class="max-w-md rounded-xl px-3 py-2 shadow-md"
+									class:rounded-br-none={message.senderId === currentUser?.id}
+									class:bg-emerald-600={message.senderId === currentUser?.id}
+									class:text-white={message.senderId === currentUser?.id}
+									class:rounded-bl-none={message.senderId !== currentUser?.id}
+									class:bg-slate-700={message.senderId !== currentUser?.id}
+									class:text-slate-100={message.senderId !== currentUser?.id}
+								>
+									{#if message.audioType === 'voice'}
+										<AudioMessageView {message} />
+									{:else}
+										{#if message.images && message.images.length > 0}
+											<div class="mb-2 space-y-2">
+												{#each message.images as imageSrc (imageSrc)}
+													<img
+														src={imageSrc}
+														alt="Chat attachment"
+														class="max-w-xs rounded-lg border border-slate-600 object-contain"
+													/>
+												{/each}
+											</div>
+										{/if}
+										{#if message.content && message.content.trim()}
+											<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
+												{@html parseAndSanitize(message.content)}
+											</div>
+										{/if}
+									{/if}
+									<div
+										class="mt-1 text-xs"
+										class:text-right={message.senderId === currentUser?.id}
+										class:text-emerald-200={message.senderId === currentUser?.id}
+										class:text-left={message.senderId !== currentUser?.id}
+										class:text-slate-400={message.senderId !== currentUser?.id}
+									>
+										{formatTimestamp(message.timestamp)}
+									</div>
+								</div>
+							</div>
+						{/if}
 					{/if}
 				{/each}
 			</div>

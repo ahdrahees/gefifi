@@ -20,8 +20,9 @@ import {
 } from './auth';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { getSignedAudioUrl } from './file-storage';
+import { getSignedAudioUrl, uploadEntityAttachment } from './file-storage';
 import admin from 'firebase-admin';
+import multer from 'multer';
 
 // Initialize databases
 const usersDB = new FirestoreCollection<User>('users');
@@ -34,6 +35,55 @@ const contractsDB = new FirestoreCollection<Contract>('contracts');
 
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// --- Multer Configuration for Entity Attachments ---
+const attachmentUpload = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 25 * 1024 * 1024, // 25MB limit per file
+		files: 20 // Maximum files per request (higher than individual entity limits for flexibility)
+	},
+	fileFilter: (req, file, cb) => {
+		// Accept common construction-related file types
+		const allowedTypes = [
+			// Images
+			'image/jpeg',
+			'image/jpg',
+			'image/png',
+			'image/gif',
+			'image/webp',
+			// Documents
+			'application/pdf',
+			'application/msword',
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+			'application/vnd.ms-excel',
+			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			// CAD files (some browsers may not set MIME types correctly for these)
+			'application/octet-stream' // For .dwg, .dxf files
+		];
+
+		if (
+			allowedTypes.includes(file.mimetype) ||
+			file.originalname.toLowerCase().endsWith('.dwg') ||
+			file.originalname.toLowerCase().endsWith('.dxf')
+		) {
+			cb(null, true);
+		} else {
+			cb(
+				new Error(
+					`File type not allowed: ${file.mimetype}. Allowed types: images, PDF, Word, Excel, DWG, DXF.`
+				)
+			);
+		}
+	}
+});
+
+// Entity configuration for file limits
+const ENTITY_CONFIG = {
+	'material-requests': { maxFiles: 10, collection: materialRequestsDB },
+	contracts: { maxFiles: 15, collection: contractsDB },
+	'work-requests': { maxFiles: 10, collection: workRequestsDB }
+} as const;
 
 // --- Helper: Validate User Profile based on UserType ---
 const validateProfileData = (
@@ -567,20 +617,27 @@ router.post(
 			const now = new Date().toISOString();
 			const materialRequestId = crypto.randomUUID();
 
-			const newMaterialRequest: MaterialRequest = {
+			// Construct material request object, only including defined values (Firestore-safe)
+			const newMaterialRequest: any = {
 				id: materialRequestId,
 				customerId: user.id,
 				title,
 				description,
 				deliveryLocation,
-				deliveryDate,
-				linkedWorkRequestId,
 				items,
 				status: 'open',
 				createdAt: now,
 				updatedAt: now,
 				interestedSuppliers: []
 			};
+
+			// Only include optional fields if they have values
+			if (deliveryDate) {
+				newMaterialRequest.deliveryDate = deliveryDate;
+			}
+			if (linkedWorkRequestId) {
+				newMaterialRequest.linkedWorkRequestId = linkedWorkRequestId;
+			}
 
 			const createdMaterialRequest = await materialRequestsDB.create(newMaterialRequest);
 			res.status(201).json(createdMaterialRequest);
@@ -610,6 +667,123 @@ router.get('/material-requests/:id', async (req: Request, res: Response) => {
 		res.status(500).json({ message: 'Failed to fetch material request.', error: errorMessage });
 	}
 });
+
+// --- Generic Entity Attachment Endpoint ---
+router.post(
+	'/attachments/:entityType/:entityId',
+	authenticateToken,
+	attachmentUpload.array('files', 20),
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { entityType, entityId } = req.params;
+			const files = req.files as Express.Multer.File[];
+
+			// Validate entity type
+			if (!ENTITY_CONFIG[entityType as keyof typeof ENTITY_CONFIG]) {
+				return res.status(400).json({
+					message: `Invalid entity type: ${entityType}. Supported types: ${Object.keys(ENTITY_CONFIG).join(', ')}`
+				});
+			}
+
+			const config = ENTITY_CONFIG[entityType as keyof typeof ENTITY_CONFIG];
+
+			// Validate files were uploaded
+			if (!files || files.length === 0) {
+				return res
+					.status(400)
+					.json({ message: 'No files uploaded. Please select files to attach.' });
+			}
+
+			// Validate file count
+			if (files.length > config.maxFiles) {
+				return res.status(400).json({
+					message: `Too many files. Maximum ${config.maxFiles} files allowed for ${entityType}.`
+				});
+			}
+
+			// Validate entity exists and user has permission
+			const entity = await config.collection.findById(entityId);
+			if (!entity) {
+				return res.status(404).json({ message: `${entityType.slice(0, -1)} not found.` });
+			}
+
+			// Check user permission and get current attachments (entity-type specific)
+			let hasPermission = false;
+			let currentAttachments: any[] = [];
+
+			if (entityType === 'material-requests') {
+				const materialRequest = entity as MaterialRequest;
+				hasPermission = materialRequest.customerId === user.id;
+				currentAttachments = materialRequest.attachments || [];
+			} else if (entityType === 'work-requests') {
+				const workRequest = entity as WorkRequest;
+				hasPermission = workRequest.customerId === user.id;
+				// Work requests don't have attachments yet, but we'll prepare for future support
+				currentAttachments = [];
+			} else if (entityType === 'contracts') {
+				const contract = entity as Contract;
+				hasPermission = contract.customerId === user.id || contract.expertSupplierId === user.id;
+				// Contracts don't have attachments yet, but we'll prepare for future support
+				currentAttachments = [];
+			}
+
+			if (!hasPermission) {
+				return res.status(403).json({
+					message: `Forbidden. You don't have permission to add attachments to this ${entityType.slice(0, -1)}.`
+				});
+			}
+
+			// Upload files to GCS
+			const uploadPromises = files.map((file) =>
+				uploadEntityAttachment(file, entityType, entityId)
+			);
+			const uploadResults = await Promise.all(uploadPromises);
+
+			// Create attachment objects (Firestore-safe, no undefined values)
+			const newAttachments = uploadResults.map((result, index) => {
+				const file = files[index];
+				const attachment: any = {
+					fileName: file.originalname,
+					filePath: result.filePath,
+					fileType: file.mimetype,
+					size: file.size
+				};
+				return attachment;
+			});
+
+			// Get updated attachments list
+			const updatedAttachments = [...currentAttachments, ...newAttachments];
+
+			// Update entity with new attachments
+			const updateData: any = {
+				attachments: updatedAttachments,
+				updatedAt: new Date().toISOString()
+			};
+
+			await config.collection.update(entityId, updateData);
+
+			res.status(200).json({
+				message: `${files.length} attachment(s) uploaded successfully!`,
+				attachments: newAttachments,
+				totalAttachments: updatedAttachments.length
+			});
+		} catch (error: unknown) {
+			console.error('Error uploading entity attachments:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+
+			// Handle multer errors
+			if (errorMessage.includes('File type not allowed')) {
+				return res.status(400).json({ message: errorMessage });
+			}
+			if (errorMessage.includes('File too large')) {
+				return res.status(400).json({ message: 'File too large. Maximum file size is 25MB.' });
+			}
+
+			res.status(500).json({ message: 'Failed to upload attachments.', error: errorMessage });
+		}
+	}
+);
 
 // --- User List Endpoints ---
 router.get('/users/experts', async (_req: Request, res: Response) => {
@@ -906,18 +1080,205 @@ router.post(
 	}
 );
 
+// --- Invitation Endpoints ---
+
+// Invite users to a work request
+router.post(
+	'/work-requests/:id/invite',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { id: workRequestId } = req.params;
+			const { userIds, userType } = req.body;
+
+			// Validate input
+			if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+				return res
+					.status(400)
+					.json({ message: 'userIds array is required and must not be empty.' });
+			}
+			if (!userType || !['expert', 'supplier'].includes(userType)) {
+				return res.status(400).json({ message: 'userType must be either "expert" or "supplier".' });
+			}
+
+			// Get the work request
+			const workRequest = await workRequestsDB.findById(workRequestId);
+			if (!workRequest) {
+				return res.status(404).json({ message: 'Work request not found.' });
+			}
+
+			// Only the customer who owns the request can invite users
+			if (workRequest.customerId !== user.id) {
+				return res
+					.status(403)
+					.json({ message: 'Only the customer who created this request can invite users.' });
+			}
+
+			// Validate that the work request is in a valid status for invitations
+			if (!['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status)) {
+				return res.status(400).json({
+					message: `Cannot invite users to a work request with status: ${workRequest.status}`
+				});
+			}
+
+			// Validate all user IDs exist and are of the correct type
+			const validatedUsers = [];
+			for (const userId of userIds) {
+				const targetUser = await usersDB.findById(userId);
+				if (!targetUser || !targetUser.isActive) {
+					return res.status(404).json({ message: `User with ID ${userId} not found or inactive.` });
+				}
+				if (targetUser.userType !== userType) {
+					return res.status(400).json({
+						message: `User ${userId} is not a ${userType}. Cannot invite to work request.`
+					});
+				}
+				validatedUsers.push(targetUser);
+			}
+
+			// Update the work request with invited users
+			const updateField = userType === 'expert' ? 'invitedExperts' : 'invitedSuppliers';
+			const currentInvited = workRequest[updateField] || [];
+			const newInvited = [...new Set([...currentInvited, ...userIds])]; // Remove duplicates
+
+			await workRequestsDB.update(workRequestId, {
+				[updateField]: newInvited,
+				updatedAt: new Date().toISOString()
+			});
+
+			res.status(200).json({
+				message: `Successfully invited ${userIds.length} ${userType}(s) to the work request.`,
+				invitedUsers: validatedUsers.map((u) => ({
+					id: u.id,
+					name: u.profile?.fullName || u.profile?.companyName
+				}))
+			});
+		} catch (error: unknown) {
+			console.error('Error inviting users to work request:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to invite users.', error: errorMessage });
+		}
+	}
+);
+
+// Invite users to a material request
+router.post(
+	'/material-requests/:id/invite',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { id: materialRequestId } = req.params;
+			const { userIds } = req.body;
+
+			// Validate input
+			if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+				return res
+					.status(400)
+					.json({ message: 'userIds array is required and must not be empty.' });
+			}
+
+			// Get the material request
+			const materialRequest = await materialRequestsDB.findById(materialRequestId);
+			if (!materialRequest) {
+				return res.status(404).json({ message: 'Material request not found.' });
+			}
+
+			// Only the customer who owns the request can invite users
+			if (materialRequest.customerId !== user.id) {
+				return res
+					.status(403)
+					.json({ message: 'Only the customer who created this request can invite users.' });
+			}
+
+			// Validate that the material request is in a valid status for invitations
+			if (!['open', 'quoting'].includes(materialRequest.status)) {
+				return res.status(400).json({
+					message: `Cannot invite users to a material request with status: ${materialRequest.status}`
+				});
+			}
+
+			// Validate all user IDs exist and are suppliers
+			const validatedUsers = [];
+			for (const userId of userIds) {
+				const targetUser = await usersDB.findById(userId);
+				if (!targetUser || !targetUser.isActive) {
+					return res.status(404).json({ message: `User with ID ${userId} not found or inactive.` });
+				}
+				if (targetUser.userType !== 'supplier') {
+					return res.status(400).json({
+						message: `User ${userId} is not a supplier. Cannot invite to material request.`
+					});
+				}
+				validatedUsers.push(targetUser);
+			}
+
+			// Update the material request with invited users
+			const currentInvited = materialRequest.invitedSuppliers || [];
+			const newInvited = [...new Set([...currentInvited, ...userIds])]; // Remove duplicates
+
+			await materialRequestsDB.update(materialRequestId, {
+				invitedSuppliers: newInvited,
+				updatedAt: new Date().toISOString()
+			});
+
+			res.status(200).json({
+				message: `Successfully invited ${userIds.length} supplier(s) to the material request.`,
+				invitedUsers: validatedUsers.map((u) => ({
+					id: u.id,
+					name: u.profile?.fullName || u.profile?.companyName
+				}))
+			});
+		} catch (error: unknown) {
+			console.error('Error inviting users to material request:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to invite users.', error: errorMessage });
+		}
+	}
+);
+
 // --- Chat Endpoints ---
 router.get('/chat', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
 	try {
 		const user = req.user as JwtPayload;
 		const allChats = await chatsDB.getAll();
 		const userChats = allChats.filter((chat: Chat) => chat.participants.includes(user.id));
-		userChats.sort(
-			(a: Chat, b: Chat) =>
+
+		// Enrich each chat with its last message
+		const enrichedChats = await Promise.all(
+			userChats.map(async (chat) => {
+				const messages = await chatsDB.getAllFromSubcollection<Message>(chat.id, 'messages');
+
+				let lastMessage = null;
+				if (messages.length > 0) {
+					// Sort messages by timestamp descending to find the most recent one
+					messages.sort(
+						(a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+					);
+					const latestMessage = messages[0];
+					lastMessage = {
+						id: latestMessage.id,
+						content: latestMessage.content,
+						timestamp: latestMessage.timestamp,
+						senderId: latestMessage.senderId
+					};
+				}
+
+				return {
+					...chat,
+					lastMessage: lastMessage
+				};
+			})
+		);
+
+		enrichedChats.sort(
+			(a: any, b: any) =>
 				new Date(b.updatedAt || b.createdAt).getTime() -
 				new Date(a.updatedAt || a.createdAt).getTime()
 		);
-		res.status(200).json(userChats);
+
+		res.status(200).json(enrichedChats);
 	} catch (error: unknown) {
 		console.error('Error fetching user chats:', error);
 		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
@@ -1245,7 +1606,16 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			expertSupplierId,
 			workDetails,
 			agreementSummary,
-			contractDate
+			contractDate,
+			// New optional fields
+			totalAmount,
+			paymentTerms,
+			advanceAmount,
+			startDate,
+			expectedCompletionDate,
+			termsAndConditions,
+			warrantyPeriod,
+			cancellationPolicy
 		} = req.body;
 
 		// --- Validation ---
@@ -1264,9 +1634,11 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		}
 
 		const requestType = workRequestId ? 'work' : 'material';
+		const contractType = requestType === 'work' ? 'expert_contract' : 'material_contract';
 		const requestId = workRequestId || materialRequestId;
 
-		// Validate that the request exists
+		// Validate that the request exists and get request data for participant validation
+		let requestData: any = null;
 		if (requestType === 'work') {
 			const workRequest = await workRequestsDB.findById(requestId);
 			if (!workRequest)
@@ -1276,6 +1648,13 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 					message: 'Mismatch: workRequest.customerId does not match provided customerId.'
 				});
 			}
+			// Check if request is in valid status for contract creation
+			if (!['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status)) {
+				return res.status(400).json({
+					message: `Work request must be in 'open', 'in_discussion', or 'awaiting_quotes' status to create a contract. Current status: ${workRequest.status}`
+				});
+			}
+			requestData = workRequest;
 		} else {
 			// requestType === 'material'
 			const materialRequest = await materialRequestsDB.findById(requestId);
@@ -1288,8 +1667,16 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 					message: 'Mismatch: materialRequest.customerId does not match provided customerId.'
 				});
 			}
+			// Check if request is in valid status for contract creation
+			if (!['open', 'quoting'].includes(materialRequest.status)) {
+				return res.status(400).json({
+					message: `Material request must be in 'open' or 'quoting' status to create a contract. Current status: ${materialRequest.status}`
+				});
+			}
+			requestData = materialRequest;
 		}
 
+		// Validate users exist and are active
 		const customer = await usersDB.findById(customerId);
 		const provider = await usersDB.findById(expertSupplierId);
 		if (!customer || !customer.isActive)
@@ -1305,10 +1692,70 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 				.status(400)
 				.json({ message: 'expertSupplierId must belong to an expert or supplier user.' });
 		}
+
+		// Enhanced participant validation - check both interested and invited users
+		const isProviderEligible = (() => {
+			if (requestType === 'work') {
+				// For work requests, check if provider is expert and is either interested or invited
+				if (provider.userType === 'expert') {
+					const interestedExperts = requestData.interestedExperts || [];
+					const invitedExperts = requestData.invitedExperts || [];
+					return (
+						interestedExperts.includes(expertSupplierId) ||
+						invitedExperts.includes(expertSupplierId)
+					);
+				}
+				// Suppliers can also work on work requests in some cases
+				if (provider.userType === 'supplier') {
+					const interestedSuppliers = requestData.interestedSuppliers || [];
+					const invitedSuppliers = requestData.invitedSuppliers || [];
+					return (
+						interestedSuppliers.includes(expertSupplierId) ||
+						invitedSuppliers.includes(expertSupplierId)
+					);
+				}
+				return false;
+			} else {
+				// For material requests, check if provider is supplier and is either interested or invited
+				if (provider.userType === 'supplier') {
+					const interestedSuppliers = requestData.interestedSuppliers || [];
+					const invitedSuppliers = requestData.invitedSuppliers || [];
+					return (
+						interestedSuppliers.includes(expertSupplierId) ||
+						invitedSuppliers.includes(expertSupplierId)
+					);
+				}
+				return false;
+			}
+		})();
+
+		if (!isProviderEligible) {
+			return res.status(403).json({
+				message: `The ${provider.userType} must be either interested in or invited to this ${requestType} request to create a contract.`
+			});
+		}
+
+		// Authorization check - contract creator must be either customer or the eligible provider
 		if (initiator.id !== customerId && initiator.id !== expertSupplierId) {
 			return res.status(403).json({
 				message:
 					'Forbidden. Contract creator must be the customer or the designated expert/supplier.'
+			});
+		}
+
+		// Check for existing active contracts
+		const allContracts = await contractsDB.getAll();
+		const existingActiveContract = allContracts.find((contract: any) => {
+			const isForSameRequest =
+				(requestType === 'work' && contract.workRequestId === requestId) ||
+				(requestType === 'material' && contract.materialRequestId === requestId);
+			const isActive = !['cancelled', 'terminated'].includes(contract.status);
+			return isForSameRequest && isActive;
+		});
+
+		if (existingActiveContract) {
+			return res.status(409).json({
+				message: `An active contract already exists for this ${requestType} request. Contract ID: ${existingActiveContract.id}`
 			});
 		}
 		const now = new Date().toISOString();
@@ -1318,6 +1765,7 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		const initialExpertSupplierSigned = false;
 		const initialStatus: Contract['status'] = 'draft';
 
+		// Construct contract object with all fields
 		const newContract: Partial<Contract> = {
 			id: contractId,
 			customerId,
@@ -1328,10 +1776,25 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			customerSigned: initialCustomerSigned,
 			expertSupplierSigned: initialExpertSupplierSigned,
 			requestType: requestType,
+			contractType: contractType,
 			status: initialStatus,
 			createdAt: now,
 			updatedAt: now
 		};
+
+		// Add optional financial fields if provided
+		if (totalAmount !== undefined) newContract.totalAmount = totalAmount;
+		if (paymentTerms) newContract.paymentTerms = paymentTerms;
+		if (advanceAmount !== undefined) newContract.advanceAmount = advanceAmount;
+
+		// Add optional timeline fields if provided
+		if (startDate) newContract.startDate = startDate;
+		if (expectedCompletionDate) newContract.expectedCompletionDate = expectedCompletionDate;
+
+		// Add optional legal fields if provided
+		if (termsAndConditions) newContract.termsAndConditions = termsAndConditions;
+		if (warrantyPeriod) newContract.warrantyPeriod = warrantyPeriod;
+		if (cancellationPolicy) newContract.cancellationPolicy = cancellationPolicy;
 
 		if (workRequestId) newContract.workRequestId = workRequestId;
 		if (materialRequestId) newContract.materialRequestId = materialRequestId;
@@ -1373,9 +1836,47 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		} else {
 			// requestType === 'material'
 			const materialRequest = await materialRequestsDB.findById(requestId);
-			if (materialRequest && materialRequest.status === 'open') {
-				await materialRequestsDB.update(materialRequest.id, { status: 'ordered', updatedAt: now });
+			if (
+				materialRequest &&
+				(materialRequest.status === 'open' || materialRequest.status === 'quoting')
+			) {
+				console.log(
+					`[POST /api/contracts] Updating material request ${materialRequest.id} status to 'contracted'.`
+				);
+				await materialRequestsDB.update(materialRequest.id, {
+					status: 'contracted',
+					updatedAt: now
+				});
 			}
+		}
+
+		// Remove request IDs from associated chat documents to prevent duplicate contract creation
+		try {
+			const allChats = await chatsDB.getAll();
+			const requestFieldName = requestType === 'work' ? 'workRequestId' : 'materialRequestId';
+
+			// Find chats that have this specific request ID
+			const chatsToUpdate = allChats.filter((chat: any) => chat[requestFieldName] === requestId);
+
+			// Update each chat to remove the request ID
+			for (const chat of chatsToUpdate) {
+				const updateData: any = { updatedAt: now };
+				updateData[requestFieldName] = null; // Remove the request ID
+
+				console.log(
+					`[POST /api/contracts] Removing ${requestFieldName} from chat ${chat.id} after contract creation`
+				);
+				await chatsDB.update(chat.id, updateData);
+			}
+
+			if (chatsToUpdate.length > 0) {
+				console.log(
+					`[POST /api/contracts] Updated ${chatsToUpdate.length} chat(s) to remove ${requestFieldName}`
+				);
+			}
+		} catch (chatUpdateError: unknown) {
+			console.error('Error updating chat documents after contract creation:', chatUpdateError);
+			// Don't fail the contract creation if chat update fails
 		}
 
 		res.status(201).json(createdContract);

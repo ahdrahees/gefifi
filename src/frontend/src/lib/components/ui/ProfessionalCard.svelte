@@ -1,11 +1,16 @@
 <!-- gefifi-2/src/frontend/src/lib/components/ui/ProfessionalCard.svelte -->
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { page } from '$app/stores';
 	import type { AuthUser } from '$lib/types';
 
 	export let professional: AuthUser;
 
 	const dispatch = createEventDispatcher();
+
+	// Determine if this is an invitation context (from a specific request)
+	$: isInvitationContext = !!$page.url.searchParams.get('request-id');
+	$: buttonText = isInvitationContext ? `Send Invitation` : 'Send Interest';
 
 	function getProfessionalName(prof: AuthUser): string {
 		if (prof.userType === 'supplier') {
@@ -17,15 +22,12 @@
 	function handleSendInterestClick() {
 		dispatch('sendInterest', {
 			userId: professional.id,
-			userName: getProfessionalName(professional)
+			userName: getProfessionalName(professional),
+			userType: professional.userType
 		});
 	}
 
 	// Determine a default avatar if none is provided
-	// Ensure '/hero/Default Avatar Construction Worker.png' exists in your `frontend/static/hero/` directory,
-	// or replace with another suitable public placeholder URL or local static path.
-	// const avatarUrl = professional.profile?.avatarUrl || '/images/default-avatar.png';
-
 	const avatarUrl =
 		professional.profile?.avatarUrl ||
 		(professional.userType === 'expert' ? '/images/default-avatar.png' : '/images/warehouse.png');
@@ -91,10 +93,31 @@
 	<div class="mt-5 border-t border-slate-600/70 pt-4">
 		<button
 			on:click={handleSendInterestClick}
-			class="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors duration-150 ease-in-out hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-			aria-label="Send interest to {getProfessionalName(professional)}"
+			class="w-full rounded-lg {isInvitationContext
+				? 'bg-emerald-500 hover:bg-emerald-600'
+				: 'bg-emerald-500 hover:bg-emerald-600'} px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors duration-150 ease-in-out focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+			aria-label="{buttonText} to {getProfessionalName(professional)}"
 		>
-			Send Interest
+			{#if isInvitationContext}
+				<svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
+					/>
+				</svg>
+			{:else}
+				<svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+					/>
+				</svg>
+			{/if}
+			{buttonText}
 		</button>
 	</div>
 </div>

@@ -2,7 +2,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
-	import type { AuthUser, UserProfile } from '$lib/types';
+	import type { AuthUser } from '$lib/types';
 	import apiClient from '$lib/api';
 	import ProfessionalCard from '$lib/components/ui/ProfessionalCard.svelte';
 	import SendInterestModal from '$lib/components/modals/SendInterestModal.svelte';
@@ -16,9 +16,9 @@
 		token = auth.token;
 	});
 
-	let allExperts: UserProfile[] = [];
-	let allSuppliers: UserProfile[] = [];
-	let displayedProfessionals: UserProfile[] = [];
+	let allExperts: AuthUser[] = [];
+	let allSuppliers: AuthUser[] = [];
+	let displayedProfessionals: AuthUser[] = [];
 
 	let searchTerm: string = '';
 	let selectedType: 'all' | 'expert' | 'supplier' = 'all';
@@ -74,8 +74,8 @@
 	function filterAndSortProfessionals(
 		currentSearchTerm: string,
 		currentSelectedType: 'all' | 'expert' | 'supplier',
-		currentExperts: UserProfile[],
-		currentSuppliers: UserProfile[],
+		currentExperts: AuthUser[],
+		currentSuppliers: AuthUser[],
 		currentLocalUser: AuthUser | null
 	) {
 		console.log(
@@ -89,7 +89,7 @@
 			return;
 		}
 
-		let combinedList: UserProfile[] = [];
+		let combinedList: AuthUser[] = [];
 		if (currentSelectedType === 'all') {
 			combinedList = [...currentExperts, ...currentSuppliers];
 		} else if (currentSelectedType === 'expert') {
@@ -138,8 +138,8 @@
 			currentSelectedType === 'all'
 		) {
 			const customerLocationLower = currentLocalUser.profile.location.toLowerCase();
-			const nearby: UserProfile[] = [];
-			const others: UserProfile[] = [];
+			const nearby: AuthUser[] = [];
+			const others: AuthUser[] = [];
 			filteredList.forEach((prof) => {
 				if (prof.profile?.location?.toLowerCase().includes(customerLocationLower)) {
 					nearby.push(prof);
@@ -186,10 +186,16 @@
 	let showInterestModal = false;
 	let currentTargetProfessionalId: string | null = null;
 	let currentTargetProfessionalName: string | null = null;
+	let currentTargetProfessionalType: 'expert' | 'supplier';
 
-	function handleOpenInterestModal(eventDetail: { userId: string; userName: string }) {
+	function handleOpenInterestModal(eventDetail: {
+		userId: string;
+		userName: string;
+		userType: 'expert' | 'supplier';
+	}) {
 		currentTargetProfessionalId = eventDetail.userId;
 		currentTargetProfessionalName = eventDetail.userName;
+		currentTargetProfessionalType = eventDetail.userType;
 		showInterestModal = true;
 	}
 
@@ -201,7 +207,7 @@
 		console.log('Interest successfully sent, event from modal:', event.detail);
 	}
 
-	function getProfessionalName(prof: UserProfile): string {
+	function getProfessionalName(prof: AuthUser): string {
 		return prof.profile?.fullName || prof.profile?.companyName || prof.email || 'Professional';
 	}
 </script>
@@ -331,6 +337,7 @@
 		targetProfessionalName={currentTargetProfessionalName}
 		on:close={handleCloseInterestModal}
 		on:interestSent={handleInterestSuccessfullySent}
+		professionalType={currentTargetProfessionalType}
 	/>
 {/if}
 

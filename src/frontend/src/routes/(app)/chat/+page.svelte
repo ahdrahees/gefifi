@@ -122,6 +122,12 @@
 				workRequestId?: string;
 				updatedAt: string;
 				createdAt: string;
+				lastMessage: {
+					id: string;
+					content: string;
+					timestamp: string;
+					senderId: string;
+				} | null;
 			}[] = await response.json();
 
 			// Collect all unique other participant IDs
@@ -172,6 +178,16 @@
 					avatarUrl = currentUser?.profile?.avatarUrl;
 				}
 
+				let lastMessageSnippet = 'No messages yet...';
+				if (chat.lastMessage) {
+					// Add a prefix if the current user sent the last message
+					if (chat.lastMessage.senderId === currentUser?.id) {
+						lastMessageSnippet = `You: ${chat.lastMessage.content}`;
+					} else {
+						lastMessageSnippet = chat.lastMessage.content;
+					}
+				}
+
 				return {
 					id: chat.id,
 					participantIds: chat.participants,
@@ -180,8 +196,9 @@
 					displayName,
 					avatarUrl,
 					otherUserProfile,
-					lastMessageSnippet: 'No messages yet...',
-					unreadCount: 0
+					lastMessage: chat.lastMessage ?? undefined,
+					lastMessageSnippet,
+					unreadCount: 0 // Placeholder
 				};
 			});
 

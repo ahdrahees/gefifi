@@ -2,10 +2,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { writable } from 'svelte/store';
 	import { authStore } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
 	import type { WorkRequest } from '$lib/types';
 	import type { WorkRequestResponse } from '$lib/api';
+	import FileUpload from '$lib/components/FileUpload.svelte';
 
 	let title = '';
 	let description = '';
@@ -18,6 +20,10 @@
 	let customerWorkRequests: WorkRequestResponse[] = [];
 	let isLoading = false;
 	let errorMessage = '';
+
+	// File attachment handling
+	let selectedFiles = writable<File[]>([]);
+	let isUploadingFiles = false;
 
 	onMount(async () => {
 		const user = $authStore.user;
@@ -49,6 +55,28 @@
 		}
 	}
 
+	async function uploadAttachments(materialRequestId: string): Promise<void> {
+		const files = $selectedFiles;
+		if (!files || files.length === 0) {
+			return;
+		}
+
+		isUploadingFiles = true;
+		try {
+			const formData = new FormData();
+			files.forEach((file) => {
+				formData.append('files', file);
+			});
+
+			await apiClient.uploadEntityAttachments('material-requests', materialRequestId, formData);
+		} catch (error: any) {
+			console.error('Failed to upload attachments:', error);
+			throw new Error(error.data?.message || 'Failed to upload attachments.');
+		} finally {
+			isUploadingFiles = false;
+		}
+	}
+
 	async function handleSubmit() {
 		isLoading = true;
 		errorMessage = '';
@@ -59,16 +87,49 @@
 			return;
 		}
 
+		// Validate file count
+		if ($selectedFiles.length > 10) {
+			errorMessage = 'Too many files selected. Maximum 10 files allowed for material requests.';
+			isLoading = false;
+			return;
+		}
+
 		try {
-			const newMaterialRequest = await apiClient.createMaterialRequest({
+			// Step 1: Create the material request
+			// Construct the request data, only including defined values (Firestore-safe)
+			const requestData: any = {
 				title,
 				description,
 				deliveryLocation,
-				deliveryDate: deliveryDate || undefined,
-				linkedWorkRequestId,
 				items
-			});
-			// Navigate to the new material request's detail page or a confirmation page
+			};
+
+			// Only include optional fields if they have values
+			if (deliveryDate?.trim()) {
+				requestData.deliveryDate = deliveryDate;
+			}
+			if (linkedWorkRequestId) {
+				requestData.linkedWorkRequestId = linkedWorkRequestId;
+			}
+
+			const newMaterialRequest = await apiClient.createMaterialRequest(requestData);
+
+			// Step 2: Upload attachments if any files are selected
+			if ($selectedFiles.length > 0) {
+				try {
+					await uploadAttachments(newMaterialRequest.id);
+				} catch (attachmentError: any) {
+					// Material request was created but attachments failed
+					errorMessage = `Material request created but ${attachmentError.message}`;
+					// Still navigate to the page since the request was created
+					setTimeout(() => {
+						goto(`/material-requests/${newMaterialRequest.id}`);
+					}, 3000);
+					return;
+				}
+			}
+
+			// Step 3: Navigate to the new material request's detail page
 			goto(`/material-requests/${newMaterialRequest.id}`);
 		} catch (error: any) {
 			errorMessage = error.data?.message || 'Failed to create material request.';
@@ -226,6 +287,35 @@
 			</button>
 		</div>
 
+		<!-- File Attachments Section -->
+		<div class="space-y-4 border-t border-slate-600 pt-6">
+			<div>
+				<h3 class="text-xl font-semibold text-sky-300">Attachments</h3>
+				<p class="mt-1 text-sm text-slate-400">
+					Upload bills of materials, drawings, photos, or other relevant documents (Max 10 files,
+					25MB total)
+				</p>
+			</div>
+			<FileUpload
+				acceptedFileTypes={[
+					'image/jpeg',
+					'image/png',
+					'image/gif',
+					'image/webp',
+					'application/pdf',
+					'application/msword',
+					'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+					'application/vnd.ms-excel',
+					'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+					'.dwg',
+					'.dxf'
+				]}
+				maxFileSize={25 * 1024 * 1024}
+				multiple={true}
+				files={selectedFiles}
+			/>
+		</div>
+
 		{#if errorMessage}
 			<div
 				class="rounded-md border border-red-500/50 bg-red-500/25 p-3.5 text-sm text-red-200"
@@ -239,12 +329,13 @@
 		<div class="border-t border-slate-600 pt-6">
 			<button
 				type="submit"
-				disabled={isLoading}
+				disabled={isLoading || isUploadingFiles}
 				class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 text-sm leading-6 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:opacity-50"
 			>
-				{#if isLoading}
-					<!-- Spinner SVG -->
-					<span>Submitting Request...</span>
+				{#if isLoading && !isUploadingFiles}
+					<span>Creating Material Request...</span>
+				{:else if isUploadingFiles}
+					<span>Uploading Attachments...</span>
 				{:else}
 					Submit Material Request
 				{/if}
