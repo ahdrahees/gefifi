@@ -12,7 +12,8 @@
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import AudioRecordingForm from '$lib/components/chat/AudioRecordingForm.svelte';
 	import PermissionModal from '$lib/components/chat/PermissionModal.svelte';
-	import ContractModal from '$lib/components/contracts/ContractModal.svelte';
+	import { onMount } from 'svelte';
+	// import ContractModal from '$lib/components/contracts/ContractModal.svelte'; // No longer needed
 
 	// --- Component Instances ---
 	let messageListComponent: MessageList;
@@ -44,7 +45,7 @@
 	let isUploadingImage = false;
 
 	// --- Contract Modal State ---
-	let showContractModal = false;
+	// let showContractModal = false; // No longer needed with page-based contract creation
 
 	// --- SvelteKit Lifecycle & Reactive Data ---
 	$: chatId = $page.params.chatId;
@@ -200,8 +201,8 @@
 		{chatPageTitle}
 		{otherParticipantProfile}
 		workRequestId={currentChatDetails?.workRequestId}
+		materialRequestId={currentChatDetails?.materialRequestId}
 		on:navigateBack={() => goto('/chat')}
-		on:openContractModal={() => (showContractModal = true)}
 	/>
 
 	<MessageList
@@ -237,16 +238,7 @@
 </div>
 
 <!-- Modals -->
-{#if showContractModal && currentChatDetails?.workRequestId && otherParticipantProfile && currentUser}
-	<ContractModal
-		bind:show={showContractModal}
-		workRequestId={currentChatDetails.workRequestId}
-		otherPartyId={otherParticipantProfile.id}
-		otherPartyName={chatPageTitle}
-		userType={currentUser.userType}
-		on:close={() => (showContractModal = false)}
-	/>
-{/if}
+<!-- Contract creation now handled via dedicated page, modal code kept for backward compatibility if needed -->
 
 {#if permissionState === 'denied'}
 	<PermissionModal on:close={() => (permissionState = 'prompt')} />

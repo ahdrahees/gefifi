@@ -4,6 +4,7 @@
 	import { authStore } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { page } from '$app/stores';
 
 	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -17,6 +18,7 @@
 	let isLoading = false;
 	let errorMessage: string | null = null;
 	let googleIsLoading = false;
+	let isAlreadySelected = false;
 
 	const userTypes = [
 		{
@@ -63,7 +65,7 @@
 				userType: selectedUserType,
 				profile: {} // Profile is now collected on the complete-profile page
 			});
-			goto('/dashboard');
+			goto('/home');
 		} catch (error: any) {
 			errorMessage = error.message || 'An unexpected error occurred during registration.';
 		} finally {
@@ -91,7 +93,7 @@
 			if (result.isNewUser) {
 				goto('/auth/complete-profile', { replaceState: true });
 			} else {
-				goto('/dashboard', { replaceState: true });
+				goto('/home', { replaceState: true });
 			}
 		} catch (error: any) {
 			errorMessage = error.message || 'An unexpected error occurred.';
@@ -104,13 +106,22 @@
 	onMount(() => {
 		const initialAuthState = get(authStore);
 		if (initialAuthState.isAuthenticated && !initialAuthState.isLoading) {
-			goto('/dashboard', { replaceState: true });
+			goto('/home', { replaceState: true });
 		}
 		unsubscribeAuth = authStore.subscribe((state) => {
 			if (state.isAuthenticated && !state.isLoading) {
-				goto('/dashboard', { replaceState: true });
+				goto('/home', { replaceState: true });
 			}
 		});
+
+		// get user type from URL query parameter
+		selectedUserType =
+			($page.url.searchParams.get('type') as 'customer' | 'expert' | 'supplier') || null;
+
+		// if user type is already selected from the landing page and sent via URL query parameter, hide the user type selection
+		if (selectedUserType !== null) {
+			isAlreadySelected = true;
+		}
 
 		// Initialize Google Sign-In
 		if (GOOGLE_CLIENT_ID && window.google) {
@@ -171,23 +182,25 @@
 				</div>
 			{/if}
 
-			<div class="mb-6 space-y-4">
-				<h3 class="text-center font-semibold text-slate-300">I am a...</h3>
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-					{#each userTypes as type}
-						<button
-							on:click={() => selectUserType(type.value)}
-							class="flex flex-col items-center rounded-lg border-2 p-4 text-center transition-all duration-200 ease-in-out {selectedUserType ===
-							type.value
-								? 'border-emerald-500 bg-emerald-500/20 shadow-lg'
-								: 'border-slate-600 bg-slate-700/50 hover:border-slate-500 hover:bg-slate-700'}"
-						>
-							<span class="text-lg font-bold text-slate-100">{type.label}</span>
-							<span class="mt-1 text-xs text-slate-400">{type.description}</span>
-						</button>
-					{/each}
+			{#if !isAlreadySelected}
+				<div class="mb-6 space-y-4">
+					<h3 class="text-center font-semibold text-slate-300">I am a...</h3>
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+						{#each userTypes as type (type.value)}
+							<button
+								on:click={() => selectUserType(type.value)}
+								class="flex flex-col items-center rounded-lg border-2 p-4 text-center transition-all duration-200 ease-in-out {selectedUserType ===
+								type.value
+									? 'border-emerald-500 bg-emerald-500/20 shadow-lg'
+									: 'border-slate-600 bg-slate-700/50 hover:border-slate-500 hover:bg-slate-700'}"
+							>
+								<span class="text-lg font-bold text-slate-100">{type.label}</span>
+								<span class="mt-1 text-xs text-slate-400">{type.description}</span>
+							</button>
+						{/each}
+					</div>
 				</div>
-			</div>
+			{/if}
 
 			<!-- This div will now always exist but will be hidden until a user type is selected -->
 			<div class:hidden={!selectedUserType} class="mt-6">
@@ -265,6 +278,19 @@
 					</div>
 				</form>
 			</div>
+		</div>
+
+		<div class="mt-6 text-center text-sm">
+			<p class="text-slate-400">
+				Already have an account?
+				<a
+					href="/auth/login"
+					class="font-medium text-emerald-400 hover:text-emerald-300 hover:underline">Login here</a
+				>
+			</p>
+			<p class="mt-2 text-slate-500 transition-colors hover:text-slate-400">
+				<a href="/" class="hover:underline">&larr; Back to Home</a>
+			</p>
 		</div>
 	</div>
 </div>

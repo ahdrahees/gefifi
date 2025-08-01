@@ -39,3 +39,6 @@ vite.config.ts.timestamp-*
 gcp-credentials.json
 
 firestore-migration
+
+# Firebase emulator
+.emulator-persisted-data

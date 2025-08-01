@@ -54,7 +54,8 @@
 			RecordPlugin.create({
 				scrollingWaveform: true,
 				// Enforce a cross-browser compatible mimeType
-				mimeType: getCompatibleMimeType()
+				mimeType: getCompatibleMimeType(),
+				scrollingWaveformWindow: window.innerWidth <= 768 ? 1.5 : 5 // if its in mobile 2 seconds and other devices 5 seconds
 			})
 		);
 

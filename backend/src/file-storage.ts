@@ -86,8 +86,7 @@ const generateUniqueFilename = (originalName: string): string => {
 };
 
 /**
- * The main file upload handler.
- * It determines whether to use local storage or GCS based on the NODE_ENV.
+ * The main file upload handler for general files.
  * @param file The file object from multer (Express.Multer.File).
  * @returns An object containing the public URL (`filePath`) and the `fileName`.
  */
@@ -134,6 +133,75 @@ export const uploadFile = async (
 	}
 
 	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${uniqueFilename}`;
+	return { filePath, fileName: uniqueFilename };
+};
+
+/**
+ * Generic file upload handler for entity attachments.
+ * Uploads files to organized folders: attachments/[entityType]/[entityId]/[unique_file_name]
+ * @param file The file object from multer (Express.Multer.File).
+ * @param entityType The type of entity (e.g., 'material-requests', 'contracts', 'work-requests').
+ * @param entityId The ID of the entity this file belongs to.
+ * @returns An object containing the public URL (`filePath`) and the `fileName`.
+ */
+export const uploadEntityAttachment = async (
+	file: Express.Multer.File,
+	entityType: string,
+	entityId: string
+): Promise<{ filePath: string; fileName: string }> => {
+	if (!file) {
+		throw new Error('No file provided for upload.');
+	}
+
+	if (!entityType || !entityId) {
+		throw new Error('Entity type and entity ID are required for attachment upload.');
+	}
+
+	const uniqueFilename = generateUniqueFilename(file.originalname);
+	const destinationPath = `attachments/${entityType}/${entityId}/${uniqueFilename}`;
+
+	// Always upload to GCS (both development and production)
+	const gcsClient = getStorageClient();
+	if (!GCS_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_BUCKET_NAME is not set.');
+	}
+
+	const bucket = gcsClient.bucket(GCS_BUCKET_NAME);
+	const blob = bucket.file(destinationPath);
+
+	const blobStream = blob.createWriteStream({
+		resumable: false,
+		contentType: file.mimetype,
+		metadata: {
+			metadata: {
+				entityType: entityType,
+				entityId: entityId,
+				uploadedAt: new Date().toISOString()
+			}
+		}
+	});
+
+	await new Promise<void>((resolve, reject) => {
+		blobStream.on('error', (err) => {
+			console.error('[FileStorage] Entity Attachment GCS Upload Error:', err);
+			reject(new Error('Failed to upload attachment to Google Cloud Storage.'));
+		});
+		blobStream.on('finish', () => {
+			resolve();
+		});
+		blobStream.end(file.buffer);
+	});
+
+	let STORAGE_BASE_URL = 'https://storage.googleapis.com';
+
+	if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+		console.log(
+			`[FileStorage] Uploading entity attachment to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+		);
+		STORAGE_BASE_URL = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+	}
+
+	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${destinationPath}`;
 	return { filePath, fileName: uniqueFilename };
 };
 

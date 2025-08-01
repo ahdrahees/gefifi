@@ -1,21 +1,51 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/ChatHeader.svelte -->
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { goto } from '$app/navigation';
 	import type { AuthUser } from '$lib/types';
+	import { authStore } from '$lib/stores/auth';
 
 	export let isLoading: boolean = true;
 	export let chatPageTitle: string = 'Chat';
 	export let otherParticipantProfile: AuthUser | null = null;
 	export let workRequestId: string | undefined = undefined;
+	export let materialRequestId: string | undefined = undefined;
 
 	const dispatch = createEventDispatcher();
+
+	// Determine if we should show the contract button
+	$: hasRequest = workRequestId || materialRequestId;
+	$: contractButtonText = workRequestId ? 'Create Expert Contract' : 'Create Material Contract';
 
 	function handleBackClick() {
 		dispatch('navigateBack');
 	}
 
-	function handleOpenContractModal() {
-		dispatch('openContractModal');
+	function handleCreateContract() {
+		if (!hasRequest || !otherParticipantProfile) {
+			console.warn('Missing required data for contract creation');
+			return;
+		}
+
+		// Build URL parameters for the contract creation page
+		const params = new URLSearchParams();
+
+		if (workRequestId) {
+			params.set('workRequestId', workRequestId);
+		} else if (materialRequestId) {
+			params.set('materialRequestId', materialRequestId);
+		}
+
+		if ($authStore.user?.userType === 'customer') {
+			params.set('customerId', $authStore.user?.id);
+			params.set('expertSupplierId', otherParticipantProfile.id);
+		} else {
+			params.set('customerId', otherParticipantProfile.id);
+			params.set('expertSupplierId', $authStore?.user?.id as string);
+		}
+
+		// Navigate to the contract creation page
+		goto(`/contracts/create?${params.toString()}`);
 	}
 
 	function getUserTypeDisplay(userType: string | undefined): {
@@ -105,12 +135,23 @@
 		</div>
 
 		<div class="flex items-center gap-2">
-			{#if workRequestId}
+			{#if hasRequest}
 				<button
-					on:click={handleOpenContractModal}
-					class="flex-shrink-0 rounded-md bg-slate-700 px-3 py-2 text-sm font-semibold text-sky-300 transition-colors hover:bg-slate-600"
+					on:click={handleCreateContract}
+					class="flex-shrink-0 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+					title="Create a formal contract for this {workRequestId
+						? 'work request'
+						: 'material request'}"
 				>
-					Create Contract
+					<svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+						/>
+					</svg>
+					{contractButtonText}
 				</button>
 			{/if}
 		</div>

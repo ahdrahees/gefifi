@@ -39,7 +39,7 @@
 
 			// On successful login (existing user) or registration, the backend returns a token.
 			authStore._updateAuthData(result.token, result.user);
-			goto('/dashboard', { replaceState: true });
+			goto('/home', { replaceState: true });
 		} catch (error: any) {
 			console.error('Google Sign-In Error:', error);
 			if (error instanceof ApiError && error.status === 400) {
@@ -69,7 +69,7 @@
 			// A reactive statement in a layout or a +layout.ts load function
 			// would typically handle redirection based on isLoggedIn.
 			// For now, explicit navigation on success:
-			goto('/dashboard');
+			goto('/home');
 		} catch (error: any) {
 			// The error thrown by authStore.login already has a user-friendly message
 			errorMessage = error.message;
@@ -85,11 +85,11 @@
 		// Set up redirect for already logged-in users
 		unsubscribeAuth = authStore.subscribe((state) => {
 			if (state.isAuthenticated && !state.isLoading) {
-				goto('/dashboard', { replaceState: true });
+				goto('/home', { replaceState: true });
 			}
 		});
 		if ($authStore.isAuthenticated && !$authStore.isLoading) {
-			goto('/dashboard', { replaceState: true });
+			goto('/home', { replaceState: true });
 		}
 
 		// Initialize Google Sign-In
