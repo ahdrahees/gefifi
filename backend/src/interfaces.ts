@@ -70,8 +70,10 @@ export interface WorkRequest extends Identifiable {
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
-	interestedExperts?: string[]; // Array of expert User IDs
-	interestedSuppliers?: string[]; // Array of supplier User IDs
+	interestedExperts?: string[]; // Array of expert User IDs who showed interest
+	interestedSuppliers?: string[]; // Array of supplier User IDs who showed interest
+	invitedExperts?: string[]; // Array of expert User IDs directly invited by customer
+	invitedSuppliers?: string[]; // Array of supplier User IDs directly invited by customer
 }
 
 /**
@@ -100,10 +102,11 @@ export interface MaterialRequest extends Identifiable {
 		quantity: string; // e.g., '10 bags', '500 ft'
 		notes?: string; // e.g., 'Grade 43'
 	}[];
-	status: 'open' | 'quoting' | 'ordered' | 'completed' | 'cancelled';
+	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled'; // Added 'contracted' status
 	createdAt: string;
 	updatedAt: string;
-	interestedSuppliers?: string[]; // List of supplier User IDs
+	interestedSuppliers?: string[]; // List of supplier User IDs who showed interest
+	invitedSuppliers?: string[]; // List of supplier User IDs directly invited by customer
 }
 
 // --- Communication Types ---
@@ -141,16 +144,39 @@ export interface Message extends Identifiable {
 export interface Contract extends Identifiable {
 	customerId: string;
 	expertSupplierId: string;
-	requestType: 'work' | 'material';
+	requestType: 'work' | 'material'; // Keep for backward compatibility
+	contractType: 'expert_contract' | 'material_contract'; // New descriptive type
 	workRequestId?: string;
 	materialRequestId?: string;
 	workDetails: string; // Detailed scope of work or material list
-	agreementSummary: string; // Payment terms, timelines, etc.
+	agreementSummary: string; // High-level agreement summary
 	contractDate: string;
+
+	// Financial Terms
+	totalAmount?: number; // Total contract value
+	paymentTerms?: string; // Payment schedule/terms (e.g., "50% advance, 50% on completion")
+	advanceAmount?: number; // Upfront payment amount
+
+	// Timeline
+	startDate?: string; // Project start date
+	expectedCompletionDate?: string; // Planned completion date
+	actualCompletionDate?: string; // Actual completion date (set when completed)
+
+	// Legal & Compliance
+	termsAndConditions?: string; // Detailed terms and conditions
+	warrantyPeriod?: string; // Warranty period (e.g., "6 months", "1 year")
+	cancellationPolicy?: string; // Cancellation terms
+
+	// Attachments
+	attachments?: Attachment[]; // Contract documents, specifications, etc.
+
+	// Signatures
 	customerSigned: boolean;
 	customerSignatureTimestamp?: string;
 	expertSupplierSigned: boolean;
 	expertSupplierSignatureTimestamp?: string;
+
+	// Status & Tracking
 	status:
 		| 'draft'
 		| 'awaiting_signatures'

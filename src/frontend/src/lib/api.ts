@@ -163,7 +163,8 @@ interface UserInterestData {
 	targetUserId: string;
 	workRequestId?: string;
 	materialRequestId?: string;
-	predefinedMessageKey: string;
+	predefinedMessageKey?: string;
+	initialMessageContent?: string;
 }
 interface ChatData {
 	participantIds: string[];
@@ -176,12 +177,32 @@ interface ChatMessageData {
 }
 
 interface ContractData {
-	workRequestId: string;
+	// Required fields
 	customerId: string;
 	expertSupplierId: string;
 	workDetails: string;
 	agreementSummary: string;
+
+	// One of these is required
+	workRequestId?: string;
+	materialRequestId?: string;
+
+	// Optional fields
 	contractDate?: string;
+
+	// Financial Terms
+	totalAmount?: number;
+	paymentTerms?: string;
+	advanceAmount?: number;
+
+	// Timeline
+	startDate?: string;
+	expectedCompletionDate?: string;
+
+	// Legal & Compliance
+	termsAndConditions?: string;
+	warrantyPeriod?: string;
+	cancellationPolicy?: string;
 }
 interface ContractResponse {
 	/* Define based on backend Contract interface */ id: string;
@@ -368,6 +389,30 @@ const apiClient = {
 		payload: { component: 'work' | 'material'; newStatus: string }
 	): Promise<any> => {
 		return request<any>(`/projects/${id}/status`, 'PUT', payload, true);
+	},
+
+	// --- Invitations ---
+	inviteToWorkRequest: (
+		workRequestId: string,
+		data: { userIds: string[]; userType: 'expert' | 'supplier' }
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/work-requests/${workRequestId}/invite`,
+			'POST',
+			data,
+			true
+		);
+	},
+	inviteToMaterialRequest: (
+		materialRequestId: string,
+		data: { userIds: string[] }
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/material-requests/${materialRequestId}/invite`,
+			'POST',
+			data,
+			true
+		);
 	}
 };
 

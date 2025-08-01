@@ -75,8 +75,10 @@ export type WorkRequest = {
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
-	interestedExperts?: string[];
-	interestedSuppliers?: string[];
+	interestedExperts?: string[]; // Users who showed interest
+	interestedSuppliers?: string[]; // Users who showed interest
+	invitedExperts?: string[]; // Users directly invited by customer
+	invitedSuppliers?: string[]; // Users directly invited by customer
 };
 
 /**
@@ -107,10 +109,11 @@ export type MaterialRequest = {
 		quantity: string;
 		notes?: string;
 	}[];
-	status: 'open' | 'quoting' | 'ordered' | 'completed' | 'cancelled';
+	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled';
 	createdAt: string;
 	updatedAt: string;
-	interestedSuppliers: string[];
+	interestedSuppliers?: string[]; // Users who showed interest
+	invitedSuppliers?: string[]; // Users directly invited by customer
 };
 
 /**
@@ -187,16 +190,41 @@ export type ContractStatus =
  */
 export type Contract = {
 	id: string;
-	workRequestId: string;
 	customerId: string;
 	expertSupplierId: string;
-	workDetails: string;
-	agreementSummary: string;
+	requestType: 'work' | 'material'; // Keep for backward compatibility
+	contractType: 'expert_contract' | 'material_contract'; // New descriptive type
+	workRequestId?: string;
+	materialRequestId?: string;
+	workDetails: string; // Detailed scope of work or material list
+	agreementSummary: string; // High-level agreement summary
 	contractDate: string;
+
+	// Financial Terms
+	totalAmount?: number; // Total contract value
+	paymentTerms?: string; // Payment schedule/terms (e.g., "50% advance, 50% on completion")
+	advanceAmount?: number; // Upfront payment amount
+
+	// Timeline
+	startDate?: string; // Project start date
+	expectedCompletionDate?: string; // Planned completion date
+	actualCompletionDate?: string; // Actual completion date (set when completed)
+
+	// Legal & Compliance
+	termsAndConditions?: string; // Detailed terms and conditions
+	warrantyPeriod?: string; // Warranty period (e.g., "6 months", "1 year")
+	cancellationPolicy?: string; // Cancellation terms
+
+	// Attachments
+	attachments?: Attachment[]; // Contract documents, specifications, etc.
+
+	// Signatures
 	customerSigned: boolean;
 	customerSignatureTimestamp?: string;
 	expertSupplierSigned: boolean;
 	expertSupplierSignatureTimestamp?: string;
+
+	// Status & Tracking
 	status: ContractStatus;
 	createdAt: string;
 	updatedAt: string;

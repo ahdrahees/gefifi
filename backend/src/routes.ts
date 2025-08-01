@@ -1080,6 +1080,164 @@ router.post(
 	}
 );
 
+// --- Invitation Endpoints ---
+
+// Invite users to a work request
+router.post(
+	'/work-requests/:id/invite',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { id: workRequestId } = req.params;
+			const { userIds, userType } = req.body;
+
+			// Validate input
+			if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+				return res
+					.status(400)
+					.json({ message: 'userIds array is required and must not be empty.' });
+			}
+			if (!userType || !['expert', 'supplier'].includes(userType)) {
+				return res.status(400).json({ message: 'userType must be either "expert" or "supplier".' });
+			}
+
+			// Get the work request
+			const workRequest = await workRequestsDB.findById(workRequestId);
+			if (!workRequest) {
+				return res.status(404).json({ message: 'Work request not found.' });
+			}
+
+			// Only the customer who owns the request can invite users
+			if (workRequest.customerId !== user.id) {
+				return res
+					.status(403)
+					.json({ message: 'Only the customer who created this request can invite users.' });
+			}
+
+			// Validate that the work request is in a valid status for invitations
+			if (!['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status)) {
+				return res.status(400).json({
+					message: `Cannot invite users to a work request with status: ${workRequest.status}`
+				});
+			}
+
+			// Validate all user IDs exist and are of the correct type
+			const validatedUsers = [];
+			for (const userId of userIds) {
+				const targetUser = await usersDB.findById(userId);
+				if (!targetUser || !targetUser.isActive) {
+					return res.status(404).json({ message: `User with ID ${userId} not found or inactive.` });
+				}
+				if (targetUser.userType !== userType) {
+					return res.status(400).json({
+						message: `User ${userId} is not a ${userType}. Cannot invite to work request.`
+					});
+				}
+				validatedUsers.push(targetUser);
+			}
+
+			// Update the work request with invited users
+			const updateField = userType === 'expert' ? 'invitedExperts' : 'invitedSuppliers';
+			const currentInvited = workRequest[updateField] || [];
+			const newInvited = [...new Set([...currentInvited, ...userIds])]; // Remove duplicates
+
+			await workRequestsDB.update(workRequestId, {
+				[updateField]: newInvited,
+				updatedAt: new Date().toISOString()
+			});
+
+			res.status(200).json({
+				message: `Successfully invited ${userIds.length} ${userType}(s) to the work request.`,
+				invitedUsers: validatedUsers.map((u) => ({
+					id: u.id,
+					name: u.profile?.fullName || u.profile?.companyName
+				}))
+			});
+		} catch (error: unknown) {
+			console.error('Error inviting users to work request:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to invite users.', error: errorMessage });
+		}
+	}
+);
+
+// Invite users to a material request
+router.post(
+	'/material-requests/:id/invite',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { id: materialRequestId } = req.params;
+			const { userIds } = req.body;
+
+			// Validate input
+			if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+				return res
+					.status(400)
+					.json({ message: 'userIds array is required and must not be empty.' });
+			}
+
+			// Get the material request
+			const materialRequest = await materialRequestsDB.findById(materialRequestId);
+			if (!materialRequest) {
+				return res.status(404).json({ message: 'Material request not found.' });
+			}
+
+			// Only the customer who owns the request can invite users
+			if (materialRequest.customerId !== user.id) {
+				return res
+					.status(403)
+					.json({ message: 'Only the customer who created this request can invite users.' });
+			}
+
+			// Validate that the material request is in a valid status for invitations
+			if (!['open', 'quoting'].includes(materialRequest.status)) {
+				return res.status(400).json({
+					message: `Cannot invite users to a material request with status: ${materialRequest.status}`
+				});
+			}
+
+			// Validate all user IDs exist and are suppliers
+			const validatedUsers = [];
+			for (const userId of userIds) {
+				const targetUser = await usersDB.findById(userId);
+				if (!targetUser || !targetUser.isActive) {
+					return res.status(404).json({ message: `User with ID ${userId} not found or inactive.` });
+				}
+				if (targetUser.userType !== 'supplier') {
+					return res.status(400).json({
+						message: `User ${userId} is not a supplier. Cannot invite to material request.`
+					});
+				}
+				validatedUsers.push(targetUser);
+			}
+
+			// Update the material request with invited users
+			const currentInvited = materialRequest.invitedSuppliers || [];
+			const newInvited = [...new Set([...currentInvited, ...userIds])]; // Remove duplicates
+
+			await materialRequestsDB.update(materialRequestId, {
+				invitedSuppliers: newInvited,
+				updatedAt: new Date().toISOString()
+			});
+
+			res.status(200).json({
+				message: `Successfully invited ${userIds.length} supplier(s) to the material request.`,
+				invitedUsers: validatedUsers.map((u) => ({
+					id: u.id,
+					name: u.profile?.fullName || u.profile?.companyName
+				}))
+			});
+		} catch (error: unknown) {
+			console.error('Error inviting users to material request:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to invite users.', error: errorMessage });
+		}
+	}
+);
+
 // --- Chat Endpoints ---
 router.get('/chat', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
 	try {
@@ -1448,7 +1606,16 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			expertSupplierId,
 			workDetails,
 			agreementSummary,
-			contractDate
+			contractDate,
+			// New optional fields
+			totalAmount,
+			paymentTerms,
+			advanceAmount,
+			startDate,
+			expectedCompletionDate,
+			termsAndConditions,
+			warrantyPeriod,
+			cancellationPolicy
 		} = req.body;
 
 		// --- Validation ---
@@ -1467,9 +1634,11 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		}
 
 		const requestType = workRequestId ? 'work' : 'material';
+		const contractType = requestType === 'work' ? 'expert_contract' : 'material_contract';
 		const requestId = workRequestId || materialRequestId;
 
-		// Validate that the request exists
+		// Validate that the request exists and get request data for participant validation
+		let requestData: any = null;
 		if (requestType === 'work') {
 			const workRequest = await workRequestsDB.findById(requestId);
 			if (!workRequest)
@@ -1479,6 +1648,13 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 					message: 'Mismatch: workRequest.customerId does not match provided customerId.'
 				});
 			}
+			// Check if request is in valid status for contract creation
+			if (!['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status)) {
+				return res.status(400).json({
+					message: `Work request must be in 'open', 'in_discussion', or 'awaiting_quotes' status to create a contract. Current status: ${workRequest.status}`
+				});
+			}
+			requestData = workRequest;
 		} else {
 			// requestType === 'material'
 			const materialRequest = await materialRequestsDB.findById(requestId);
@@ -1491,8 +1667,16 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 					message: 'Mismatch: materialRequest.customerId does not match provided customerId.'
 				});
 			}
+			// Check if request is in valid status for contract creation
+			if (!['open', 'quoting'].includes(materialRequest.status)) {
+				return res.status(400).json({
+					message: `Material request must be in 'open' or 'quoting' status to create a contract. Current status: ${materialRequest.status}`
+				});
+			}
+			requestData = materialRequest;
 		}
 
+		// Validate users exist and are active
 		const customer = await usersDB.findById(customerId);
 		const provider = await usersDB.findById(expertSupplierId);
 		if (!customer || !customer.isActive)
@@ -1508,10 +1692,70 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 				.status(400)
 				.json({ message: 'expertSupplierId must belong to an expert or supplier user.' });
 		}
+
+		// Enhanced participant validation - check both interested and invited users
+		const isProviderEligible = (() => {
+			if (requestType === 'work') {
+				// For work requests, check if provider is expert and is either interested or invited
+				if (provider.userType === 'expert') {
+					const interestedExperts = requestData.interestedExperts || [];
+					const invitedExperts = requestData.invitedExperts || [];
+					return (
+						interestedExperts.includes(expertSupplierId) ||
+						invitedExperts.includes(expertSupplierId)
+					);
+				}
+				// Suppliers can also work on work requests in some cases
+				if (provider.userType === 'supplier') {
+					const interestedSuppliers = requestData.interestedSuppliers || [];
+					const invitedSuppliers = requestData.invitedSuppliers || [];
+					return (
+						interestedSuppliers.includes(expertSupplierId) ||
+						invitedSuppliers.includes(expertSupplierId)
+					);
+				}
+				return false;
+			} else {
+				// For material requests, check if provider is supplier and is either interested or invited
+				if (provider.userType === 'supplier') {
+					const interestedSuppliers = requestData.interestedSuppliers || [];
+					const invitedSuppliers = requestData.invitedSuppliers || [];
+					return (
+						interestedSuppliers.includes(expertSupplierId) ||
+						invitedSuppliers.includes(expertSupplierId)
+					);
+				}
+				return false;
+			}
+		})();
+
+		if (!isProviderEligible) {
+			return res.status(403).json({
+				message: `The ${provider.userType} must be either interested in or invited to this ${requestType} request to create a contract.`
+			});
+		}
+
+		// Authorization check - contract creator must be either customer or the eligible provider
 		if (initiator.id !== customerId && initiator.id !== expertSupplierId) {
 			return res.status(403).json({
 				message:
 					'Forbidden. Contract creator must be the customer or the designated expert/supplier.'
+			});
+		}
+
+		// Check for existing active contracts
+		const allContracts = await contractsDB.getAll();
+		const existingActiveContract = allContracts.find((contract: any) => {
+			const isForSameRequest =
+				(requestType === 'work' && contract.workRequestId === requestId) ||
+				(requestType === 'material' && contract.materialRequestId === requestId);
+			const isActive = !['cancelled', 'terminated'].includes(contract.status);
+			return isForSameRequest && isActive;
+		});
+
+		if (existingActiveContract) {
+			return res.status(409).json({
+				message: `An active contract already exists for this ${requestType} request. Contract ID: ${existingActiveContract.id}`
 			});
 		}
 		const now = new Date().toISOString();
@@ -1521,6 +1765,7 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		const initialExpertSupplierSigned = false;
 		const initialStatus: Contract['status'] = 'draft';
 
+		// Construct contract object with all fields
 		const newContract: Partial<Contract> = {
 			id: contractId,
 			customerId,
@@ -1531,10 +1776,25 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			customerSigned: initialCustomerSigned,
 			expertSupplierSigned: initialExpertSupplierSigned,
 			requestType: requestType,
+			contractType: contractType,
 			status: initialStatus,
 			createdAt: now,
 			updatedAt: now
 		};
+
+		// Add optional financial fields if provided
+		if (totalAmount !== undefined) newContract.totalAmount = totalAmount;
+		if (paymentTerms) newContract.paymentTerms = paymentTerms;
+		if (advanceAmount !== undefined) newContract.advanceAmount = advanceAmount;
+
+		// Add optional timeline fields if provided
+		if (startDate) newContract.startDate = startDate;
+		if (expectedCompletionDate) newContract.expectedCompletionDate = expectedCompletionDate;
+
+		// Add optional legal fields if provided
+		if (termsAndConditions) newContract.termsAndConditions = termsAndConditions;
+		if (warrantyPeriod) newContract.warrantyPeriod = warrantyPeriod;
+		if (cancellationPolicy) newContract.cancellationPolicy = cancellationPolicy;
 
 		if (workRequestId) newContract.workRequestId = workRequestId;
 		if (materialRequestId) newContract.materialRequestId = materialRequestId;
@@ -1576,9 +1836,47 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		} else {
 			// requestType === 'material'
 			const materialRequest = await materialRequestsDB.findById(requestId);
-			if (materialRequest && materialRequest.status === 'open') {
-				await materialRequestsDB.update(materialRequest.id, { status: 'ordered', updatedAt: now });
+			if (
+				materialRequest &&
+				(materialRequest.status === 'open' || materialRequest.status === 'quoting')
+			) {
+				console.log(
+					`[POST /api/contracts] Updating material request ${materialRequest.id} status to 'contracted'.`
+				);
+				await materialRequestsDB.update(materialRequest.id, {
+					status: 'contracted',
+					updatedAt: now
+				});
 			}
+		}
+
+		// Remove request IDs from associated chat documents to prevent duplicate contract creation
+		try {
+			const allChats = await chatsDB.getAll();
+			const requestFieldName = requestType === 'work' ? 'workRequestId' : 'materialRequestId';
+
+			// Find chats that have this specific request ID
+			const chatsToUpdate = allChats.filter((chat: any) => chat[requestFieldName] === requestId);
+
+			// Update each chat to remove the request ID
+			for (const chat of chatsToUpdate) {
+				const updateData: any = { updatedAt: now };
+				updateData[requestFieldName] = null; // Remove the request ID
+
+				console.log(
+					`[POST /api/contracts] Removing ${requestFieldName} from chat ${chat.id} after contract creation`
+				);
+				await chatsDB.update(chat.id, updateData);
+			}
+
+			if (chatsToUpdate.length > 0) {
+				console.log(
+					`[POST /api/contracts] Updated ${chatsToUpdate.length} chat(s) to remove ${requestFieldName}`
+				);
+			}
+		} catch (chatUpdateError: unknown) {
+			console.error('Error updating chat documents after contract creation:', chatUpdateError);
+			// Don't fail the contract creation if chat update fails
 		}
 
 		res.status(201).json(createdContract);

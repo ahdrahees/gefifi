@@ -6,24 +6,24 @@
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 	import UserProfile from '$lib/components/UserProfile.svelte';
+	import type { WorkRequest, Contract } from '$lib/types';
 
-	// --- Component Assets ---
-	const contractIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>`;
-	const chatIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/></svg>`;
-
-	// --- Component State ---
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
-	let workRequest: any = null;
+	let workRequest: WorkRequest | null = null;
 	let isLoading = true;
 	let errorMessage = '';
 	let workRequestId: string | null = null;
-	let contractedProfessionalId: string | null = null;
+	let existingContract: Contract | null = null;
 	let chatMap = new Map<string, string>();
 
 	// For experts/suppliers to express interest
 	let isExpressingInterest = false;
 	let interestMessage = '';
+
+	// User profiles for invited users
+	let invitedExpertProfiles: any[] = [];
+	let invitedSupplierProfiles: any[] = [];
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
@@ -33,7 +33,7 @@
 	async function fetchWorkRequestDetails(id: string) {
 		isLoading = true;
 		errorMessage = '';
-		contractedProfessionalId = null;
+		existingContract = null;
 		if (!token) {
 			errorMessage = 'Authentication token not available.';
 			isLoading = false;
@@ -51,39 +51,9 @@
 			}
 			workRequest = await response.json();
 
-			// If the current user is the customer, fetch their chats and check for contracts.
+			// If the current user is the customer, fetch additional data
 			if (currentUser && workRequest && currentUser.id === workRequest.customerId) {
-				// Fetch chats to create a map from professionalId -> chatId
-				const chatsRes = await fetch(`${API_BASE_URL}/api/chat`, {
-					headers: { Authorization: `Bearer ${token}` }
-				});
-				if (chatsRes.ok) {
-					const chats = await chatsRes.json();
-					const newChatMap = new Map<string, string>();
-					for (const chat of chats) {
-						const otherParticipant = chat.participants.find(
-							(pId: string) => pId !== currentUser?.id
-						);
-						if (otherParticipant) {
-							newChatMap.set(otherParticipant, chat.id);
-						}
-					}
-					chatMap = newChatMap;
-				}
-
-				// If status is 'contracted', find the professional it's contracted with.
-				if (workRequest.status === 'contracted' && token) {
-					const contractsRes = await fetch(`${API_BASE_URL}/api/contracts`, {
-						headers: { Authorization: `Bearer ${token}` }
-					});
-					if (contractsRes.ok) {
-						const contracts = await contractsRes.json();
-						const currentContract = contracts.find((c: any) => c.workRequestId === workRequest.id);
-						if (currentContract) {
-							contractedProfessionalId = currentContract.expertSupplierId;
-						}
-					}
-				}
+				await Promise.all([fetchChats(), fetchExistingContract(), fetchInvitedUserProfiles()]);
 			}
 		} catch (err: any) {
 			console.error('Fetch work request detail error:', err);
@@ -93,17 +63,97 @@
 		}
 	}
 
+	async function fetchChats() {
+		if (!token) return;
+		try {
+			const chatsRes = await fetch(`${API_BASE_URL}/api/chat`, {
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			if (chatsRes.ok) {
+				const chats = await chatsRes.json();
+				const newChatMap = new Map<string, string>();
+				for (const chat of chats) {
+					const otherParticipant = chat.participants.find((pId: string) => pId !== currentUser?.id);
+					if (otherParticipant) {
+						newChatMap.set(otherParticipant, chat.id);
+					}
+				}
+				chatMap = newChatMap;
+			}
+		} catch (error) {
+			console.error('Error fetching chats:', error);
+		}
+	}
+
+	async function fetchExistingContract() {
+		if (!token || !workRequest) return;
+		try {
+			const contractsRes = await fetch(`${API_BASE_URL}/api/contracts`, {
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			if (contractsRes.ok) {
+				const contracts = await contractsRes.json();
+				existingContract =
+					contracts.find((c: Contract) => c.workRequestId === workRequest?.id) || null;
+			}
+		} catch (error) {
+			console.error('Error fetching contracts:', error);
+		}
+	}
+
+	async function fetchInvitedUserProfiles() {
+		if (!token || !workRequest) return;
+		try {
+			// Fetch invited experts
+			if (workRequest.invitedExperts && workRequest.invitedExperts.length > 0) {
+				const expertPromises = workRequest.invitedExperts.map(async (userId: string) => {
+					try {
+						const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+							headers: { Authorization: `Bearer ${token}` }
+						});
+						if (response.ok) {
+							return await response.json();
+						}
+					} catch (error) {
+						console.error(`Error fetching expert profile ${userId}:`, error);
+					}
+					return null;
+				});
+				const experts = await Promise.all(expertPromises);
+				invitedExpertProfiles = experts.filter(Boolean);
+			}
+
+			// Fetch invited suppliers
+			if (workRequest.invitedSuppliers && workRequest.invitedSuppliers.length > 0) {
+				const supplierPromises = workRequest.invitedSuppliers.map(async (userId: string) => {
+					try {
+						const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+							headers: { Authorization: `Bearer ${token}` }
+						});
+						if (response.ok) {
+							return await response.json();
+						}
+					} catch (error) {
+						console.error(`Error fetching supplier profile ${userId}:`, error);
+					}
+					return null;
+				});
+				const suppliers = await Promise.all(supplierPromises);
+				invitedSupplierProfiles = suppliers.filter(Boolean);
+			}
+		} catch (error) {
+			console.error('Error fetching invited user profiles:', error);
+		}
+	}
+
 	async function handleExpressInterest() {
-		if (
-			!workRequest ||
-			!currentUser ||
-			!token ||
-			(currentUser.userType !== 'expert' && currentUser.userType !== 'supplier')
-		)
+		if (!workRequest || !currentUser || !token || currentUser.id === workRequest.customerId) {
 			return;
+		}
 
 		isExpressingInterest = true;
 		interestMessage = '';
+
 		try {
 			const response = await fetch(`${API_BASE_URL}/api/users/interest`, {
 				method: 'POST',
@@ -111,18 +161,17 @@
 				body: JSON.stringify({
 					targetUserId: workRequest.customerId,
 					workRequestId: workRequest.id,
-					predefinedMessageKey: 'PROVIDER_INTEREST_IN_WORK_REQUEST'
+					initialMessageContent: 'I am interested in your work request.'
 				})
 			});
 			const result = await response.json();
-			if (!response.ok) throw new Error(result.message || 'Failed to express interest.');
-
-			interestMessage = result.message || 'Interest expressed successfully! Chat initiated.';
+			if (!response.ok) {
+				throw new Error(result.message || 'Failed to express interest.');
+			}
+			interestMessage = result.message || 'Interest expressed successfully!';
 			if (result.chatId) setTimeout(() => goto(`/chat/${result.chatId}`), 2000);
-
-			fetchWorkRequestDetails(workRequest.id);
 		} catch (error: any) {
-			console.error('Error expressing interest:', error);
+			console.error('Express interest error:', error);
 			interestMessage = `Error: ${error.message}`;
 		} finally {
 			isExpressingInterest = false;
@@ -131,310 +180,792 @@
 
 	onMount(() => {
 		workRequestId = $page.params.id;
+		let unsubscribe: any;
 		if (workRequestId) {
-			const unsubscribe = authStore.subscribe((auth) => {
-				if (auth.token && !auth.isLoading) {
+			unsubscribe = authStore.subscribe((auth) => {
+				if (auth.token && auth.user && !auth.isLoading) {
 					token = auth.token;
 					currentUser = auth.user;
 					fetchWorkRequestDetails(workRequestId!);
-					unsubscribe();
-				} else if (!auth.isLoading && !auth.token) {
+				} else if (!auth.isLoading && (!auth.token || !auth.user)) {
 					errorMessage = 'User not authenticated. Cannot load details.';
 					isLoading = false;
-					unsubscribe();
 				}
 			});
 		} else {
 			errorMessage = 'Work Request ID not found in URL.';
 			isLoading = false;
 		}
+
+		return () => {
+			if (unsubscribe) {
+				unsubscribe();
+			}
+		};
 	});
 
-	function getStatusClass(status: string) {
-		switch (status) {
-			case 'open':
-				return 'bg-green-500/20 text-green-300 border-green-500/50';
-			case 'in_discussion':
-			case 'awaiting_quotes':
-				return 'bg-sky-500/20 text-sky-300 border-sky-500/50';
-			case 'contracted':
-				return 'bg-purple-500/20 text-purple-300 border-purple-500/50';
-			case 'completed':
-				return 'bg-slate-600 text-slate-300 border-slate-500/50';
-			case 'cancelled':
-				return 'bg-red-500/20 text-red-300 border-red-500/50';
-			default:
-				return 'bg-slate-700 text-slate-400';
-		}
+	function formatCurrency(amount?: number) {
+		if (!amount && amount !== 0) return 'Budget not specified';
+		return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 	}
 
-	$: alreadyInterested =
-		workRequest &&
-		currentUser &&
-		((currentUser.userType === 'expert' &&
-			workRequest.interestedExperts?.includes(currentUser.id)) ||
-			(currentUser.userType === 'supplier' &&
-				workRequest.interestedSuppliers?.includes(currentUser.id)));
+	function getStatusClasses(status: string) {
+		const classes: Record<string, string> = {
+			open: 'bg-green-500/20 text-green-300 border-green-500/50',
+			in_discussion: 'bg-blue-500/20 text-blue-300 border-blue-500/50',
+			awaiting_quotes: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50',
+			contracted: 'bg-purple-500/20 text-purple-300 border-purple-500/50',
+			in_progress: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50',
+			completed: 'bg-emerald-600/30 text-emerald-300 border-emerald-600/60',
+			cancelled: 'bg-red-500/20 text-red-300 border-red-500/50',
+			closed: 'bg-slate-600/30 text-slate-400 border-slate-500/50'
+		};
+		return classes[status] || 'bg-gray-500/20 text-gray-300 border-gray-500/50';
+	}
 
+	// Reactive computed values
+	$: isCustomer = currentUser && workRequest && currentUser.id === workRequest.customerId;
+	$: isProfessional = currentUser && workRequest && currentUser.id !== workRequest.customerId;
+	$: canExpressInterest =
+		isProfessional &&
+		workRequest &&
+		!workRequest.interestedExperts?.includes(currentUser?.id || '') &&
+		!workRequest.interestedSuppliers?.includes(currentUser?.id || '') &&
+		workRequest.status === 'open';
+	$: alreadyInterested =
+		isProfessional &&
+		workRequest &&
+		(workRequest.interestedExperts?.includes(currentUser?.id || '') ||
+			workRequest.interestedSuppliers?.includes(currentUser?.id || ''));
 	$: interestedProfessionals = workRequest
-		? [
-				...new Set([
-					...(workRequest.interestedExperts || []),
-					...(workRequest.interestedSuppliers || [])
-				])
-			]
+		? [...(workRequest.interestedExperts || []), ...(workRequest.interestedSuppliers || [])]
 		: [];
+	$: canCreateContract =
+		isCustomer &&
+		workRequest &&
+		!existingContract &&
+		['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status);
 </script>
 
-<div class="mx-auto max-w-4xl space-y-6">
+<svelte:head>
+	<title>{workRequest ? `Work Request: ${workRequest.title}` : 'Work Request'} - GEFIFI</title>
+</svelte:head>
+
+<div class="mx-auto max-w-6xl space-y-6 pb-12">
 	{#if isLoading}
 		<div class="flex h-96 items-center justify-center">
-			<svg
-				class="mr-3 -ml-1 h-10 w-10 animate-spin text-emerald-500"
-				xmlns="http://www.w3.org/2000/svg"
-				fill="none"
-				viewBox="0 0 24 24"
-			>
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-				></circle>
-				<path
-					class="opacity-75"
-					fill="currentColor"
-					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-				></path>
-			</svg>
-			<p class="text-xl text-slate-300">Loading Work Request Details...</p>
+			<div class="flex items-center space-x-3">
+				<svg
+					class="h-8 w-8 animate-spin text-emerald-500"
+					xmlns="http://www.w3.org/2000/svg"
+					fill="none"
+					viewBox="0 0 24 24"
+				>
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+					></circle>
+					<path
+						class="opacity-75"
+						fill="currentColor"
+						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+					></path>
+				</svg>
+				<p class="text-xl text-slate-300">Loading Work Request...</p>
+			</div>
 		</div>
 	{:else if errorMessage}
-		<div class="rounded-lg border border-red-600 bg-red-700/30 p-6 text-center shadow-xl">
-			<h2 class="mb-3 text-2xl font-semibold text-red-300">Error Loading Details</h2>
-			<p class="mb-4 text-red-400">{errorMessage}</p>
-			<a
-				href="/work-requests"
-				class="rounded-lg bg-sky-500 px-6 py-2 font-medium text-white transition-colors hover:bg-sky-600"
+		<div
+			class="rounded-2xl border border-red-500/30 bg-red-500/10 p-8 text-center shadow-xl backdrop-blur-sm"
+		>
+			<div
+				class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/20"
 			>
-				Back to Work Requests
-			</a>
+				<svg class="h-8 w-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z"
+					/>
+				</svg>
+			</div>
+			<h2 class="mb-3 text-2xl font-bold text-red-300">Unable to Load Work Request</h2>
+			<p class="mb-6 text-red-200/80">{errorMessage}</p>
+			<button
+				on:click={() => goto('/work-requests')}
+				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
+			>
+				← Back to Work Requests
+			</button>
 		</div>
 	{:else if workRequest}
-		<article class="overflow-hidden rounded-xl bg-slate-700/50 shadow-2xl">
-			<header class="bg-slate-800/60 p-6 sm:p-8">
-				<h1 class="mb-2 text-3xl leading-tight font-bold text-emerald-400 sm:text-4xl">
-					{workRequest.title}
-				</h1>
-				<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-400">
-					<span
-						>Category: <span class="font-semibold text-sky-300"
-							>{workRequest.category || 'N/A'}</span
-						></span
-					>
-					<span
-						class="rounded-full px-3 py-1 text-xs font-semibold {getStatusClass(
-							workRequest.status
-						)}"
-					>
-						Status: {workRequest.status.replace(/_/g, ' ') || 'N/A'}
-					</span>
+		<!-- Header Section -->
+		<header
+			class="rounded-2xl border border-slate-600/30 bg-gradient-to-r from-slate-800/60 to-slate-700/60 p-6 shadow-2xl backdrop-blur-sm lg:p-8"
+		>
+			<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+				<div class="space-y-3">
+					<div class="flex items-center gap-3">
+						<span class="rounded-xl bg-blue-500/20 p-2">
+							<svg
+								class="h-6 w-6 text-blue-400"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+								/>
+							</svg>
+						</span>
+						<div>
+							<h1 class="text-2xl font-bold text-blue-400 lg:text-3xl">{workRequest.title}</h1>
+							<p class="text-slate-400">Work Request ID: {workRequest.id.substring(0, 12)}...</p>
+						</div>
+					</div>
+					<div class="flex flex-wrap items-center gap-3">
+						<span
+							class="rounded-full border px-4 py-2 text-sm font-semibold {getStatusClasses(
+								workRequest.status
+							)}"
+						>
+							{workRequest.status.replace(/_/g, ' ').toUpperCase()}
+						</span>
+						{#if workRequest.category}
+							<span
+								class="rounded-full border border-slate-500/50 bg-slate-600/50 px-4 py-2 text-sm font-medium text-slate-300"
+							>
+								{workRequest.category}
+							</span>
+						{/if}
+						{#if existingContract}
+							<a
+								href="/contracts/{existingContract.id}"
+								class="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
+							>
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+									/>
+								</svg>
+								View Contract
+							</a>
+						{/if}
+					</div>
 				</div>
-			</header>
+				<div class="text-right">
+					<p class="text-sm text-slate-400">Expected Budget</p>
+					<p class="text-lg font-semibold text-emerald-400">
+						{formatCurrency(workRequest.expectedCost)}
+					</p>
+				</div>
+			</div>
+		</header>
 
-			<div class="space-y-6 p-6 sm:p-8">
-				{#if workRequest.images && workRequest.images.length > 0}
-					<section>
-						<h2 class="mb-3 text-xl font-semibold text-sky-300">Images</h2>
-						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-							{#each workRequest.images as imagePath (imagePath)}
-								<a
-									href={imagePath}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="block aspect-video overflow-hidden rounded-lg shadow-md transition-shadow duration-200 hover:shadow-xl"
+		<!-- Main Content Grid -->
+		<div class="grid gap-6 lg:grid-cols-3">
+			<!-- Left Column: Details -->
+			<div class="space-y-6 lg:col-span-2">
+				<!-- Description -->
+				<section
+					class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+				>
+					<div class="mb-4 flex items-center gap-3">
+						<div class="rounded-lg bg-sky-500/20 p-2">
+							<svg
+								class="h-5 w-5 text-sky-400"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M4 6h16M4 10h16M4 14h16M4 18h16"
+								/>
+							</svg>
+						</div>
+						<h2 class="text-xl font-bold text-sky-300">Project Description</h2>
+					</div>
+					<p class="leading-relaxed whitespace-pre-wrap text-slate-300">
+						{workRequest.description}
+					</p>
+				</section>
+
+				<!-- Project Details -->
+				<section
+					class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+				>
+					<div class="mb-4 flex items-center gap-3">
+						<div class="rounded-lg bg-amber-500/20 p-2">
+							<svg
+								class="h-5 w-5 text-amber-400"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+								/>
+							</svg>
+						</div>
+						<h2 class="text-xl font-bold text-amber-300">Project Details</h2>
+					</div>
+					<div class="grid gap-4 md:grid-cols-2">
+						<div>
+							<h3 class="mb-2 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+								Location
+							</h3>
+							<p class="text-slate-300">{workRequest.location}</p>
+						</div>
+						{#if workRequest.timeline}
+							<div>
+								<h3 class="mb-2 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+									Timeline
+								</h3>
+								<p class="text-slate-300">{workRequest.timeline}</p>
+							</div>
+						{/if}
+						<div>
+							<h3 class="mb-2 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+								Expected Budget
+							</h3>
+							<p class="text-slate-300">{formatCurrency(workRequest.expectedCost)}</p>
+						</div>
+						<div>
+							<h3 class="mb-2 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+								Status
+							</h3>
+							<span
+								class="inline-block rounded-full border px-3 py-1 text-sm font-semibold {getStatusClasses(
+									workRequest.status
+								)}"
+							>
+								{workRequest.status.replace(/_/g, ' ').toUpperCase()}
+							</span>
+						</div>
+						{#if workRequest.materialsSuggested}
+							<div class="md:col-span-2">
+								<h3 class="mb-2 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+									Suggested Materials
+								</h3>
+								<p class="whitespace-pre-wrap text-slate-300">{workRequest.materialsSuggested}</p>
+							</div>
+						{/if}
+						{#if workRequest.category}
+							<div>
+								<h3 class="mb-2 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+									Category
+								</h3>
+								<span
+									class="inline-block rounded-full border border-slate-500/50 bg-slate-600/50 px-3 py-1 text-sm font-medium text-slate-300"
 								>
+									{workRequest.category}
+								</span>
+							</div>
+						{/if}
+						<div>
+							<h3 class="mb-2 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+								Posted
+							</h3>
+							<p class="text-slate-300">
+								{new Date(workRequest.createdAt).toLocaleDateString('en-GB', {
+									dateStyle: 'medium'
+								})}
+							</p>
+						</div>
+					</div>
+				</section>
+
+				<!-- Project Images -->
+				{#if workRequest.images && workRequest.images.length > 0}
+					<section
+						class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="mb-4 flex items-center gap-3">
+							<div class="rounded-lg bg-purple-500/20 p-2">
+								<svg
+									class="h-5 w-5 text-purple-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+									/>
+								</svg>
+							</div>
+							<h2 class="text-xl font-bold text-purple-300">Project Images</h2>
+						</div>
+						<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+							{#each workRequest.images as image, index}
+								<div class="group relative overflow-hidden rounded-xl border border-slate-600/30">
 									<img
-										src={imagePath}
-										alt="Work request for {workRequest.title}"
-										class="h-full w-full bg-slate-600 object-cover"
+										src={image}
+										alt="Work request image {index + 1}"
+										class="h-48 w-full object-cover transition-transform duration-300 group-hover:scale-105"
 										loading="lazy"
 									/>
-								</a>
+									<div
+										class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+									>
+										<div class="absolute bottom-4 left-4">
+											<button
+												on:click={() => window.open(image, '_blank')}
+												class="rounded-lg bg-white/20 px-3 py-1 text-sm text-white backdrop-blur-sm hover:bg-white/30"
+											>
+												View Full Size
+											</button>
+										</div>
+									</div>
+								</div>
 							{/each}
 						</div>
 					</section>
 				{/if}
+			</div>
 
-				<section>
-					<h2 class="mb-2 text-xl font-semibold text-sky-300">Description</h2>
-					<p class="leading-relaxed whitespace-pre-wrap text-slate-300">
-						{workRequest.description || 'No description provided.'}
-					</p>
-				</section>
-
-				<div
-					class="grid grid-cols-1 gap-x-6 gap-y-4 border-t border-slate-600/70 pt-4 md:grid-cols-2"
-				>
-					<div>
-						<h3 class="text-md font-semibold text-sky-300">Location</h3>
-						<p class="text-slate-300">{workRequest.location || 'N/A'}</p>
-					</div>
-					<div>
-						<h3 class="text-md font-semibold text-sky-300">Expected Budget</h3>
-						<p class="text-slate-300">
-							{workRequest.expectedCost
-								? `₹${workRequest.expectedCost.toLocaleString()}`
-								: 'Not specified'}
-						</p>
-					</div>
-					<div>
-						<h3 class="text-md font-semibold text-sky-300">Expected Timeline</h3>
-						<p class="text-slate-300">{workRequest.timeline || 'Not specified'}</p>
-					</div>
-					<div>
-						<h3 class="text-md font-semibold text-sky-300">Preferred Materials</h3>
-						<p class="text-slate-300">{workRequest.materialsSuggested || 'Not specified'}</p>
-					</div>
-				</div>
-
-				{#if workRequest.customerId !== currentUser?.id}
-					<section class="border-t border-slate-600/70 pt-4">
-						<h2 class="mb-3 text-xl font-semibold text-sky-300">Posted By</h2>
-						<UserProfile userId={workRequest.customerId} />
-					</section>
-				{/if}
-
-				<!-- Actions for Expert/Supplier viewing the request -->
-				{#if currentUser && (currentUser.userType === 'expert' || currentUser.userType === 'supplier') && workRequest.customerId !== currentUser?.id}
-					{#if workRequest.status === 'open' || workRequest.status === 'awaiting_quotes'}
-						<section class="border-t border-slate-600/70 pt-6 text-center">
-							{#if alreadyInterested}
-								<p class="font-semibold text-emerald-400">
-									You have already expressed interest in this request.
-								</p>
-							{:else}
-								<button
-									on:click={handleExpressInterest}
-									disabled={isExpressingInterest}
-									class="rounded-lg bg-emerald-500 px-6 py-2.5 text-base font-semibold text-white shadow-md transition-all hover:bg-emerald-600 disabled:bg-slate-500"
+			<!-- Right Column: Actions & Info -->
+			<div class="space-y-6">
+				<!-- Express Interest (for professionals) -->
+				{#if canExpressInterest}
+					<section
+						class="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="text-center">
+							<div
+								class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20"
+							>
+								<svg
+									class="h-6 w-6 text-emerald-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
 								>
-									{isExpressingInterest ? 'Processing...' : 'Express Interest & Start Chat'}
-								</button>
-							{/if}
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+									/>
+								</svg>
+							</div>
+							<h3 class="mb-2 text-xl font-bold text-emerald-300">Interested in this project?</h3>
+							<p class="mb-4 text-sm text-slate-300">
+								Express your interest to start a conversation with the customer.
+							</p>
+							<button
+								on:click={handleExpressInterest}
+								disabled={isExpressingInterest}
+								class="w-full rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-emerald-600 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-slate-500"
+							>
+								{isExpressingInterest ? 'Sending...' : 'Express Interest'}
+							</button>
 							{#if interestMessage}
 								<p
-									class="mt-3 text-sm {interestMessage.startsWith('Error:')
+									class="mt-4 text-sm {interestMessage.startsWith('Error:')
 										? 'text-red-400'
-										: 'text-green-400'}"
+										: 'text-emerald-400'}"
 								>
 									{interestMessage}
 								</p>
 							{/if}
+						</div>
+					</section>
+				{:else if alreadyInterested}
+					<section
+						class="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/20 to-blue-600/20 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="text-center">
+							<div
+								class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/20"
+							>
+								<svg
+									class="h-6 w-6 text-blue-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+									/>
+								</svg>
+							</div>
+							<h3 class="mb-2 text-xl font-bold text-blue-300">Interest Expressed</h3>
+							<p class="text-sm text-slate-300">
+								You have already expressed interest in this project. The customer will contact you
+								if interested.
+							</p>
+						</div>
+					</section>
+				{/if}
+
+				<!-- Customer Actions -->
+				{#if isCustomer}
+					<!-- Interested Experts -->
+					{#if interestedProfessionals.length > 0}
+						<section
+							class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+						>
+							<div class="mb-4 flex items-center gap-3">
+								<div class="rounded-lg bg-green-500/20 p-2">
+									<svg
+										class="h-5 w-5 text-green-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+										/>
+									</svg>
+								</div>
+								<h2 class="text-lg font-bold text-green-300">
+									Interested Experts ({interestedProfessionals.length})
+								</h2>
+							</div>
+							<div class="space-y-3">
+								{#each interestedProfessionals as profId (profId)}
+									<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-3">
+										<div class="mb-2">
+											<UserProfile userId={profId} />
+										</div>
+										<div class="flex gap-1.5">
+											{#if chatMap.has(profId)}
+												<a
+													href="/chat/{chatMap.get(profId)}"
+													class="flex flex-1 items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/20 px-2 py-1.5 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-500/30"
+												>
+													<svg
+														class="h-3 w-3"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+														/>
+													</svg>
+													Chat
+												</a>
+											{/if}
+											{#if canCreateContract}
+												<a
+													href="/contracts/create?workRequestId={workRequest.id}&expertSupplierId={profId}"
+													class="flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-2 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
+												>
+													<svg
+														class="h-3 w-3"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+														/>
+													</svg>
+													Contract
+												</a>
+											{/if}
+										</div>
+									</div>
+								{/each}
+							</div>
+						</section>
+					{/if}
+
+					<!-- Invited Experts -->
+					{#if invitedExpertProfiles.length > 0 || invitedSupplierProfiles.length > 0}
+						<section
+							class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+						>
+							<div class="mb-4 flex items-center gap-3">
+								<div class="rounded-lg bg-amber-500/20 p-2">
+									<svg
+										class="h-5 w-5 text-amber-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+										/>
+									</svg>
+								</div>
+								<h2 class="text-lg font-bold text-amber-300">
+									Invited Experts ({invitedExpertProfiles.length + invitedSupplierProfiles.length})
+								</h2>
+							</div>
+							<div class="space-y-3">
+								{#each [...invitedExpertProfiles, ...invitedSupplierProfiles] as profile (profile.id)}
+									<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-3">
+										<div class="mb-2">
+											<UserProfile userId={profile.id} />
+										</div>
+										<div class="flex gap-1.5">
+											{#if chatMap.has(profile.id)}
+												<a
+													href="/chat/{chatMap.get(profile.id)}"
+													class="flex flex-1 items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/20 px-2 py-1.5 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-500/30"
+												>
+													<svg
+														class="h-3 w-3"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+														/>
+													</svg>
+													Chat
+												</a>
+											{/if}
+											{#if canCreateContract}
+												<a
+													href="/contracts/create?workRequestId={workRequest.id}&expertSupplierId={profile.id}"
+													class="flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-2 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
+												>
+													<svg
+														class="h-3 w-3"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+														/>
+													</svg>
+													Contract
+												</a>
+											{/if}
+										</div>
+									</div>
+								{/each}
+							</div>
+						</section>
+					{/if}
+
+					<!-- Invite More Experts -->
+					{#if workRequest.status === 'open'}
+						<section
+							class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+						>
+							<div class="text-center">
+								<div
+									class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-sky-500/20"
+								>
+									<svg
+										class="h-6 w-6 text-sky-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+										/>
+									</svg>
+								</div>
+								<h3 class="mb-2 text-lg font-bold text-sky-300">Need More Options?</h3>
+								<p class="mb-4 text-sm text-slate-300">
+									Invite more experts to get additional quotes and options for your project.
+								</p>
+								<a
+									href="/find-professionals?type=expert&request-id={workRequest.id}"
+									class="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-6 py-3 font-semibold text-white transition-colors hover:bg-sky-600"
+								>
+									<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+										/>
+									</svg>
+									Find & Invite Experts
+								</a>
+							</div>
 						</section>
 					{/if}
 				{/if}
 
-				<!-- Actions for Customer who owns the request -->
-				{#if currentUser && currentUser.id === workRequest.customerId}
-					<div class="space-y-8 border-t border-slate-600/70 pt-6">
-						{#if contractedProfessionalId}
-							<section>
-								<h2 class="mb-4 text-center text-xl font-semibold text-sky-300">
-									Contracted Professional
-								</h2>
-								<div class="mx-auto max-w-lg rounded-lg bg-slate-800/50 p-4 shadow-md">
-									<UserProfile userId={contractedProfessionalId} />
+				<!-- Request Summary (Customer Only) -->
+				{#if isCustomer}
+					<section
+						class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="mb-4 flex items-center gap-3">
+							<div class="rounded-lg bg-slate-500/20 p-2">
+								<svg
+									class="h-5 w-5 text-slate-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+									/>
+								</svg>
+							</div>
+							<h2 class="text-lg font-bold text-slate-300">Request Summary</h2>
+						</div>
+						<div class="space-y-3 text-sm">
+							<div class="flex items-center justify-between">
+								<span class="text-slate-400">Interested Experts</span>
+								<span class="font-medium text-green-300">{interestedProfessionals.length}</span>
+							</div>
+							<div class="flex items-center justify-between">
+								<span class="text-slate-400">Invited Experts</span>
+								<span class="font-medium text-amber-300"
+									>{(workRequest.invitedExperts?.length || 0) +
+										(workRequest.invitedSuppliers?.length || 0)}</span
+								>
+							</div>
+							{#if existingContract}
+								<div class="border-t border-slate-600/30 pt-2">
+									<a
+										href="/contracts/{existingContract.id}"
+										class="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/20 p-3 text-emerald-300 transition-colors hover:bg-emerald-500/30"
+									>
+										<span class="font-medium">View Active Contract</span>
+										<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M9 5l7 7-7 7"
+											/>
+										</svg>
+									</a>
 								</div>
-							</section>
-						{:else}
-							<section class="space-y-6">
-								<h2 class="mb-4 text-center text-xl font-semibold text-sky-300">
-									Interested Professionals
-								</h2>
-								{#if interestedProfessionals.length > 0}
-									<div class="mx-auto max-w-2xl space-y-4">
-										{#each interestedProfessionals as profId (profId)}
-											<div
-												class="flex flex-col items-center justify-between gap-4 rounded-lg bg-slate-800/50 p-4 shadow-md sm:flex-row"
-											>
-												<div class="w-full flex-grow self-start">
-													<UserProfile userId={profId} />
-												</div>
-												<div class="flex flex-shrink-0 items-center gap-2 self-center sm:self-auto">
-													{#if chatMap.has(profId)}
-														<a
-															href={`/chat/${chatMap.get(profId)}`}
-															class="group flex flex-col items-center"
-														>
-															<div
-																class="flex h-12 w-12 items-center justify-center rounded-full bg-sky-600 transition-colors group-hover:bg-sky-700"
-															>
-																<span class="h-6 w-6 text-white">{@html chatIcon}</span>
-															</div>
-															<span class="mt-1 text-xs text-slate-400 group-hover:text-sky-300"
-																>Chat</span
-															>
-														</a>
-													{/if}
-													<a
-														href={`/contracts/create?workRequestId=${workRequest.id}&professionalId=${profId}`}
-														class="group flex flex-col items-center"
-													>
-														<div
-															class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 transition-colors group-hover:bg-emerald-700"
-														>
-															<span class="h-6 w-6 text-white">{@html contractIcon}</span>
-														</div>
-														<span class="mt-1 text-xs text-slate-400 group-hover:text-emerald-300"
-															>Contract</span
-														>
-													</a>
-												</div>
-											</div>
-										{/each}
-									</div>
-								{:else}
-									<div class="text-center">
-										<p class="text-slate-400">
-											No professionals have expressed interest yet. When they do, they will appear
-											here.
-										</p>
-									</div>
-								{/if}
+							{/if}
+						</div>
+					</section>
+				{/if}
 
-								<!-- "Invite More" button for open requests -->
-								{#if workRequest.status === 'open'}
-									<div class="text-center">
-										<a
-											href="/find-professionals?type=expert&request-id={workRequest.id}"
-											class="inline-block rounded-lg bg-sky-500 px-6 py-2 text-base font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-sky-600"
-										>
-											{`Invite ${interestedProfessionals.length > 0 ? 'More' : ''} Experts to Your Request`}
-										</a>
-									</div>
-								{/if}
-							</section>
-						{/if}
-					</div>
+				<!-- Contract Link (For Experts when contract exists) -->
+				{#if isProfessional && existingContract}
+					<section
+						class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="mb-4 flex items-center gap-3">
+							<div class="rounded-lg bg-emerald-500/20 p-2">
+								<svg
+									class="h-5 w-5 text-emerald-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+									/>
+								</svg>
+							</div>
+							<h2 class="text-lg font-bold text-emerald-300">Active Contract</h2>
+						</div>
+						<a
+							href="/contracts/{existingContract.id}"
+							class="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/20 p-3 text-emerald-300 transition-colors hover:bg-emerald-500/30"
+						>
+							<span class="font-medium">View Contract Details</span>
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M9 5l7 7-7 7"
+								/>
+							</svg>
+						</a>
+					</section>
 				{/if}
 			</div>
-			<footer class="bg-slate-800/60 p-4 text-center sm:p-6">
-				<p class="text-xs text-slate-500">
-					Work Request ID: {workRequest.id} | Posted: {new Date(
-						workRequest.createdAt
-					).toLocaleString()}
-				</p>
-			</footer>
-		</article>
-	{:else}
-		<div class="rounded-xl bg-slate-700/50 p-6 text-center shadow-lg">
-			<h2 class="text-xl font-semibold text-sky-400">Work Request Not Found</h2>
-			<p class="mt-2 text-slate-300">
-				The requested work order could not be loaded or does not exist.
-			</p>
-			<a
-				href="/work-requests"
-				class="mt-4 rounded-lg bg-emerald-500 px-5 py-2 font-medium text-white hover:bg-emerald-600"
+		</div>
+
+		<!-- Back Button -->
+		<div class="text-center">
+			<button
+				on:click={() => goto('/work-requests')}
+				class="inline-flex items-center gap-2 rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
-				Back to List
-			</a>
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M10 19l-7-7m0 0l7-7m-7 7h18"
+					/>
+				</svg>
+				Back to All Work Requests
+			</button>
+		</div>
+	{:else}
+		<div class="rounded-2xl bg-slate-700/50 p-8 text-center shadow-xl backdrop-blur-sm">
+			<div
+				class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-600/50"
+			>
+				<svg class="h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+					/>
+				</svg>
+			</div>
+			<h2 class="mb-3 text-xl font-bold text-sky-400">Work Request Not Found</h2>
+			<p class="mb-6 text-slate-300">
+				The requested work order (ID: {workRequestId || 'Unknown'}) could not be loaded or does not
+				exist.
+			</p>
+			<button
+				on:click={() => goto('/work-requests')}
+				class="rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white hover:bg-emerald-600"
+			>
+				← Back to Work Requests
+			</button>
 		</div>
 	{/if}
 </div>
