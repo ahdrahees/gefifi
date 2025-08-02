@@ -672,7 +672,7 @@
 											{/if}
 											{#if canCreateContract}
 												<a
-													href="/contracts/create?workRequestId={workRequest.id}&expertSupplierId={profId}"
+													href="/contracts/create?workRequestId={workRequest.id}&expertId={profId}&customerId={workRequest.customerId}"
 													class="flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-2 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
 												>
 													<svg
@@ -753,7 +753,7 @@
 											{/if}
 											{#if canCreateContract}
 												<a
-													href="/contracts/create?workRequestId={workRequest.id}&expertSupplierId={profile.id}"
+													href="/contracts/create?workRequestId={workRequest.id}&expertId={profile.id}&customerId={workRequest.customerId}"
 													class="flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-2 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
 												>
 													<svg
