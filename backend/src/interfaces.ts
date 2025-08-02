@@ -202,13 +202,22 @@ export interface Project extends Identifiable {
 		contractId: string;
 		status: string;
 		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
+		chatId?: string; // Added for API response enrichment
 	};
 	materialComponent?: {
 		supplierId: string;
 		contractId: string;
 		status: string;
 		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
+		chatId?: string; // Added for API response enrichment
 	};
 	createdAt: string;
 	updatedAt: string;
+
+	// Additional properties for API response enrichment (not stored in database)
+	workRequest?: WorkRequest;
+	materialRequest?: MaterialRequest;
+	customer?: User;
+	expert?: User;
+	supplier?: User;
 }
