@@ -228,6 +228,7 @@ interface UserProfileUpdateData {
 	experience?: string;
 	companyName?: string;
 	category?: string;
+	avatar?: File; // Optional avatar file
 }
 
 interface UpdateProfileResponse {
@@ -321,7 +322,28 @@ const apiClient = {
 		return request<AuthUser[]>('/users/experts', 'GET');
 	},
 	updateUserProfile: (data: UserProfileUpdateData): Promise<UpdateProfileResponse> => {
-		return request<UpdateProfileResponse>('/users/me/profile', 'PUT', data, true);
+		// Check if avatar file is provided AND it's a new file (not just the existing avatar)
+		if (data.avatar && data.avatar instanceof File) {
+			// Create FormData for multipart upload
+			const formData = new FormData();
+
+			// Add all profile fields to FormData
+			Object.keys(data).forEach((key) => {
+				if (key === 'avatar') {
+					// Add the file with the correct field name
+					formData.append('avatar', data.avatar!);
+				} else if (data[key as keyof UserProfileUpdateData]) {
+					// Add other fields only if they have values
+					formData.append(key, data[key as keyof UserProfileUpdateData] as string);
+				}
+			});
+
+			return request<UpdateProfileResponse>('/users/me/profile', 'PUT', formData, true, true);
+		} else {
+			// No avatar file, send as JSON
+			const { avatar, ...profileData } = data;
+			return request<UpdateProfileResponse>('/users/me/profile', 'PUT', profileData, true);
+		}
 	},
 	getSuppliers: (): Promise<AuthUser[]> => {
 		return request<AuthUser[]>('/users/suppliers', 'GET');

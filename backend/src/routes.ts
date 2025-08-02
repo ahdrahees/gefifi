@@ -20,7 +20,7 @@ import {
 } from './auth';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { getSignedAudioUrl, uploadEntityAttachment } from './file-storage';
+import { getSignedAudioUrl, uploadEntityAttachment, uploadUserAvatar } from './file-storage';
 import admin from 'firebase-admin';
 import multer from 'multer';
 
@@ -72,6 +72,36 @@ const attachmentUpload = multer({
 			cb(
 				new Error(
 					`File type not allowed: ${file.mimetype}. Allowed types: images, PDF, Word, Excel, DWG, DXF.`
+				)
+			);
+		}
+	}
+});
+
+// --- Multer Configuration for Avatar Uploads ---
+const avatarUpload = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 2 * 1024 * 1024, // 2MB limit for avatars
+		files: 1 // Only one avatar file per request
+	},
+	fileFilter: (req, file, cb) => {
+		// Accept only image files for avatars
+		const allowedImageTypes = [
+			'image/jpeg',
+			'image/jpg',
+			'image/png',
+			'image/gif',
+			'image/webp',
+			'image/svg+xml'
+		];
+
+		if (allowedImageTypes.includes(file.mimetype)) {
+			cb(null, true);
+		} else {
+			cb(
+				new Error(
+					`File type not allowed: ${file.mimetype}. Only image files (JPG, PNG, GIF, WebP, SVG) are allowed for avatars.`
 				)
 			);
 		}
@@ -851,10 +881,12 @@ router.get('/users/:userId', async (req: Request, res: Response) => {
 router.put(
 	'/users/me/profile',
 	authenticateToken,
+	avatarUpload.single('avatar'),
 	async (req: AuthenticatedRequest, res: Response) => {
 		try {
 			const user = req.user as JwtPayload;
 			const profileData: Partial<UserProfile> = req.body;
+			const avatarFile = req.file;
 
 			// Fetch the latest user data to ensure we're not overwriting anything unintentionally
 			const existingUser = await usersDB.findById(user.id);
@@ -870,11 +902,26 @@ router.put(
 					.json({ message: profileValidation.message || 'Invalid profile data.' });
 			}
 
-			// Merge the new profile data with any existing profile data
-			const updatedProfile = {
+			// Start with existing profile data
+			let updatedProfile = {
 				...existingUser.profile,
 				...profileValidation.validatedProfile
 			};
+
+			// Handle avatar upload if provided
+			if (avatarFile) {
+				try {
+					const avatarResult = await uploadUserAvatar(avatarFile, user.id);
+					updatedProfile.avatarUrl = avatarResult.filePath;
+				} catch (avatarError) {
+					console.error('Avatar upload failed:', avatarError);
+					return res.status(400).json({
+						message: 'Avatar upload failed. Please try again.',
+						error:
+							avatarError instanceof Error ? avatarError.message : 'Unknown avatar upload error'
+					});
+				}
+			}
 
 			const now = new Date().toISOString();
 			const updates = {
