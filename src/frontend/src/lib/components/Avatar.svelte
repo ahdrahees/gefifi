@@ -1,13 +1,14 @@
 <script lang="ts">
 	type AvatarProps = {
 		url?: string;
-		size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+		size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 		name?: string;
 	};
 
 	let { url, size = 'md', name }: AvatarProps = $props();
 
 	let sizeClasses = {
+		xs: 'h-6 w-6',
 		sm: 'h-8 w-8',
 		md: 'h-10 w-10',
 		lg: 'h-12 w-12',
