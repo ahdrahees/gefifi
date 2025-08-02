@@ -276,13 +276,16 @@
 		<div class="rounded-xl bg-slate-700/60 p-6 shadow-lg">
 			<p class="text-xl text-slate-200">
 				Welcome back,
-				<span class="font-semibold text-emerald-400">
+				<a
+					href="/profile"
+					class="font-semibold text-emerald-400 transition-colors hover:text-emerald-300"
+				>
 					{#if currentUser?.userType === 'supplier'}
 						{currentUser?.profile?.companyName || currentUser?.email?.split('@')[0]}
 					{:else}
 						{currentUser?.profile?.fullName || currentUser?.email?.split('@')[0]}
 					{/if}
-				</span>!
+				</a>!
 			</p>
 			<p class="mt-2 text-sm text-slate-400">Here's a summary of your activities on GEFIFI.</p>
 		</div>

@@ -206,6 +206,86 @@ export const uploadEntityAttachment = async (
 };
 
 /**
+ * Uploads a user avatar image.
+ * Files are organized by userId in separate folders.
+ * @param file The image file object from multer.
+ * @param userId The ID of the user this avatar belongs to.
+ * @returns An object containing the public storage path and the fileName.
+ */
+export const uploadUserAvatar = async (
+	file: Express.Multer.File,
+	userId: string
+): Promise<{ filePath: string; fileName: string }> => {
+	if (!file) {
+		throw new Error('No avatar file provided for upload.');
+	}
+
+	if (!userId) {
+		throw new Error('User ID is required for avatar upload.');
+	}
+
+	// Validate image file
+	const allowedImageTypes = [
+		'image/jpeg',
+		'image/jpg',
+		'image/png',
+		'image/gif',
+		'image/webp',
+		'image/svg+xml'
+	];
+
+	if (!allowedImageTypes.includes(file.mimetype)) {
+		throw new Error('File must be an image (JPG, PNG, GIF, WebP, SVG).');
+	}
+
+	const uniqueFilename = generateUniqueFilename(file.originalname);
+	const destinationPath = `users/${userId}/avatar/${uniqueFilename}`;
+
+	// Always upload to GCS (both development and production)
+	const gcsClient = getStorageClient();
+	if (!GCS_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_BUCKET_NAME is not set.');
+	}
+
+	const bucket = gcsClient.bucket(GCS_BUCKET_NAME);
+	const blob = bucket.file(destinationPath);
+
+	const blobStream = blob.createWriteStream({
+		resumable: false,
+		contentType: file.mimetype,
+		metadata: {
+			metadata: {
+				userId: userId,
+				uploadedAt: new Date().toISOString()
+			}
+		}
+	});
+
+	await new Promise<void>((resolve, reject) => {
+		blobStream.on('error', (err) => {
+			console.error('[FileStorage] User Avatar GCS Upload Error:', err);
+			reject(new Error('Failed to upload avatar to Google Cloud Storage.'));
+		});
+		blobStream.on('finish', () => {
+			resolve();
+		});
+		blobStream.end(file.buffer);
+	});
+
+	let STORAGE_BASE_URL = 'https://storage.googleapis.com';
+
+	if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+		console.log(
+			`[FileStorage] Uploading user avatar to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+		);
+		STORAGE_BASE_URL = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+	}
+
+	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${destinationPath}`;
+	return { filePath, fileName: uniqueFilename };
+};
+
+/**
  * Uploads an audio file for voice messages.
  * Files are organized by chatId in separate folders.
  * @param file The audio file object from multer.
