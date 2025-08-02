@@ -128,7 +128,10 @@
 				</div>
 			{:else if currentAuth.isAuthenticated && currentAuth.user}
 				<!-- User Info -->
-				<div class="mb-3 flex items-center">
+				<a
+					href="/profile"
+					class="mb-3 flex items-center rounded-lg p-2 transition-colors hover:bg-slate-700/50"
+				>
 					<img
 						src={currentAuth.user.profile?.avatarUrl || '/images/default-avatar.png'}
 						alt="User Avatar"
@@ -143,7 +146,7 @@
 						<p class="truncate text-xs text-slate-400">{currentAuth.user.email}</p>
 						<p class="text-xs text-amber-400 capitalize">{currentAuth.user.userType}</p>
 					</div>
-				</div>
+				</a>
 				<button
 					on:click={handleLogout}
 					class="flex w-full items-center justify-center space-x-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
