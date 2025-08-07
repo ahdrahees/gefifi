@@ -139,6 +139,17 @@ export interface Message extends Identifiable {
 // --- Contract and Project Types ---
 
 /**
+ * Represents a comment on a contract.
+ */
+export interface ContractComment extends Identifiable {
+	authorId: string; // User ID of the comment author
+	comment: string; // The comment text
+	timestamp: string; // ISO 8601 date string
+	type: 'revision_request' | 'signature_comment' | 'general'; // Type of comment
+	attachments?: Attachment[]; // Optional file attachments
+}
+
+/**
  * Represents a formal agreement between a customer and a provider (expert/supplier).
  */
 export interface Contract extends Identifiable {
@@ -170,6 +181,9 @@ export interface Contract extends Identifiable {
 	// Attachments
 	attachments?: Attachment[]; // Contract documents, specifications, etc.
 
+	// Comments and Feedback
+	comments?: ContractComment[]; // Comments and revision requests
+
 	// Signatures
 	customerSigned: boolean;
 	customerSignatureTimestamp?: string;
@@ -179,6 +193,7 @@ export interface Contract extends Identifiable {
 	// Status & Tracking
 	status:
 		| 'draft'
+		| 'revision_requested'
 		| 'awaiting_signatures'
 		| 'signed'
 		| 'in_progress'
