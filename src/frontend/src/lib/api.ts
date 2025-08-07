@@ -389,8 +389,37 @@ const apiClient = {
 	createContract: (data: ContractData): Promise<ContractResponse> => {
 		return request<ContractResponse>('/contracts', 'POST', data, true);
 	},
+	updateContract: (contractId: string, data: ContractData): Promise<ContractResponse> => {
+		return request<ContractResponse>(`/contracts/${contractId}`, 'PUT', data, true);
+	},
 	signContract: (contractId: string): Promise<ContractResponse> => {
 		return request<ContractResponse>(`/contracts/${contractId}/sign`, 'PUT', undefined, true);
+	},
+	addContractComment: (
+		contractId: string,
+		data: {
+			comment: string;
+			type?: 'general' | 'revision_request' | 'signature_comment';
+			files?: File[];
+		}
+	): Promise<{ message: string; comment: any; contract: ContractResponse }> => {
+		const formData = new FormData();
+		formData.append('comment', data.comment);
+		formData.append('type', data.type || 'general');
+
+		if (data.files && data.files.length > 0) {
+			data.files.forEach((file) => {
+				formData.append('files', file);
+			});
+		}
+
+		return request<{ message: string; comment: any; contract: ContractResponse }>(
+			`/contracts/${contractId}/comments`,
+			'POST',
+			formData,
+			true,
+			true
+		);
 	},
 	updateContractStatus: (
 		contractId: string,

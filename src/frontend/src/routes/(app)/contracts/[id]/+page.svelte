@@ -1,4 +1,5 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/contracts/[id]/+page.svelte -->
+
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
@@ -7,9 +8,12 @@
 	import { API_BASE_URL } from '$lib/config';
 	import AttachmentList from '$lib/components/AttachmentList.svelte';
 	import UserProfile from '$lib/components/UserProfile.svelte';
+	import ContractComments from '$lib/components/ContractComments.svelte';
+	import FileUpload from '$lib/components/FileUpload.svelte';
 	import type { Contract, Attachment } from '$lib/types';
 	import type { Unsubscriber } from 'svelte/store';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import { writable } from 'svelte/store';
 
 	// Define UserProfile, similar to other pages
 	type UserProfile = {
@@ -45,12 +49,27 @@
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
 	let contract: ContractDetail | null = null;
+	let customerProfile: AuthUser | null = null;
+	let expertSupplierProfile: AuthUser | null = null;
 	let isLoading = true;
 	let errorMessage = '';
 	let chatId: string | null = null;
 	let contractIdFromUrl: string | null = null;
 	let isSigning = false;
 	let signMessage = '';
+
+	// Signature modal state
+	let showSignatureModal = false;
+	let signatureComment = '';
+	let signatureFiles = writable<File[]>([]);
+	let isSignatureCommentValid = false;
+
+	// Revision request modal state
+	let showRevisionModal = false;
+	let revisionComment = '';
+	let revisionFiles = writable<File[]>([]);
+	let isRevisionCommentValid = false;
+	let isSubmittingRevision = false;
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
@@ -80,14 +99,15 @@
 
 			// Fetch related details - customer name, expert/supplier name, request title
 			try {
-				// Fetch Customer Name
+				// Fetch Customer Profile
 				if (fetchedContract.customerId) {
 					const customerRes = await fetch(
 						`${API_BASE_URL}/api/users/${fetchedContract.customerId}`,
 						{ headers: { Authorization: `Bearer ${token}` } }
 					);
 					if (customerRes.ok) {
-						const customerData: UserProfile = await customerRes.json();
+						const customerData: AuthUser = await customerRes.json();
+						customerProfile = customerData;
 						fetchedContract.customerName =
 							customerData.profile?.fullName ||
 							customerData.email.split('@')[0] ||
@@ -103,14 +123,15 @@
 					}
 				}
 
-				// Fetch Expert/Supplier Name
+				// Fetch Expert/Supplier Profile
 				if (fetchedContract.expertSupplierId) {
 					const providerRes = await fetch(
 						`${API_BASE_URL}/api/users/${fetchedContract.expertSupplierId}`,
 						{ headers: { Authorization: `Bearer ${token}` } }
 					);
 					if (providerRes.ok) {
-						const providerData: UserProfile = await providerRes.json();
+						const providerData: AuthUser = await providerRes.json();
+						expertSupplierProfile = providerData;
 
 						if (providerData.userType === 'supplier' && providerData.profile?.companyName) {
 							fetchedContract.expertSupplierName = providerData.profile.companyName;
@@ -204,12 +225,12 @@
 	async function findChatId(party1: string, party2: string) {
 		if (!token) return;
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/chats`, {
+			const response = await fetch(`${API_BASE_URL}/api/chat`, {
 				headers: { Authorization: `Bearer ${token}` }
 			});
 			if (response.ok) {
 				const chats = await response.json();
-				console.log('chats', chats);
+
 				// Find the chat that includes both the customer and the expert/supplier.
 				// This is more reliable than checking for a request ID, which is removed
 				// from the chat after a contract is created.
@@ -230,7 +251,7 @@
 		}
 	}
 
-	async function handleSignContract() {
+	function openSignatureModal() {
 		if (!contract || !currentUser || !token) return;
 		if (
 			(currentUser.id === contract.customerId && contract.customerSigned) ||
@@ -240,39 +261,262 @@
 			return;
 		}
 
-		isSigning = true;
+		showSignatureModal = true;
+		signatureComment = '';
+		signatureFiles.set([]);
+		isSignatureCommentValid = false;
+	}
+
+	function closeSignatureModal() {
+		showSignatureModal = false;
 		signMessage = '';
+	}
+
+	function openRevisionModal() {
+		if (!contract || !currentUser || !token) return;
+
+		// Check if user is a contract participant
+		if (currentUser.id !== contract.customerId && currentUser.id !== contract.expertSupplierId) {
+			return;
+		}
+
+		// Check if contract is in a state where revision can be requested
+		// Currently both parties can request revisions, but this may change in the future
+		if (!['draft', 'awaiting_signatures', 'signed'].includes(contract.status)) {
+			return;
+		}
+
+		showRevisionModal = true;
+		revisionComment = '';
+		revisionFiles.set([]);
+		isRevisionCommentValid = false;
+	}
+
+	function closeRevisionModal() {
+		showRevisionModal = false;
+	}
+
+	async function handleRevisionRequest() {
+		if (!contract || !currentUser || !token) return;
+
+		isSubmittingRevision = true;
+
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/sign`, {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${token}`
+			// Prepare the request body
+			const requestBody: any = {
+				comment: revisionComment.trim(),
+				type: 'revision_request'
+			};
+
+			// If there are revision files, we need to use FormData
+			if ($revisionFiles.length > 0) {
+				const formData = new FormData();
+				formData.append('comment', revisionComment.trim());
+				formData.append('type', 'revision_request');
+
+				$revisionFiles.forEach((file: File) => {
+					formData.append('files', file);
+				});
+
+				const response = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/comments`, {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${token}`
+					},
+					body: formData
+				});
+
+				const result = await response.json();
+				if (!response.ok) {
+					throw new Error(result.message || 'Failed to submit revision request.');
 				}
-			});
-			const result = await response.json();
-			if (!response.ok) {
-				throw new Error(result.message || 'Failed to sign contract.');
-			}
-			signMessage = result.message || 'Contract signed successfully!';
-			// Refresh contract details to show new status and signatures
-			if (result.id) {
+
+				// Update the contract with the new comment and status
 				contract = {
 					...contract,
-					...result,
+					...result.contract,
 					// Keep fetched names if result doesn't include them
 					customerName: contract?.customerName,
 					expertSupplierName: contract?.expertSupplierName,
 					requestTitle: contract?.requestTitle
 				};
+
+				closeRevisionModal();
 			} else {
-				fetchContractDetails(contract.id);
+				// No files, use JSON request
+				const response = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/comments`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${token}`
+					},
+					body: JSON.stringify(requestBody)
+				});
+
+				const result = await response.json();
+				if (!response.ok) {
+					throw new Error(result.message || 'Failed to submit revision request.');
+				}
+
+				// Update the contract with the new comment and status
+				contract = {
+					...contract,
+					...result.contract,
+					// Keep fetched names if result doesn't include them
+					customerName: contract?.customerName,
+					expertSupplierName: contract?.expertSupplierName,
+					requestTitle: contract?.requestTitle
+				};
+
+				closeRevisionModal();
+			}
+		} catch (error: any) {
+			console.error('Error submitting revision request:', error);
+			// You could add a toast notification here
+		} finally {
+			isSubmittingRevision = false;
+		}
+	}
+
+	async function handleSignContract() {
+		if (!contract || !currentUser || !token) return;
+
+		isSigning = true;
+		signMessage = '';
+
+		try {
+			// Prepare the request body
+			const requestBody: any = {};
+
+			// If there's a signature comment, add it to the request
+			if (signatureComment.trim()) {
+				requestBody.signatureComment = signatureComment.trim();
+			}
+
+			// If there are signature files, we need to use FormData
+			if ($signatureFiles.length > 0) {
+				const formData = new FormData();
+				if (signatureComment.trim()) {
+					formData.append('signatureComment', signatureComment.trim());
+				}
+
+				$signatureFiles.forEach((file: File) => {
+					formData.append('signatureFiles', file);
+				});
+
+				const response = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/sign`, {
+					method: 'PUT',
+					headers: {
+						Authorization: `Bearer ${token}`
+					},
+					body: formData
+				});
+
+				const result = await response.json();
+				if (!response.ok) {
+					throw new Error(result.message || 'Failed to sign contract.');
+				}
+
+				signMessage = result.message || 'Contract signed successfully!';
+				closeSignatureModal();
+
+				// Refresh contract details to show new status and signatures
+				if (result.id) {
+					contract = {
+						...contract,
+						...result,
+						// Keep fetched names if result doesn't include them
+						customerName: contract?.customerName,
+						expertSupplierName: contract?.expertSupplierName,
+						requestTitle: contract?.requestTitle
+					};
+				} else {
+					fetchContractDetails(contract.id);
+				}
+			} else {
+				// No files, use JSON request
+				const response = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/sign`, {
+					method: 'PUT',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${token}`
+					},
+					body: Object.keys(requestBody).length > 0 ? JSON.stringify(requestBody) : undefined
+				});
+
+				const result = await response.json();
+				if (!response.ok) {
+					throw new Error(result.message || 'Failed to sign contract.');
+				}
+
+				signMessage = result.message || 'Contract signed successfully!';
+				closeSignatureModal();
+
+				// Refresh contract details to show new status and signatures
+				if (result.id) {
+					contract = {
+						...contract,
+						...result,
+						// Keep fetched names if result doesn't include them
+						customerName: contract?.customerName,
+						expertSupplierName: contract?.expertSupplierName,
+						requestTitle: contract?.requestTitle
+					};
+				} else {
+					fetchContractDetails(contract.id);
+				}
 			}
 		} catch (error: any) {
 			console.error('Error signing contract:', error);
 			signMessage = `Error: ${error.message}`;
 		} finally {
 			isSigning = false;
+		}
+	}
+
+	async function handleAddComment(event: CustomEvent) {
+		if (!contract || !currentUser || !token) return;
+
+		const { comment, type, files } = event.detail;
+
+		try {
+			const response = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/comments`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${token}`
+				},
+				body: (() => {
+					const formData = new FormData();
+					formData.append('comment', comment);
+					formData.append('type', type);
+
+					if (files && files.length > 0) {
+						files.forEach((file: File) => {
+							formData.append('files', file);
+						});
+					}
+
+					return formData;
+				})()
+			});
+
+			const result = await response.json();
+			if (!response.ok) {
+				throw new Error(result.message || 'Failed to add comment.');
+			}
+
+			// Update the contract with the new comment
+			contract = {
+				...contract,
+				...result.contract,
+				// Keep fetched names if result doesn't include them
+				customerName: contract?.customerName,
+				expertSupplierName: contract?.expertSupplierName,
+				requestTitle: contract?.requestTitle
+			};
+		} catch (error: any) {
+			console.error('Error adding comment:', error);
+			// You could add a toast notification here
 		}
 	}
 
@@ -361,6 +605,23 @@
 		((currentUser.id === contract.customerId && !contract.customerSigned) ||
 			(currentUser.id === contract.expertSupplierId && !contract.expertSupplierSigned));
 
+	// Check if user can request revision
+	$: canRequestRevision =
+		contract &&
+		currentUser &&
+		// Currently both parties can request revisions, but this may change in the future
+		(currentUser.id === contract.customerId || currentUser.id === contract.expertSupplierId) &&
+		['draft', 'awaiting_signatures'].includes(contract.status) &&
+		contract.status !== 'revision_requested';
+
+	// Check if user can edit contract (contract creator - currently customer)
+	$: canEditContract =
+		contract &&
+		currentUser &&
+		contract.status === 'revision_requested' &&
+		// Currently only customer can edit, but this may change in the future
+		currentUser.id === contract.customerId;
+
 	$: contractTypeLabel =
 		contract?.contractType === 'expert_contract' ? 'Expert Contract' : 'Material Contract';
 	$: relatedRequestUrl = contract?.workRequestId
@@ -368,6 +629,38 @@
 		: contract?.materialRequestId
 			? `/material-requests/${contract.materialRequestId}`
 			: null;
+
+	// Signature comment validation
+	$: {
+		// Remove leading spaces
+		if (signatureComment && signatureComment !== signatureComment.trimStart()) {
+			signatureComment = signatureComment.trimStart();
+		}
+
+		// Validate signature comment length (minimum 1 character for emojis)
+		const trimmedComment = signatureComment.trim();
+		if (trimmedComment.length === 0) {
+			isSignatureCommentValid = false;
+		} else {
+			isSignatureCommentValid = true;
+		}
+	}
+
+	// Revision comment validation
+	$: {
+		// Remove leading spaces
+		if (revisionComment && revisionComment !== revisionComment.trimStart()) {
+			revisionComment = revisionComment.trimStart();
+		}
+
+		// Validate revision comment length (minimum 1 character for emojis)
+		const trimmedRevisionComment = revisionComment.trim();
+		if (trimmedRevisionComment.length === 0) {
+			isRevisionCommentValid = false;
+		} else {
+			isRevisionCommentValid = true;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -730,6 +1023,15 @@
 						<AttachmentList attachments={contract.attachments} />
 					</section>
 				{/if}
+
+				<!-- Comments & Feedback -->
+				<ContractComments
+					{contract}
+					{currentUser}
+					{customerProfile}
+					{expertSupplierProfile}
+					on:addComment={handleAddComment}
+				/>
 			</div>
 
 			<!-- Right Column: Signatures & Actions -->
@@ -864,11 +1166,11 @@
 										: 'Supplier'}, you can sign this contract. Please review all details carefully.
 							</p>
 							<button
-								on:click={handleSignContract}
+								on:click={openSignatureModal}
 								disabled={isSigning}
 								class="w-full rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-emerald-600 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-slate-500"
 							>
-								{isSigning ? 'Processing...' : 'Sign Contract'}
+								Sign Contract
 							</button>
 							{#if signMessage}
 								<p
@@ -879,6 +1181,83 @@
 									{signMessage}
 								</p>
 							{/if}
+						</div>
+					</section>
+				{/if}
+
+				<!-- Request Revision Action -->
+				{#if canRequestRevision}
+					<section
+						class="rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-500/20 to-orange-600/20 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="text-center">
+							<div
+								class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-orange-500/20"
+							>
+								<svg
+									class="h-6 w-6 text-orange-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+									/>
+								</svg>
+							</div>
+							<h2 class="mb-2 text-xl font-bold text-orange-300">Need Changes?</h2>
+							<p class="mb-4 text-sm text-slate-300">
+								Request revisions to this contract. This will pause the signing process until
+								changes are made.
+							</p>
+							<button
+								on:click={openRevisionModal}
+								disabled={isSubmittingRevision}
+								class="w-full rounded-xl bg-orange-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-orange-600 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-slate-500"
+							>
+								Request Revision
+							</button>
+						</div>
+					</section>
+				{/if}
+
+				<!-- Edit Contract Action -->
+				{#if canEditContract}
+					<section
+						class="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/20 to-blue-600/20 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="text-center">
+							<div
+								class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/20"
+							>
+								<svg
+									class="h-6 w-6 text-blue-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+									/>
+								</svg>
+							</div>
+							<h2 class="mb-2 text-xl font-bold text-blue-300">Edit Contract</h2>
+							<p class="mb-4 text-sm text-slate-300">
+								Make changes to address the revision request. The contract will be ready for signing
+								again after saving.
+							</p>
+							<a
+								href="/contracts/edit?id={contract.id}"
+								class="inline-block w-full rounded-xl bg-blue-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-blue-600 hover:shadow-xl"
+							>
+								Edit Contract
+							</a>
 						</div>
 					</section>
 				{/if}
@@ -996,3 +1375,198 @@
 		</div>
 	{/if}
 </div>
+
+<!-- Signature Modal -->
+{#if showSignatureModal}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm"
+		on:click|self={closeSignatureModal}
+		on:keydown|self={(e) => e.key === 'Escape' && closeSignatureModal()}
+		role="button"
+		tabindex="0"
+		aria-label="Close modal"
+	>
+		<div
+			class="w-full max-w-2xl rounded-2xl border border-slate-600/30 bg-slate-800/90 p-6 shadow-2xl backdrop-blur-sm"
+		>
+			<div class="mb-6 flex items-center justify-between">
+				<div>
+					<h3 class="text-xl font-bold text-slate-200">Sign Contract</h3>
+					<p class="text-sm text-slate-400">Add optional comment (optional)</p>
+				</div>
+				<button
+					aria-label="Close modal"
+					on:click={closeSignatureModal}
+					class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
+				>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M6 18L18 6M6 6l12 12"
+						/>
+					</svg>
+				</button>
+			</div>
+
+			<form on:submit|preventDefault={handleSignContract} class="space-y-4">
+				<!-- Signature Comment -->
+				<div>
+					<label for="signature-comment" class="mb-2 block text-sm font-medium text-slate-400">
+						Comment (Optional)
+					</label>
+					<textarea
+						id="signature-comment"
+						bind:value={signatureComment}
+						placeholder="Add a comment about this signature (optional)"
+						rows="3"
+						class="w-full rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+					></textarea>
+				</div>
+
+				<!-- Signature File Attachments -->
+				<div>
+					<label class="mb-2 block text-sm font-medium text-slate-400">
+						Attachments (Optional)
+					</label>
+					<FileUpload
+						acceptedFileTypes={[
+							'image/jpeg',
+							'image/jpg',
+							'image/png',
+							'image/gif',
+							'image/webp',
+							'application/pdf',
+							'application/msword',
+							'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+							'application/vnd.ms-excel',
+							'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+							'.dwg',
+							'.dxf'
+						]}
+						maxFileSize={25 * 1024 * 1024}
+						multiple={true}
+						bind:files={signatureFiles}
+					/>
+				</div>
+
+				<!-- Action Buttons -->
+				<div class="flex justify-end gap-3 pt-4">
+					<button
+						type="button"
+						on:click={closeSignatureModal}
+						class="rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500"
+					>
+						Cancel
+					</button>
+					<button
+						type="submit"
+						disabled={isSigning}
+						class="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-500"
+					>
+						{isSigning ? 'Signing...' : 'Confirm Sign'}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- Revision Request Modal -->
+{#if showRevisionModal}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm"
+		on:click|self={closeRevisionModal}
+		on:keydown|self={(e) => e.key === 'Escape' && closeRevisionModal()}
+		role="button"
+		tabindex="0"
+		aria-label="Close modal"
+	>
+		<div
+			class="w-full max-w-2xl rounded-2xl border border-slate-600/30 bg-slate-800/90 p-6 shadow-2xl backdrop-blur-sm"
+		>
+			<div class="mb-6 flex items-center justify-between">
+				<div>
+					<h3 class="text-xl font-bold text-slate-200">Request Revision</h3>
+					<p class="text-sm text-slate-400">Explain what changes are needed</p>
+				</div>
+				<button
+					aria-label="Close modal"
+					on:click={closeRevisionModal}
+					class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
+				>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M6 18L18 6M6 6l12 12"
+						/>
+					</svg>
+				</button>
+			</div>
+
+			<form on:submit|preventDefault={handleRevisionRequest} class="space-y-4">
+				<!-- Revision Comment -->
+				<div>
+					<label for="revision-comment" class="mb-2 block text-sm font-medium text-slate-400">
+						Revision Request (Required)
+					</label>
+					<textarea
+						id="revision-comment"
+						bind:value={revisionComment}
+						placeholder="Explain what changes are needed in the contract..."
+						rows="4"
+						class="w-full rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
+						required
+					></textarea>
+				</div>
+
+				<!-- Revision File Attachments -->
+				<div>
+					<label class="mb-2 block text-sm font-medium text-slate-400">
+						Attachments (Optional)
+					</label>
+					<FileUpload
+						acceptedFileTypes={[
+							'image/jpeg',
+							'image/jpg',
+							'image/png',
+							'image/gif',
+							'image/webp',
+							'application/pdf',
+							'application/msword',
+							'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+							'application/vnd.ms-excel',
+							'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+							'.dwg',
+							'.dxf'
+						]}
+						maxFileSize={25 * 1024 * 1024}
+						multiple={true}
+						bind:files={revisionFiles}
+					/>
+				</div>
+
+				<!-- Action Buttons -->
+				<div class="flex justify-end gap-3 pt-4">
+					<button
+						type="button"
+						on:click={closeRevisionModal}
+						class="rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500"
+					>
+						Cancel
+					</button>
+					<button
+						type="submit"
+						disabled={!isRevisionCommentValid || isSubmittingRevision}
+						class="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-500"
+					>
+						{isSubmittingRevision ? 'Submitting...' : 'Submit Revision Request'}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}

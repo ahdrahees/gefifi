@@ -8,7 +8,9 @@ import {
 	Project,
 	Chat,
 	Message,
-	Contract
+	Contract,
+	ContractComment,
+	Attachment
 } from './interfaces';
 import {
 	hashPassword,
@@ -1943,11 +1945,16 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 router.put(
 	'/contracts/:contractId/sign',
 	authenticateToken,
+	attachmentUpload.array('signatureFiles', 5), // Limit to 5 files for signature attachments
 	async (req: AuthenticatedRequest, res: Response) => {
 		try {
 			const user = req.user as JwtPayload;
 			const contractId = req.params.contractId;
 			const contract = await contractsDB.findById(contractId);
+
+			// Extract signature comment and files from request
+			const signatureComment = req.body.signatureComment;
+			const signatureFiles = req.files as Express.Multer.File[];
 			if (!contract) {
 				return res.status(404).json({ message: 'Contract not found.' });
 			}
@@ -1989,12 +1996,76 @@ router.put(
 					updates.status = 'signed';
 					const updatedContract = await contractsDB.update(contractId, updates);
 
-					// Send system message that the contract is fully signed
-					await sendSystemMessage(
-						contract.customerId,
-						contract.expertSupplierId,
-						`The contract has been fully signed by the ${signerRole} and is now active.`
-					);
+					// --- SIGNATURE COMMENT CREATION ---
+					// If there's a signature comment, create it as a signature_comment type
+					if (signatureComment && signatureComment.trim()) {
+						try {
+							// Get user profile for display name
+							const userProfile = await usersDB.findById(user.id);
+							const authorDisplayName =
+								userProfile?.profile?.fullName || userProfile?.email.split('@')[0] || 'User';
+
+							// Create signature comment
+							const signatureCommentData: ContractComment = {
+								id: crypto.randomUUID(),
+								authorId: user.id,
+								comment: signatureComment.trim(),
+								timestamp: now,
+								type: 'signature_comment',
+								attachments: []
+							};
+
+							// Handle signature attachments if any
+							if (signatureFiles && signatureFiles.length > 0) {
+								const attachments: Attachment[] = [];
+								for (const file of signatureFiles) {
+									try {
+										const uploadResult = await uploadEntityAttachment(
+											file,
+											'contracts',
+											contractId
+										);
+										attachments.push({
+											fileName: file.originalname,
+											filePath: uploadResult.filePath,
+											fileType: file.mimetype,
+											size: file.size
+										});
+									} catch (uploadError) {
+										console.error('Failed to upload signature attachment:', uploadError);
+										// Continue with other files even if one fails
+									}
+								}
+								if (attachments.length > 0) {
+									signatureCommentData.attachments = attachments;
+								}
+							}
+
+							// Add the signature comment to the contract
+							if (updatedContract) {
+								const comments = updatedContract.comments || [];
+								comments.push(signatureCommentData);
+								await contractsDB.update(contractId, { comments });
+							}
+
+							// Send system message about signature comment
+							await sendSystemMessage(
+								contract.customerId,
+								contract.expertSupplierId,
+								`The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`
+							);
+						} catch (commentError) {
+							console.error('Failed to create signature comment:', commentError);
+							// Don't fail the entire signing process if comment creation fails
+						}
+					} else {
+						// Send system message that the contract is fully signed (no comment)
+						await sendSystemMessage(
+							contract.customerId,
+							contract.expertSupplierId,
+							`The contract has been fully signed by the ${signerRole} and is now active.`
+						);
+					}
 
 					// This check is crucial to prevent trying to process a null object
 					if (!updatedContract) {
@@ -2059,12 +2130,76 @@ router.put(
 					updates.status = 'awaiting_signatures';
 					const updatedContract = await contractsDB.update(contractId, updates);
 
-					// Send system message that one party has signed
-					await sendSystemMessage(
-						contract.customerId,
-						contract.expertSupplierId,
-						`The ${signerRole} has signed the contract. Awaiting other party's signature.`
-					);
+					// --- SIGNATURE COMMENT CREATION FOR PARTIAL SIGNING ---
+					// If there's a signature comment, create it as a signature_comment type
+					if (signatureComment && signatureComment.trim()) {
+						try {
+							// Get user profile for display name
+							const userProfile = await usersDB.findById(user.id);
+							const authorDisplayName =
+								userProfile?.profile?.fullName || userProfile?.email.split('@')[0] || 'User';
+
+							// Create signature comment
+							const signatureCommentData: ContractComment = {
+								id: crypto.randomUUID(),
+								authorId: user.id,
+								comment: signatureComment.trim(),
+								timestamp: now,
+								type: 'signature_comment',
+								attachments: []
+							};
+
+							// Handle signature attachments if any
+							if (signatureFiles && signatureFiles.length > 0) {
+								const attachments: Attachment[] = [];
+								for (const file of signatureFiles) {
+									try {
+										const uploadResult = await uploadEntityAttachment(
+											file,
+											'contracts',
+											contractId
+										);
+										attachments.push({
+											fileName: file.originalname,
+											filePath: uploadResult.filePath,
+											fileType: file.mimetype,
+											size: file.size
+										});
+									} catch (uploadError) {
+										console.error('Failed to upload signature attachment:', uploadError);
+										// Continue with other files even if one fails
+									}
+								}
+								if (attachments.length > 0) {
+									signatureCommentData.attachments = attachments;
+								}
+							}
+
+							// Add the signature comment to the contract
+							if (updatedContract) {
+								const comments = updatedContract.comments || [];
+								comments.push(signatureCommentData);
+								await contractsDB.update(contractId, { comments });
+							}
+
+							// Send system message about signature comment
+							await sendSystemMessage(
+								contract.customerId,
+								contract.expertSupplierId,
+								`The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}". Awaiting other party's signature.`
+							);
+						} catch (commentError) {
+							console.error('Failed to create signature comment:', commentError);
+							// Don't fail the entire signing process if comment creation fails
+						}
+					} else {
+						// Send system message that one party has signed (no comment)
+						await sendSystemMessage(
+							contract.customerId,
+							contract.expertSupplierId,
+							`The ${signerRole} has signed the contract. Awaiting other party's signature.`
+						);
+					}
 
 					res.status(200).json(updatedContract);
 				}
@@ -2078,6 +2213,273 @@ router.put(
 			console.error('Error signing contract:', error);
 			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
 			res.status(500).json({ message: 'Failed to sign contract.', error: errorMessage });
+		}
+	}
+);
+
+// --- Contract Comments Endpoint ---
+router.post(
+	'/contracts/:contractId/comments',
+	authenticateToken,
+	attachmentUpload.array('files', 5), // Limit to 5 files for comments
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const { comment, type = 'general' } = req.body;
+			const files = req.files as Express.Multer.File[];
+
+			// --- Validation ---
+			if (!comment || typeof comment !== 'string' || comment.trim().length < 1) {
+				return res.status(400).json({
+					message: 'Comment is required and must be at least 1 character long.'
+				});
+			}
+
+			// Validate comment type
+			const validTypes = ['general', 'revision_request', 'signature_comment'];
+			if (!validTypes.includes(type)) {
+				return res.status(400).json({
+					message: `Invalid comment type. Must be one of: ${validTypes.join(', ')}`
+				});
+			}
+
+			// --- Get Contract ---
+			const contract = await contractsDB.findById(contractId);
+			if (!contract) {
+				return res.status(404).json({ message: 'Contract not found.' });
+			}
+
+			// --- Authorization ---
+			if (contract.customerId !== user.id && contract.expertSupplierId !== user.id) {
+				return res.status(403).json({
+					message: 'Forbidden. You are not authorized to comment on this contract.'
+				});
+			}
+
+			// --- Check Contract Status ---
+			const allowedStatuses = [
+				'draft',
+				'revision_requested',
+				'awaiting_signatures',
+				'signed',
+				'in_progress'
+			];
+			if (!allowedStatuses.includes(contract.status)) {
+				return res.status(400).json({
+					message: `Cannot add comments to contract in status '${contract.status}'.`
+				});
+			}
+
+			// Only allow revision requests in draft/awaiting_signatures states
+			if (
+				type === 'revision_request' &&
+				!['draft', 'awaiting_signatures'].includes(contract.status)
+			) {
+				return res.status(400).json({
+					message: `Cannot add revision requests to contract in status '${contract.status}'.`
+				});
+			}
+
+			// --- Get User Profile for Validation ---
+			const userProfile = await usersDB.findById(user.id);
+			if (!userProfile) {
+				return res.status(404).json({ message: 'User profile not found.' });
+			}
+
+			// --- Upload Attachments (if any) ---
+			let attachments: any[] = [];
+			if (files && files.length > 0) {
+				const uploadPromises = files.map((file) =>
+					uploadEntityAttachment(file, 'contracts', contractId)
+				);
+				const uploadResults = await Promise.all(uploadPromises);
+
+				attachments = uploadResults.map((result, index) => {
+					const file = files[index];
+					return {
+						fileName: file.originalname,
+						filePath: result.filePath,
+						fileType: file.mimetype,
+						size: file.size
+					};
+				});
+			}
+
+			// --- Create Comment ---
+			const commentId = crypto.randomUUID();
+			const now = new Date().toISOString();
+			const newComment: ContractComment = {
+				id: commentId,
+				authorId: user.id,
+				comment: comment.trim(),
+				timestamp: now,
+				type: type as ContractComment['type']
+			};
+
+			// Only add attachments if there are any
+			if (attachments.length > 0) {
+				newComment.attachments = attachments;
+			}
+
+			// --- Update Contract with New Comment ---
+			const currentComments = contract.comments || [];
+			const updatedComments = [...currentComments, newComment];
+
+			const updateData: Partial<Contract> = {
+				comments: updatedComments,
+				updatedAt: now
+			};
+
+			// --- Update Status if Revision Request ---
+			if (type === 'revision_request') {
+				updateData.status = 'revision_requested';
+			}
+
+			const updatedContract = await contractsDB.update(contractId, updateData);
+
+			// --- Send System Message ---
+			const commentTypeLabel = type === 'revision_request' ? 'revision request' : 'comment';
+			const authorDisplayName =
+				userProfile.profile?.fullName || userProfile.email.split('@')[0] || 'User';
+			await sendSystemMessage(
+				contract.customerId,
+				contract.expertSupplierId,
+				`${authorDisplayName} has added a ${commentTypeLabel} to the contract.`
+			);
+
+			res.status(200).json({
+				message: 'Comment added successfully!',
+				comment: newComment,
+				contract: updatedContract
+			});
+		} catch (error: unknown) {
+			console.error('Error adding contract comment:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+
+			// Handle multer errors
+			if (errorMessage.includes('File type not allowed')) {
+				return res.status(400).json({ message: errorMessage });
+			}
+			if (errorMessage.includes('File too large')) {
+				return res.status(400).json({ message: 'File too large. Maximum file size is 25MB.' });
+			}
+
+			res.status(500).json({ message: 'Failed to add comment.', error: errorMessage });
+		}
+	}
+);
+
+// --- Update Contract Endpoint ---
+router.put(
+	'/contracts/:contractId',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const updateData = req.body as Partial<Contract> & {
+				removedAttachments?: string[];
+				attachmentManagement?: {
+					keepExisting: Array<{
+						fileName: string;
+						filePath: string;
+						fileType: string;
+						size: number;
+					}>;
+					removeExisting: string[];
+					hasNewAttachments: boolean;
+					newAttachments?: Array<{
+						fileName: string;
+						filePath: string;
+						fileType: string;
+						size: number;
+					}>;
+				};
+			};
+
+			// --- Get Contract ---
+			const contract = await contractsDB.findById(contractId);
+			if (!contract) {
+				return res.status(404).json({ message: 'Contract not found.' });
+			}
+
+			// --- Authorization ---
+			// Currently only customer can edit, but this may change in the future
+			if (user.id !== contract.customerId) {
+				return res.status(403).json({
+					message: 'Forbidden. You are not authorized to edit this contract.'
+				});
+			}
+
+			// --- Status Validation ---
+			// Only allow editing contracts in revision_requested status
+			if (contract.status !== 'revision_requested') {
+				return res.status(400).json({
+					message: 'Only contracts in revision_requested status can be edited.'
+				});
+			}
+
+			// --- Enhanced Attachment Management ---
+			let updatedAttachments = contract.attachments || [];
+
+			// Handle new attachment management approach
+			if (updateData.attachmentManagement) {
+				const { keepExisting, removeExisting, hasNewAttachments, newAttachments } =
+					updateData.attachmentManagement;
+
+				// Use the explicit list of attachments to keep
+				if (Array.isArray(keepExisting)) {
+					updatedAttachments = keepExisting;
+				}
+
+				// Add new attachments if any were uploaded
+				if (newAttachments && Array.isArray(newAttachments) && newAttachments.length > 0) {
+					updatedAttachments = [...updatedAttachments, ...newAttachments];
+				}
+			} else {
+				// Fallback to old approach for backward compatibility
+				if (
+					updateData.removedAttachments &&
+					Array.isArray(updateData.removedAttachments) &&
+					updateData.removedAttachments.length > 0
+				) {
+					updatedAttachments = updatedAttachments.filter(
+						(attachment) => !updateData.removedAttachments!.includes(attachment.fileName)
+					);
+				}
+			}
+
+			// --- Update Contract ---
+			const now = new Date().toISOString();
+			const { removedAttachments, attachmentManagement, ...contractUpdates } = updateData;
+			const updates: Partial<Contract> = {
+				...contractUpdates,
+				attachments: updatedAttachments,
+				updatedAt: now
+			};
+
+			// Ensure status is reset to draft after editing
+			updates.status = 'draft';
+
+			const updatedContract = await contractsDB.update(contractId, updates);
+
+			if (!updatedContract) {
+				return res.status(500).json({ message: 'Failed to update contract.' });
+			}
+
+			// --- Send System Message ---
+			await sendSystemMessage(
+				contract.customerId,
+				contract.expertSupplierId,
+				'The contract has been updated to address the revision request and is ready for signing again.'
+			);
+
+			res.status(200).json(updatedContract);
+		} catch (error: unknown) {
+			console.error('Error updating contract:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update contract.', error: errorMessage });
 		}
 	}
 );
