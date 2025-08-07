@@ -11,6 +11,7 @@
 	export let materialRequestId: string | undefined = undefined;
 	export let customerId: string;
 	export let expertSupplierId: string;
+	export let existingContract: Contract | null = null; // For editing existing contracts
 
 	const dispatch = createEventDispatcher();
 
@@ -41,8 +42,26 @@
 	let warrantyPeriod = '';
 	let cancellationPolicy = '';
 
+	// Pre-fill form if editing existing contract
+	$: if (existingContract) {
+		workDetails = existingContract.workDetails || '';
+		agreementSummary = existingContract.agreementSummary || '';
+		contractDate = existingContract.contractDate
+			? existingContract.contractDate.split('T')[0]
+			: new Date().toISOString().split('T')[0];
+		totalAmount = existingContract.totalAmount || null;
+		paymentTerms = existingContract.paymentTerms || '';
+		advanceAmount = existingContract.advanceAmount || null;
+		startDate = existingContract.startDate || '';
+		expectedCompletionDate = existingContract.expectedCompletionDate || '';
+		termsAndConditions = existingContract.termsAndConditions || '';
+		warrantyPeriod = existingContract.warrantyPeriod || '';
+		cancellationPolicy = existingContract.cancellationPolicy || '';
+	}
+
 	// Attachment handling
 	let selectedFiles = writable<File[]>([]);
+	let removedExistingAttachments = writable<string[]>([]);
 	let isUploadingFiles = false;
 
 	// UI state
@@ -65,6 +84,14 @@
 		'application/dxf'
 	];
 	const maxFileSize = 25 * 1024 * 1024; // 25MB
+
+	// Get existing attachments for editing
+	$: existingAttachments = existingContract?.attachments || [];
+
+	// Reset removed attachments store when component loads with existing contract
+	$: if (existingContract) {
+		removedExistingAttachments.set([]);
+	}
 
 	async function handleSubmit() {
 		isLoading = true;
@@ -139,40 +166,96 @@
 				contractData.cancellationPolicy = cancellationPolicy.trim();
 			}
 
-			// Create the contract
-			const createdContract = await apiClient.createContract(contractData);
+			if (existingContract) {
+				// Enhanced attachment management for contract editing
+				// Calculate which existing attachments to keep (not removed by user)
+				const existingAttachmentsToKeep = existingAttachments.filter(
+					(attachment) => !$removedExistingAttachments.includes(attachment.fileName)
+				);
 
-			// Upload attachments if any files are selected
-			if (fileCount > 0) {
-				isUploadingFiles = true;
-				try {
-					const formData = new FormData();
-					$selectedFiles.forEach((file) => {
-						formData.append('files', file);
-					});
+				// Upload new attachments first if any files are selected
+				let newAttachments: Array<{
+					fileName: string;
+					filePath: string;
+					fileType: string;
+					size: number;
+				}> = [];
+				if (fileCount > 0) {
+					isUploadingFiles = true;
+					try {
+						const formData = new FormData();
+						$selectedFiles.forEach((file) => {
+							formData.append('files', file);
+						});
 
-					await apiClient.uploadEntityAttachments('contracts', createdContract.id, formData);
-				} catch (attachmentError: any) {
-					console.error('Error uploading contract attachments:', attachmentError);
-					// Don't fail the entire contract creation, but show a warning
-					errorMessage = `Contract created successfully, but failed to upload some attachments: ${attachmentError.message || 'Unknown error'}`;
-				} finally {
-					isUploadingFiles = false;
+						const uploadResult = await apiClient.uploadEntityAttachments(
+							'contracts',
+							existingContract.id,
+							formData
+						);
+						newAttachments = uploadResult.attachments || [];
+					} catch (attachmentError: any) {
+						console.error('Error uploading contract attachments:', attachmentError);
+						// Don't fail the entire contract update, but show a warning
+						errorMessage = `Contract updated successfully, but failed to upload some attachments: ${attachmentError.message || 'Unknown error'}`;
+					} finally {
+						isUploadingFiles = false;
+					}
+				}
+
+				// Send explicit attachment management data with new attachments included
+				contractData.attachmentManagement = {
+					keepExisting: existingAttachmentsToKeep,
+					removeExisting: $removedExistingAttachments,
+					hasNewAttachments: fileCount > 0,
+					newAttachments: newAttachments
+				};
+
+				// Update existing contract with all attachments (existing + new)
+				const updatedContract = await apiClient.updateContract(existingContract.id, contractData);
+
+				if (!errorMessage) {
+					successMessage = `Contract (ID: ${updatedContract.id.substring(0, 8)}) updated successfully!`;
+
+					// Dispatch update event
+					dispatch('contractUpdate', { contractData: updatedContract });
+				}
+			} else {
+				// Create new contract
+				const createdContract = await apiClient.createContract(contractData);
+
+				// Upload attachments if any files are selected
+				if (fileCount > 0) {
+					isUploadingFiles = true;
+					try {
+						const formData = new FormData();
+						$selectedFiles.forEach((file) => {
+							formData.append('files', file);
+						});
+
+						await apiClient.uploadEntityAttachments('contracts', createdContract.id, formData);
+					} catch (attachmentError: any) {
+						console.error('Error uploading contract attachments:', attachmentError);
+						// Don't fail the entire contract creation, but show a warning
+						errorMessage = `Contract created successfully, but failed to upload some attachments: ${attachmentError.message || 'Unknown error'}`;
+					} finally {
+						isUploadingFiles = false;
+					}
+				}
+
+				if (!errorMessage) {
+					successMessage = `Contract (ID: ${createdContract.id.substring(0, 8)}) created successfully!`;
+
+					// Clear form
+					clearForm();
+
+					// Dispatch success event
+					dispatch('contractCreated', createdContract);
 				}
 			}
-
-			if (!errorMessage) {
-				successMessage = `Contract (ID: ${createdContract.id.substring(0, 8)}) created successfully!`;
-
-				// Clear form
-				clearForm();
-
-				// Dispatch success event
-				dispatch('contractCreated', createdContract);
-			}
 		} catch (error: any) {
-			console.error('Error creating contract:', error);
-			errorMessage = error.message || 'An unexpected error occurred while creating the contract.';
+			console.error('Error saving contract:', error);
+			errorMessage = error.message || 'An unexpected error occurred while saving the contract.';
 		} finally {
 			isLoading = false;
 		}
@@ -226,7 +309,7 @@
 					placeholder={detailsPlaceholder}
 					required
 					disabled={isLoading || isUploadingFiles}
-				/>
+				></textarea>
 			</div>
 
 			<div>
@@ -241,7 +324,7 @@
 					placeholder="Summarize key terms, payment schedule, timelines, etc."
 					required
 					disabled={isLoading || isUploadingFiles}
-				/>
+				></textarea>
 			</div>
 
 			<div>
@@ -359,7 +442,7 @@
 					class="w-full rounded-md border-slate-600 bg-slate-800 p-2.5 text-slate-100 placeholder-slate-400 focus:border-emerald-500 focus:ring-emerald-500"
 					placeholder="Detailed terms, conditions, and legal requirements..."
 					disabled={isLoading || isUploadingFiles}
-				/>
+				></textarea>
 			</div>
 
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -396,7 +479,14 @@
 		<!-- Attachments Section -->
 		<div class="space-y-4">
 			<h3 class="text-lg font-medium text-emerald-300">Contract Documents</h3>
-			<FileUpload {acceptedFileTypes} {maxFileSize} multiple={true} bind:files={selectedFiles} />
+			<FileUpload
+				{acceptedFileTypes}
+				{maxFileSize}
+				multiple={true}
+				bind:files={selectedFiles}
+				{existingAttachments}
+				bind:removedExistingAttachments
+			/>
 			<p class="text-xs text-slate-400">
 				Attach relevant documents like specifications, blueprints, terms documents, etc. (Max 15
 				files, 25MB total)

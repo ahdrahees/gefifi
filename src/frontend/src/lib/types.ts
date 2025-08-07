@@ -173,10 +173,23 @@ export type UserInterestResponse = {
 // --- Contract and Project Types ---
 
 /**
+ * Represents a comment on a contract.
+ */
+export type ContractComment = {
+	id: string;
+	authorId: string; // User ID of the comment author
+	comment: string; // The comment text
+	timestamp: string; // ISO 8601 date string
+	type: 'revision_request' | 'signature_comment' | 'general'; // Type of comment
+	attachments?: Attachment[]; // Optional file attachments
+};
+
+/**
  * Defines the possible statuses for a contract.
  */
 export type ContractStatus =
 	| 'draft'
+	| 'revision_requested'
 	| 'awaiting_signatures'
 	| 'signed'
 	| 'in_progress'
@@ -217,6 +230,9 @@ export type Contract = {
 
 	// Attachments
 	attachments?: Attachment[]; // Contract documents, specifications, etc.
+
+	// Comments and Feedback
+	comments?: ContractComment[]; // Comments and revision requests
 
 	// Signatures
 	customerSigned: boolean;
