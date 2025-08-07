@@ -174,6 +174,9 @@ interface ChatData {
 interface ChatMessageData {
 	content?: string;
 	images?: string[];
+	audioType?: 'voice';
+	audioUrl?: string;
+	audioDuration?: number;
 }
 
 interface ContractData {
