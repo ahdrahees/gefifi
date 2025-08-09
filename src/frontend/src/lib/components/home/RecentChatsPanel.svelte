@@ -50,20 +50,32 @@
 	}
 </script>
 
-<section class="flex flex-1 flex-col rounded-lg bg-slate-700/40 p-5 shadow-md">
+<section class="flex h-full flex-1 flex-col rounded-lg bg-slate-700/40 p-5 shadow-md">
 	<div class="mb-3 flex items-center justify-between">
 		<h2 class="text-xl font-semibold text-sky-400">Recent Chats ({recentChats.length})</h2>
-		<a href="/chat" class="text-sm text-emerald-400 underline hover:text-emerald-300"
-			>Open chat inbox</a
+		<a
+			href="/chat"
+			class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-all duration-200 hover:border-emerald-400/50 hover:bg-emerald-400/20 hover:text-emerald-200 hover:shadow-sm"
+			title="View all chats"
 		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					stroke-width="2"
+					d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+				/>
+			</svg>
+			<span>Chat inbox</span>
+		</a>
 	</div>
 
 	{#if recentChats && recentChats.length > 0}
 		<div
 			class="scrollable-content flex-1 space-y-2 overflow-y-auto pr-1"
-			style="max-height: 22rem;"
+			style="max-height: 23rem;"
 		>
-			{#each recentChats.slice(0, 5) as chat (chat.id)}
+			{#each recentChats as chat (chat.id)}
 				<a
 					href={`/chat/${chat.id}`}
 					class="group block rounded-xl border border-slate-600/40 bg-slate-700/40 p-3 transition-all hover:bg-slate-600/40"

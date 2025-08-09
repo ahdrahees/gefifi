@@ -9,6 +9,7 @@
 	import MaterialRequestCard from '$lib/components/ui/MaterialRequestCard.svelte';
 	import WorkRequestCard from '$lib/components/ui/WorkRequestCard.svelte';
 	import RecentChatsPanel from '$lib/components/home/RecentChatsPanel.svelte';
+	import ActiveContractsPanel from '$lib/components/home/ActiveContractsPanel.svelte';
 
 	type UserProfile = {
 		id: string;
@@ -451,7 +452,7 @@
 		<!-- General Welcome removed; replaced by redesigned header above -->
 
 		<!-- Main content grid -->
-		<div class="grid flex-grow grid-cols-1 gap-6 lg:grid-cols-3">
+		<div class="mb-6 grid flex-grow grid-cols-1 gap-6 lg:grid-cols-3">
 			<!-- Requests Section (2/3 column) -->
 			<section
 				class="flex flex-col space-y-4 rounded-lg bg-slate-700/40 p-5 shadow-md lg:col-span-2"
@@ -543,7 +544,7 @@
 					{#if allMyRequests.length > 0}
 						<div
 							class="scrollable-content flex-grow space-y-4 overflow-y-auto p-2 lg:p-3"
-							style="max-height: 68vh;"
+							style="max-height: 66vh;"
 						>
 							{#each filteredRequests as req (req.id)}
 								<div class="relative pt-6 pb-6">
@@ -696,46 +697,17 @@
 				{/if}
 			</section>
 
-			<!-- Side Column for Chats and Contracts (each 1/3 height matched) -->
-			<div class="flex flex-col space-y-6 lg:col-span-1">
+			<!-- Side Column for Chats and Contracts (equal height distribution) -->
+			<div class="flex min-h-0 flex-col gap-6 lg:col-span-1">
 				<!-- Recent Chats Section (componentized) -->
-				<RecentChatsPanel {recentChats} />
+				<div class="min-h-0 flex-1">
+					<RecentChatsPanel {recentChats} />
+				</div>
 
-				<!-- Active Contracts Section -->
-				<section class="flex flex-1 flex-col rounded-lg bg-slate-700/40 p-5 shadow-md">
-					<h2 class="mb-3 text-xl font-semibold text-sky-400">
-						Active Contracts ({activeContracts.length})
-					</h2>
-					{#if activeContracts.length > 0}
-						<div class="scrollable-content flex-grow space-y-2 overflow-y-auto pr-1">
-							{#each activeContracts.slice(0, 3) as contract (contract.id)}
-								<!-- Show latest 3 -->
-								<a
-									href={`/contracts/${contract.id}`}
-									class="block rounded-md bg-slate-600/40 p-3 shadow-sm transition-all hover:bg-slate-500/40"
-									title="View contract details"
-								>
-									<p class="truncate text-sm text-emerald-300">
-										Contract ID: {truncateText(contract.id, 8)}
-									</p>
-									<p class="text-xs text-slate-400">
-										Status: <span class="font-medium capitalize"
-											>{contract.status.replace('_', ' ')}</span
-										>
-										| Date: {formatDate(contract.contractDate)}
-									</p>
-								</a>
-							{/each}
-						</div>
-						<div class="mt-3 flex justify-end">
-							<a href="/contracts" class="text-sm text-emerald-400 underline hover:text-emerald-300"
-								>View all</a
-							>
-						</div>
-					{:else}
-						<p class="text-sm text-slate-400">No active contracts.</p>
-					{/if}
-				</section>
+				<!-- Active Contracts Section (componentized) -->
+				<div class="mb-6 min-h-0 flex-1 lg:mb-0">
+					<ActiveContractsPanel {activeContracts} />
+				</div>
 			</div>
 		</div>
 	{/if}
