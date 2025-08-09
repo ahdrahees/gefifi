@@ -543,7 +543,7 @@
 					{#if allMyRequests.length > 0}
 						<div
 							class="scrollable-content flex-grow space-y-4 overflow-y-auto p-2 lg:p-3"
-							style="max-height: 60vh;"
+							style="max-height: 68vh;"
 						>
 							{#each filteredRequests as req (req.id)}
 								<div class="relative pt-6 pb-6">
