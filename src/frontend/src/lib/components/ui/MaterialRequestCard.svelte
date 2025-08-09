@@ -46,7 +46,7 @@
 
 		<div class="mb-4 space-y-1">
 			<h4 class="mb-2 font-semibold text-sky-300">Requested Items:</h4>
-			<ul class="max-h-48 space-y-2 overflow-y-auto pr-2">
+			<ul class="scrollable-content max-h-48 space-y-2 overflow-y-auto pr-2">
 				{#each request.items as item, i (i)}
 					<li class="rounded-md bg-slate-800/50 p-2 text-sm">
 						<div class="flex justify-between">
@@ -87,3 +87,42 @@
 		</div>
 	{/if}
 </div>
+
+<style lang="postcss">
+	/* Beautiful custom scrollbar matching your dark theme */
+	.scrollable-content::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+		background-color: transparent;
+	}
+	.scrollable-content::-webkit-scrollbar-track {
+		background: rgba(30, 41, 59, 0.6); /* slate-800/60 */
+		border-radius: 9999px;
+		margin: 2px;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb {
+		background: linear-gradient(
+			135deg,
+			rgba(16, 185, 129, 0.6),
+			rgba(5, 150, 105, 0.8)
+		); /* emerald gradient */
+		border-radius: 9999px;
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		transition: all 0.2s ease;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb:hover {
+		background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
+		border-color: rgba(16, 185, 129, 0.4);
+		transform: scale(1.1);
+	}
+	.scrollable-content::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+
+	/* Firefox */
+	.scrollable-content {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(16, 185, 129, 0.6) rgba(30, 41, 59, 0.6);
+		color-scheme: dark;
+	}
+</style>
