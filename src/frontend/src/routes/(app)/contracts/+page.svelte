@@ -1,7 +1,7 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/contracts/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 	import type { Contract, ContractStatus } from '$lib/types';
@@ -407,6 +407,7 @@
 							searchQuery = '';
 						}}
 						class="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-200"
+						aria-label="Clear search"
 					>
 						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path
@@ -425,8 +426,10 @@
 				<div class="flex flex-col gap-4 sm:flex-row">
 					<!-- Status Filter -->
 					<div class="flex flex-col">
-						<label class="mb-2 text-sm font-medium text-slate-300">Status</label>
+						<label for="status-filter" class="mb-2 text-sm font-medium text-slate-300">Status</label
+						>
 						<select
+							id="status-filter"
 							bind:value={statusFilter}
 							class="rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 						>
@@ -438,8 +441,9 @@
 
 					<!-- Contract Type Filter -->
 					<div class="flex flex-col">
-						<label class="mb-2 text-sm font-medium text-slate-300">Type</label>
+						<label for="type-filter" class="mb-2 text-sm font-medium text-slate-300">Type</label>
 						<select
+							id="type-filter"
 							bind:value={contractTypeFilter}
 							class="rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 						>
@@ -451,8 +455,9 @@
 
 					<!-- Sort Filter -->
 					<div class="flex flex-col">
-						<label class="mb-2 text-sm font-medium text-slate-300">Sort by</label>
+						<label for="sort-filter" class="mb-2 text-sm font-medium text-slate-300">Sort by</label>
 						<select
+							id="sort-filter"
 							bind:value={sortBy}
 							class="rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 						>
@@ -677,12 +682,15 @@
 						<div class="flex items-center gap-4">
 							<!-- Related Request Link -->
 							{#if contract.workRequestId || contract.materialRequestId}
-								<a
-									href={contract.workRequestId
-										? `/work-requests/${contract.workRequestId}`
-										: `/material-requests/${contract.materialRequestId}`}
-									on:click|stopPropagation
+								<button
+									on:click|stopPropagation={() => {
+										const url = contract.workRequestId
+											? `/work-requests/${contract.workRequestId}`
+											: `/material-requests/${contract.materialRequestId}`;
+										window.open(url, '_blank');
+									}}
 									class="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/20 px-3 py-2 text-sm text-amber-300 transition-colors hover:bg-amber-500/30"
+									aria-label="View related request in new tab"
 								>
 									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path
@@ -693,7 +701,7 @@
 										/>
 									</svg>
 									<span class="hidden sm:inline">Request</span>
-								</a>
+								</button>
 							{/if}
 
 							<div class="flex items-center gap-2 text-emerald-400">

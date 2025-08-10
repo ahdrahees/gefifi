@@ -288,7 +288,7 @@
 	</header>
 
 	<!-- Content -->
-	<div class="flex-1 overflow-y-auto">
+	<div class="scrollable-content flex-1 overflow-y-auto">
 		{#if isLoading}
 			<div class="flex h-full items-center justify-center">
 				<div class="text-center">

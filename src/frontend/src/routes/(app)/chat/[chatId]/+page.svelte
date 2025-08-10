@@ -90,10 +90,11 @@
 			const otherId = chatData.participants.find((p) => p !== currentUser?.id);
 			if (otherId) {
 				otherParticipantProfile = await apiClient.getUserById(otherId);
+
 				chatPageTitle =
-					otherParticipantProfile.profile?.fullName ||
-					otherParticipantProfile.profile?.companyName ||
-					'User';
+					otherParticipantProfile.userType === 'supplier'
+						? otherParticipantProfile.profile?.companyName || 'User'
+						: otherParticipantProfile.profile?.fullName || 'User';
 			}
 
 			messageListComponent?.scrollToBottom('auto');
