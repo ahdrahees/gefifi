@@ -18,7 +18,7 @@
 
 	const navLinks: NavLink[] = [
 		{ href: '/home', label: 'Home', iconKey: 'home', types: ['all'] },
-		{ href: '/my-projects', label: 'My Projects', iconKey: 'activeProjects', types: ['all'] },
+		{ href: '/my-requests', label: 'My Requests', iconKey: 'activeProjects', types: ['all'] },
 		{
 			href: '/customer/create-request',
 			label: 'New Request',

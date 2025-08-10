@@ -467,6 +467,49 @@ const apiClient = {
 			data,
 			true
 		);
+	},
+
+	// --- Request Status Updates ---
+	updateWorkRequestStatus: (
+		workRequestId: string,
+		status: string
+	): Promise<WorkRequestResponse> => {
+		return request<WorkRequestResponse>(
+			`/work-requests/${workRequestId}/status`,
+			'PUT',
+			{ status },
+			true
+		);
+	},
+	updateMaterialRequestStatus: (
+		materialRequestId: string,
+		status: string
+	): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>(
+			`/material-requests/${materialRequestId}/status`,
+			'PUT',
+			{ status },
+			true
+		);
+	},
+
+	// --- Request Updates ---
+	updateWorkRequest: (
+		workRequestId: string,
+		data: Partial<WorkRequestData>
+	): Promise<WorkRequestResponse> => {
+		return request<WorkRequestResponse>(`/work-requests/${workRequestId}`, 'PUT', data, true);
+	},
+	updateMaterialRequest: (
+		materialRequestId: string,
+		data: Partial<MaterialRequestData>
+	): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>(
+			`/material-requests/${materialRequestId}`,
+			'PUT',
+			data,
+			true
+		);
 	}
 };
 
