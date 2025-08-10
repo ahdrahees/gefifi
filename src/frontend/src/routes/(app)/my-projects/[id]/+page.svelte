@@ -32,10 +32,25 @@
 		}
 		isLoading = true;
 		try {
+			console.log('Fetching project with ID:', id);
 			project = await apiClient.getProjectById(id);
-			if (project?.workComponent) selectedWorkStatus = project.workComponent.status;
-			if (project?.materialComponent) selectedMaterialStatus = project.materialComponent.status;
+			console.log('Fetched project:', project);
+
+			if (project?.workComponent) {
+				selectedWorkStatus = project.workComponent.status;
+				console.log('Work component status:', project.workComponent.status);
+			}
+			if (project?.materialComponent) {
+				selectedMaterialStatus = project.materialComponent.status;
+				console.log('Material component status:', project.materialComponent.status);
+			}
+
+			// Check if project has the expected structure
+			if (!project?.workComponent && !project?.materialComponent) {
+				console.error('Project has no work or material components!', project);
+			}
 		} catch (err: any) {
+			console.error('Error fetching project:', err);
 			errorMessage = err.data?.message || 'Failed to load project details.';
 		} finally {
 			isLoading = false;
@@ -48,12 +63,57 @@
 		fetchProjectDetails();
 	});
 
+	// Debug project data when it changes
+	$: if (project) {
+		console.log('Project data loaded:', {
+			id: project.id,
+			title: project.title,
+			workComponent: project.workComponent,
+			materialComponent: project.materialComponent,
+			workRequest: project.workRequest,
+			materialRequest: project.materialRequest
+		});
+
+		// Check if this looks like a Material Request instead of a Project
+		if (project.materialRequest && !project.materialComponent) {
+			console.warn('⚠️ This looks like a Material Request being displayed as a Project!');
+			console.warn('Material Request status:', project.materialRequest.status);
+			console.warn('Expected Project Component status, but found Material Request status');
+		}
+
+		// Check if project components have the expected status values
+		if (project.materialComponent) {
+			const status = project.materialComponent.status;
+			const validStatuses = [
+				'Awaiting Dispatch',
+				'Dispatched',
+				'Delivered',
+				'Completed',
+				'Issue Reported',
+				'Cancelled'
+			];
+			if (!validStatuses.includes(status)) {
+				console.warn('⚠️ Material component has unexpected status:', status);
+				console.warn('Expected one of:', validStatuses);
+			}
+		}
+	}
+
 	async function handleUpdateStatus(component: 'work' | 'material') {
 		if (!project) return;
 
 		const newStatus = component === 'work' ? selectedWorkStatus : selectedMaterialStatus;
 		const currentStatus =
 			component === 'work' ? project.workComponent?.status : project.materialComponent?.status;
+
+		console.log('Status update debug:', {
+			component,
+			newStatus,
+			currentStatus,
+			project: project,
+			workComponent: project.workComponent,
+			materialComponent: project.materialComponent
+		});
 
 		if (newStatus === currentStatus) {
 			statusUpdateMessage = { type: 'error', text: 'No new status selected.' };
@@ -62,15 +122,47 @@
 
 		isUpdatingStatus = component;
 		statusUpdateMessage = null;
+
 		try {
-			const updatedProject = await apiClient.updateProjectStatus(project.id, {
-				component,
-				newStatus
-			});
+			// Check if we have a proper project component or if we should update the request directly
+			const hasProjectComponent =
+				component === 'work' ? project.workComponent : project.materialComponent;
+
+			if (!hasProjectComponent) {
+				console.warn(`No ${component} component found in project, this might be a data issue`);
+				// For now, still try to update the project status
+			}
+
+			const payload = { component, newStatus };
+			console.log('Sending status update payload:', payload);
+
+			const updatedProject = await apiClient.updateProjectStatus(project.id, payload);
 			project = { ...project, ...updatedProject };
 			statusUpdateMessage = { type: 'success', text: 'Status updated successfully!' };
+
+			// Clear the message after 3 seconds
+			setTimeout(() => {
+				statusUpdateMessage = null;
+			}, 3000);
 		} catch (error: any) {
-			statusUpdateMessage = { type: 'error', text: error.data?.message || 'Update failed.' };
+			console.error('Status update error:', error);
+			console.error('Error details:', error.data);
+
+			// If project update fails, maybe we should try updating the request directly
+			if (error.status === 400 && error.data?.message?.includes('Invalid status')) {
+				console.log('Project status update failed, this might be a Material Request status issue');
+				statusUpdateMessage = {
+					type: 'error',
+					text: 'Status update failed. This might be a data structure issue. Please check the console for details.'
+				};
+			} else {
+				statusUpdateMessage = { type: 'error', text: error.data?.message || 'Update failed.' };
+			}
+
+			// Clear the error message after 5 seconds
+			setTimeout(() => {
+				statusUpdateMessage = null;
+			}, 5000);
 		} finally {
 			isUpdatingStatus = false;
 		}
@@ -149,7 +241,24 @@
 	})(project?.workComponent?.status);
 
 	$: materialStatusOptions = ((currentStatus: string | undefined) => {
-		if (!currentStatus) return [];
+		console.log('Material status options debug:', {
+			currentStatus,
+			userType: currentUser?.userType,
+			materialComponent: project?.materialComponent
+		});
+
+		if (!currentStatus) {
+			// If no status, provide default options for new material projects
+			console.log('No material component status found, providing default options');
+			if (currentUser?.userType !== 'customer') {
+				return [
+					{ value: 'Awaiting Dispatch', label: 'Set to Awaiting Dispatch' },
+					{ value: 'Dispatched', label: 'Mark as Dispatched' }
+				];
+			}
+			return [{ value: 'Cancelled', label: 'Cancel Order' }];
+		}
+
 		const options: { value: string; label: string }[] = [];
 		switch (currentStatus) {
 			case 'Awaiting Dispatch':
@@ -169,7 +278,18 @@
 					options.push({ value: 'Issue Reported', label: 'Report Issue' });
 				}
 				break;
+			default:
+				// Handle unexpected statuses - provide basic options
+				console.warn('Unexpected material component status:', currentStatus);
+				if (currentUser?.userType !== 'customer') {
+					options.push({ value: 'Awaiting Dispatch', label: 'Set to Awaiting Dispatch' });
+					options.push({ value: 'Dispatched', label: 'Mark as Dispatched' });
+				}
+				options.push({ value: 'Cancelled', label: 'Cancel Order' });
+				break;
 		}
+
+		console.log('Generated material status options:', options);
 		return options;
 	})(project?.materialComponent?.status);
 </script>
@@ -272,6 +392,15 @@
 											{isUpdatingStatus === 'work' ? 'Updating...' : 'Update'}
 										</button>
 									</div>
+									{#if statusUpdateMessage && isUpdatingStatus === 'work'}
+										<div
+											class="mt-2 rounded-md p-2 text-sm {statusUpdateMessage.type === 'success'
+												? 'bg-green-600/20 text-green-300'
+												: 'bg-red-600/20 text-red-300'}"
+										>
+											{statusUpdateMessage.text}
+										</div>
+									{/if}
 								</div>
 							{/if}
 							{#if project.workComponent.statusHistory}
@@ -365,6 +494,15 @@
 											{isUpdatingStatus === 'material' ? 'Updating...' : 'Update'}
 										</button>
 									</div>
+									{#if statusUpdateMessage && isUpdatingStatus === 'material'}
+										<div
+											class="mt-2 rounded-md p-2 text-sm {statusUpdateMessage.type === 'success'
+												? 'bg-green-600/20 text-green-300'
+												: 'bg-red-600/20 text-red-300'}"
+										>
+											{statusUpdateMessage.text}
+										</div>
+									{/if}
 								</div>
 							{/if}
 							{#if project.materialComponent.statusHistory}

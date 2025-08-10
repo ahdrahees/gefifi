@@ -582,6 +582,167 @@ router.get('/work-requests/:id', async (req: Request, res: Response) => {
 	}
 });
 
+// PUT /api/work-requests/:id - Update work request
+router.put(
+	'/work-requests/:id',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const workRequestId = req.params.id;
+			const updateData = req.body;
+
+			if (!workRequestId) {
+				return res.status(400).json({ message: 'Work request ID parameter is required.' });
+			}
+
+			const workRequest = await workRequestsDB.findById(workRequestId);
+			if (!workRequest) {
+				return res.status(404).json({ message: 'Work request not found.' });
+			}
+
+			// Check permissions - only customer can update and only if status is 'open'
+			if (user.id !== workRequest.customerId) {
+				return res
+					.status(403)
+					.json({ message: 'You do not have permission to update this work request.' });
+			}
+
+			if (workRequest.status !== 'open') {
+				return res.status(400).json({ message: 'Only open work requests can be edited.' });
+			}
+
+			// Validate and sanitize update data
+			const allowedFields = [
+				'title',
+				'description',
+				'location',
+				'category',
+				'expectedCost',
+				'timeline',
+				'materialsSuggested',
+				'images'
+			];
+			const sanitizedData: any = {};
+
+			for (const field of allowedFields) {
+				if (updateData[field] !== undefined) {
+					sanitizedData[field] = updateData[field];
+				}
+			}
+
+			// Add updatedAt timestamp
+			sanitizedData.updatedAt = new Date().toISOString();
+
+			const updatedWorkRequest = await workRequestsDB.update(workRequestId, sanitizedData);
+
+			if (!updatedWorkRequest) {
+				return res.status(500).json({ message: 'Failed to update work request.' });
+			}
+
+			res.status(200).json(updatedWorkRequest);
+		} catch (error: unknown) {
+			console.error('Error updating work request:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update work request.', error: errorMessage });
+		}
+	}
+);
+
+// PUT /api/work-requests/:id/status - Update work request status
+router.put(
+	'/work-requests/:id/status',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const workRequestId = req.params.id;
+			const { status } = req.body;
+
+			if (!workRequestId) {
+				return res.status(400).json({ message: 'Work request ID parameter is required.' });
+			}
+
+			if (!status) {
+				return res.status(400).json({ message: 'Status is required.' });
+			}
+
+			const workRequest = await workRequestsDB.findById(workRequestId);
+			if (!workRequest) {
+				return res.status(404).json({ message: 'Work request not found.' });
+			}
+
+			// Check permissions - only customer or associated expert can update status
+			const isCustomer = user.id === workRequest.customerId;
+			const isAssociatedExpert =
+				workRequest.interestedExperts?.includes(user.id) ||
+				workRequest.invitedExperts?.includes(user.id);
+
+			if (!isCustomer && !isAssociatedExpert) {
+				return res
+					.status(403)
+					.json({ message: 'You do not have permission to update this work request.' });
+			}
+
+			// Validate status transitions based on user role
+			const validStatuses = [
+				'open',
+				'in_discussion',
+				'awaiting_quotes',
+				'contracted',
+				'in_progress',
+				'completed',
+				'cancelled',
+				'disputed'
+			];
+			if (!validStatuses.includes(status)) {
+				return res.status(400).json({ message: 'Invalid status value.' });
+			}
+
+			const now = new Date().toISOString();
+			const updatedWorkRequest = await workRequestsDB.update(workRequestId, {
+				status,
+				updatedAt: now
+			});
+
+			if (!updatedWorkRequest) {
+				return res.status(500).json({ message: 'Failed to update work request status.' });
+			}
+
+			// Send system message to related chats
+			if (isCustomer) {
+				// Notify interested experts
+				const interestedUsers = [
+					...(workRequest.interestedExperts || []),
+					...(workRequest.invitedExperts || [])
+				];
+				for (const expertId of interestedUsers) {
+					await sendSystemMessage(
+						user.id,
+						expertId,
+						`Work request "${workRequest.title}" status updated to: ${status}`
+					);
+				}
+			} else if (isAssociatedExpert) {
+				// Notify customer
+				await sendSystemMessage(
+					user.id,
+					workRequest.customerId,
+					`Work request "${workRequest.title}" status updated to: ${status}`
+				);
+			}
+
+			res.status(200).json(updatedWorkRequest);
+		} catch (error: unknown) {
+			console.error('Error updating work request status:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res
+				.status(500)
+				.json({ message: 'Failed to update work request status.', error: errorMessage });
+		}
+	}
+);
+
 // --- Material Request Endpoints ---
 
 // GET all material requests
@@ -699,6 +860,160 @@ router.get('/material-requests/:id', async (req: Request, res: Response) => {
 		res.status(500).json({ message: 'Failed to fetch material request.', error: errorMessage });
 	}
 });
+
+// PUT /api/material-requests/:id - Update material request
+router.put(
+	'/material-requests/:id',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const materialRequestId = req.params.id;
+			const updateData = req.body;
+
+			if (!materialRequestId) {
+				return res.status(400).json({ message: 'Material request ID parameter is required.' });
+			}
+
+			const materialRequest = await materialRequestsDB.findById(materialRequestId);
+			if (!materialRequest) {
+				return res.status(404).json({ message: 'Material request not found.' });
+			}
+
+			// Check permissions - only customer can update and only if status is 'open'
+			if (user.id !== materialRequest.customerId) {
+				return res
+					.status(403)
+					.json({ message: 'You do not have permission to update this material request.' });
+			}
+
+			if (materialRequest.status !== 'open') {
+				return res.status(400).json({ message: 'Only open material requests can be edited.' });
+			}
+
+			// Validate and sanitize update data
+			const allowedFields = [
+				'title',
+				'description',
+				'deliveryLocation',
+				'deliveryDate',
+				'linkedWorkRequestId',
+				'items',
+				'attachments'
+			];
+			const sanitizedData: any = {};
+
+			for (const field of allowedFields) {
+				if (updateData[field] !== undefined) {
+					sanitizedData[field] = updateData[field];
+				}
+			}
+
+			// Add updatedAt timestamp
+			sanitizedData.updatedAt = new Date().toISOString();
+
+			const updatedMaterialRequest = await materialRequestsDB.update(
+				materialRequestId,
+				sanitizedData
+			);
+
+			if (!updatedMaterialRequest) {
+				return res.status(500).json({ message: 'Failed to update material request.' });
+			}
+
+			res.status(200).json(updatedMaterialRequest);
+		} catch (error: unknown) {
+			console.error('Error updating material request:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update material request.', error: errorMessage });
+		}
+	}
+);
+
+// PUT /api/material-requests/:id/status - Update material request status
+router.put(
+	'/material-requests/:id/status',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const materialRequestId = req.params.id;
+			const { status } = req.body;
+
+			if (!materialRequestId) {
+				return res.status(400).json({ message: 'Material request ID parameter is required.' });
+			}
+
+			if (!status) {
+				return res.status(400).json({ message: 'Status is required.' });
+			}
+
+			const materialRequest = await materialRequestsDB.findById(materialRequestId);
+			if (!materialRequest) {
+				return res.status(404).json({ message: 'Material request not found.' });
+			}
+
+			// Check permissions - only customer or associated supplier can update status
+			const isCustomer = user.id === materialRequest.customerId;
+			const isAssociatedSupplier =
+				materialRequest.interestedSuppliers?.includes(user.id) ||
+				materialRequest.invitedSuppliers?.includes(user.id);
+
+			if (!isCustomer && !isAssociatedSupplier) {
+				return res
+					.status(403)
+					.json({ message: 'You do not have permission to update this material request.' });
+			}
+
+			// Validate status transitions based on user role
+			const validStatuses = ['open', 'quoting', 'ordered', 'contracted', 'completed', 'cancelled'];
+			if (!validStatuses.includes(status)) {
+				return res.status(400).json({ message: 'Invalid status value.' });
+			}
+
+			const now = new Date().toISOString();
+			const updatedMaterialRequest = await materialRequestsDB.update(materialRequestId, {
+				status,
+				updatedAt: now
+			});
+
+			if (!updatedMaterialRequest) {
+				return res.status(500).json({ message: 'Failed to update material request status.' });
+			}
+
+			// Send system message to related chats
+			if (isCustomer) {
+				// Notify interested suppliers
+				const interestedUsers = [
+					...(materialRequest.interestedSuppliers || []),
+					...(materialRequest.invitedSuppliers || [])
+				];
+				for (const supplierId of interestedUsers) {
+					await sendSystemMessage(
+						user.id,
+						supplierId,
+						`Material request "${materialRequest.title}" status updated to: ${status}`
+					);
+				}
+			} else if (isAssociatedSupplier) {
+				// Notify customer
+				await sendSystemMessage(
+					user.id,
+					materialRequest.customerId,
+					`Material request "${materialRequest.title}" status updated to: ${status}`
+				);
+			}
+
+			res.status(200).json(updatedMaterialRequest);
+		} catch (error: unknown) {
+			console.error('Error updating material request status:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res
+				.status(500)
+				.json({ message: 'Failed to update material request status.', error: errorMessage });
+		}
+	}
+);
 
 // --- Generic Entity Attachment Endpoint ---
 router.post(
@@ -2615,10 +2930,28 @@ router.get('/projects/:id', authenticateToken, async (req: AuthenticatedRequest,
 		if (project.workComponent) participantIds.add(project.workComponent.expertId);
 		if (project.materialComponent) participantIds.add(project.materialComponent.supplierId);
 
-		const [allChats, workRequest, materialRequest, users] = await Promise.all([
+		// Safely fetch requests - handle cases where request type doesn't match project component
+		let workRequest = null;
+		let materialRequest = null;
+
+		try {
+			if (project.workComponent) {
+				workRequest = await workRequestsDB.findById(project.id);
+			}
+		} catch (error) {
+			console.log(`Work request ${project.id} not found, skipping`);
+		}
+
+		try {
+			if (project.materialComponent) {
+				materialRequest = await materialRequestsDB.findById(project.id);
+			}
+		} catch (error) {
+			console.log(`Material request ${project.id} not found, skipping`);
+		}
+
+		const [allChats, users] = await Promise.all([
 			chatsDB.getAll(),
-			project.workComponent ? workRequestsDB.findById(project.id) : Promise.resolve(null),
-			project.materialComponent ? materialRequestsDB.findById(project.id) : Promise.resolve(null),
 			usersDB.getByIds(Array.from(participantIds))
 		]);
 

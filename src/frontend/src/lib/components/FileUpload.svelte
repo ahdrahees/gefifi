@@ -179,7 +179,7 @@
 	$: activeExistingAttachments = existingAttachments.filter(
 		(att) => !$removedExistingAttachments.includes(att.fileName)
 	);
-	$: totalFiles = $files.length + activeExistingAttachments.length;
+	$: totalFiles = $files?.length + activeExistingAttachments.length;
 </script>
 
 <div class="space-y-4">
@@ -378,6 +378,7 @@
 									<span class="text-sm text-slate-400">{fileName}</span>
 								</div>
 								<button
+									aria-label="Restore {fileName}"
 									type="button"
 									on:click={() => restoreExistingAttachment(fileName)}
 									class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-400 shadow-sm transition-all duration-200 hover:scale-110 hover:bg-emerald-600/20 hover:text-emerald-300 focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"

@@ -102,7 +102,7 @@ export interface MaterialRequest extends Identifiable {
 		quantity: string; // e.g., '10 bags', '500 ft'
 		notes?: string; // e.g., 'Grade 43'
 	}[];
-	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled'; // Added 'contracted' status
+	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled';
 	createdAt: string;
 	updatedAt: string;
 	interestedSuppliers?: string[]; // List of supplier User IDs who showed interest
