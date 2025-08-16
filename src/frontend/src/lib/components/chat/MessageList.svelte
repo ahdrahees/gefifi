@@ -8,16 +8,21 @@
 	// Child Components
 	import AudioMessageView from '$lib/components/chat/AudioMessageView.svelte';
 	import DateSeparator from '$lib/components/chat/DateSeparator.svelte';
+	import TypingIndicator from '$lib/components/chat/TypingIndicator.svelte';
 
 	// --- PROPS ---
 	export let isLoading: boolean = true;
 	export let errorMessage: string = '';
 	export let groupedMessages: Array<{ type: 'date' | 'message'; id: string; data: any }> = [];
 	export let currentUser: AuthUser | null = null;
+	export let chatId: string = '';
+	export let isLoadingOlder: boolean = false;
+	export let hasMoreMessages: boolean = true;
 
 	// --- INTERNAL STATE & BINDINGS ---
 	let messagesContainer: HTMLElement;
 	let isNearBottom: boolean = true;
+	let previousScrollHeight: number = 0;
 
 	// --- PUBLIC API (for parent component) ---
 	export const scrollToBottom = async (behavior: 'smooth' | 'auto' = 'auto') => {
@@ -28,9 +33,20 @@
 		}
 	};
 
+	export const maintainScrollPosition = async () => {
+		// Maintain scroll position after loading older messages
+		await tick();
+		if (messagesContainer && previousScrollHeight > 0) {
+			const newScrollHeight = messagesContainer.scrollHeight;
+			const heightDifference = newScrollHeight - previousScrollHeight;
+			messagesContainer.scrollTop += heightDifference;
+		}
+	};
+
 	// --- EVENT HANDLERS ---
 	const handleScroll = () => {
 		if (!messagesContainer) return;
+
 		const threshold = 150; // Pixels from the bottom
 		const atBottom =
 			messagesContainer.scrollHeight -
@@ -38,6 +54,27 @@
 				messagesContainer.clientHeight <
 			threshold;
 		isNearBottom = atBottom;
+
+		// Check if user scrolled near the top to load older messages
+		const nearTop = messagesContainer.scrollTop < 100;
+		if (nearTop && hasMoreMessages && !isLoadingOlder && groupedMessages.length > 0) {
+			loadOlderMessages();
+		}
+	};
+
+	const loadOlderMessages = () => {
+		// Store current scroll height before loading
+		previousScrollHeight = messagesContainer.scrollHeight;
+
+		// Find the first message (oldest currently loaded)
+		const firstMessage = groupedMessages.find((item) => item.type === 'message')?.data as Message;
+		if (firstMessage) {
+			// Dispatch event to parent to load older messages
+			const event = new CustomEvent('loadOlder', {
+				detail: { lastMessage: firstMessage }
+			});
+			messagesContainer.dispatchEvent(event);
+		}
 	};
 
 	// --- HELPER FUNCTIONS ---
@@ -88,6 +125,18 @@
 			</div>
 		{:else}
 			<div class="space-y-2">
+				<!-- Loading indicator for older messages -->
+				{#if isLoadingOlder}
+					<div class="flex justify-center py-2">
+						<div class="flex items-center gap-2 text-slate-400">
+							<div
+								class="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent"
+							></div>
+							<span class="text-sm">Loading older messages...</span>
+						</div>
+					</div>
+				{/if}
+
 				{#each groupedMessages as item (item.id)}
 					{#if item.type === 'date'}
 						<DateSeparator timestamp={item.data.timestamp} />
@@ -168,6 +217,11 @@
 						{/if}
 					{/if}
 				{/each}
+
+				<!-- Typing indicator -->
+				{#if chatId && currentUser}
+					<TypingIndicator {chatId} currentUserId={currentUser.id} />
+				{/if}
 			</div>
 		{/if}
 	</div>

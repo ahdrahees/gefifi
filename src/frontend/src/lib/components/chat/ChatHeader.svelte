@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import type { AuthUser } from '$lib/types';
 	import { authStore } from '$lib/stores/auth';
+	import OnlineStatus from './OnlineStatus.svelte';
 
 	export let isLoading: boolean = true;
 	export let chatPageTitle: string = 'Chat';
@@ -106,13 +107,16 @@
 							{typeInfo.label}
 						</span>
 					</div>
-					<p class=" flex items-center truncate text-slate-400">
-						{otherParticipantProfile.profile?.expertise ||
-							otherParticipantProfile.profile?.category ||
-							'Available'}
+					<div class="flex items-center gap-3 truncate text-slate-400">
+						<OnlineStatus userId={otherParticipantProfile.id} showLastSeen={true} size="sm" />
+						<span class="truncate">
+							{otherParticipantProfile.profile?.expertise ||
+								otherParticipantProfile.profile?.category ||
+								'Available'}
+						</span>
 
 						{#if otherParticipantProfile.profile?.location}
-							<span class="ml-2 flex items-baseline"
+							<span class="flex items-baseline"
 								>• <svg
 									class="mx-1 inline h-3 w-3"
 									viewBox="0 0 24 24"
@@ -129,7 +133,7 @@
 								>{otherParticipantProfile.profile?.location}
 							</span>
 						{/if}
-					</p>
+					</div>
 				</div>
 			{/if}
 		</div>

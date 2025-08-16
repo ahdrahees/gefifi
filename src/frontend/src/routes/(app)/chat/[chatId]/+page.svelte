@@ -5,6 +5,10 @@
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import apiClient, { ApiError } from '$lib/api';
 	import type { Message, Chat } from '$lib/types';
+	import { realtimeChatService } from '$lib/services/realtimeChat';
+	import type { Unsubscribe } from 'firebase/firestore';
+	import { auth } from '$lib/firebase';
+	import { onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 
 	// Import the new modular components
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
@@ -12,7 +16,7 @@
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import AudioRecordingForm from '$lib/components/chat/AudioRecordingForm.svelte';
 	import PermissionModal from '$lib/components/chat/PermissionModal.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	// import ContractModal from '$lib/components/contracts/ContractModal.svelte'; // No longer needed
 
 	// --- Component Instances ---
@@ -25,6 +29,11 @@
 	let errorMessage = '';
 	let isSendingMessage = false;
 	let hasInitiatedLoad = false;
+
+	// --- Real-time State ---
+	let messagesUnsubscribe: Unsubscribe | null = null;
+	let isLoadingOlder = false;
+	let hasMoreMessages = true;
 
 	// --- Chat & Participant State ---
 	let chatId: string;
@@ -57,6 +66,50 @@
 		loadChatAndParticipantDetails(chatId);
 	}
 
+	// Firebase Auth state tracking
+	let firebaseAuthReady = false;
+	let authUnsubscribe: (() => void) | null = null;
+
+	// Debug function to manually trigger Firebase Auth
+	async function debugFirebaseAuth() {
+		console.log('[Debug] Current user:', currentUser?.id);
+		console.log('[Debug] Firebase Auth user:', auth.currentUser?.uid);
+
+		if (currentUser?.id && !auth.currentUser) {
+			console.log('[Debug] Manually triggering Firebase sign-in...');
+			try {
+				const response = await apiClient.getFirebaseToken();
+				console.log('[Debug] Got Firebase token:', !!response.firebaseToken);
+
+				if (response.firebaseToken) {
+					const userCredential = await signInWithCustomToken(auth, response.firebaseToken);
+					console.log('[Debug] Firebase sign-in successful:', userCredential.user.uid);
+				}
+			} catch (error) {
+				console.error('[Debug] Firebase sign-in failed:', error);
+			}
+		}
+	}
+
+	// Set up Firebase Auth listener
+	onMount(() => {
+		authUnsubscribe = onAuthStateChanged(auth, (user) => {
+			console.log('[Chat] Firebase Auth state changed:', user?.uid || 'Not authenticated');
+			firebaseAuthReady = !!user;
+
+			// Set up presence when both conditions are met
+			if (firebaseAuthReady && currentUser?.id) {
+				realtimeChatService.setUserOnline(currentUser.id);
+			}
+		});
+	});
+
+	// Set up presence when user is available and Firebase Auth is ready
+	$: if (currentUser?.id && firebaseAuthReady) {
+		console.log('[Chat] Both conditions met - setting user online');
+		realtimeChatService.setUserOnline(currentUser.id);
+	}
+
 	// --- Date Grouping Logic (WhatsApp Style) ---
 	let groupedMessages: Array<{ type: 'date' | 'message'; id: string; data: any }> = [];
 	$: {
@@ -78,14 +131,9 @@
 		isLoading = true;
 		errorMessage = '';
 		try {
-			// Fetch chat details and participant profile in parallel for speed
-			const [chatData, messagesData] = await Promise.all([
-				apiClient.getChatById(cId), // Assuming you create this API client method
-				apiClient.getChatMessages(cId)
-			]);
-
+			// Fetch chat details and participant profile
+			const chatData = await apiClient.getChatById(cId);
 			currentChatDetails = chatData;
-			messages = messagesData.messages || [];
 
 			const otherId = chatData.participants.find((p) => p !== currentUser?.id);
 			if (otherId) {
@@ -97,11 +145,65 @@
 						: otherParticipantProfile.profile?.fullName || 'User';
 			}
 
-			messageListComponent?.scrollToBottom('auto');
+			// Set up real-time message listener
+			setupRealtimeMessages(cId);
 		} catch (err: any) {
 			errorMessage = err.message || 'Could not load chat information.';
-		} finally {
 			isLoading = false;
+		}
+	}
+
+	function setupRealtimeMessages(cId: string) {
+		// Clean up existing subscription
+		if (messagesUnsubscribe) {
+			messagesUnsubscribe();
+		}
+
+		// Subscribe to real-time messages
+		messagesUnsubscribe = realtimeChatService.subscribeToMessages(
+			cId,
+			(newMessages) => {
+				messages = newMessages;
+				isLoading = false;
+
+				// Scroll to bottom for new messages (but not on initial load)
+				if (!isLoading) {
+					messageListComponent?.scrollToBottom('smooth');
+				} else {
+					// Initial load - scroll to bottom immediately
+					setTimeout(() => messageListComponent?.scrollToBottom('auto'), 100);
+				}
+			},
+			50 // Initial message limit
+		);
+	}
+
+	async function loadOlderMessages(event: CustomEvent<{ lastMessage: Message }>) {
+		if (isLoadingOlder || !hasMoreMessages) return;
+
+		isLoadingOlder = true;
+		const { lastMessage } = event.detail;
+
+		try {
+			await realtimeChatService.loadOlderMessages(
+				chatId,
+				lastMessage,
+				(olderMessages) => {
+					if (olderMessages.length === 0) {
+						hasMoreMessages = false;
+					} else {
+						// Prepend older messages
+						messages = [...olderMessages, ...messages];
+						// Maintain scroll position
+						messageListComponent?.maintainScrollPosition();
+					}
+					isLoadingOlder = false;
+				},
+				50
+			);
+		} catch (error) {
+			console.error('Error loading older messages:', error);
+			isLoadingOlder = false;
 		}
 	}
 
@@ -115,15 +217,20 @@
 			...(uploadedImagePath && { images: [uploadedImagePath] })
 		};
 
+		// Clear typing indicator
+		if (currentUser?.id) {
+			realtimeChatService.clearTyping(chatId, currentUser.id);
+		}
+
 		// Reset input fields immediately
 		newMessageContent = '';
 		uploadedImagePath = null;
 		selectedFile = null;
 
 		try {
-			const sentMessage = await apiClient.sendChatMessage(chatId, payload);
-			messages = [...messages, sentMessage];
-			messageListComponent?.scrollToBottom('smooth');
+			// Send message via API (this will trigger real-time update)
+			await apiClient.sendChatMessage(chatId, payload);
+			// No need to manually update messages - real-time listener will handle it
 		} catch (err) {
 			console.error('Send message error:', err);
 			// Restore content on failure
@@ -140,13 +247,12 @@
 		isRecording = false;
 		isSendingMessage = true;
 		try {
-			const sentMessage = await apiClient.sendChatMessage(chatId, {
+			// Send voice message via API (real-time listener will handle the update)
+			await apiClient.sendChatMessage(chatId, {
 				audioType: 'voice',
 				audioUrl: event.detail.audioUrl,
 				audioDuration: event.detail.audioDuration
 			});
-			messages = [...messages, sentMessage];
-			messageListComponent?.scrollToBottom('smooth');
 		} catch (err) {
 			console.error('Send voice message error:', err);
 		} finally {
@@ -194,6 +300,24 @@
 			permissionState = 'denied';
 		}
 	};
+
+	// --- Lifecycle ---
+	onDestroy(() => {
+		// Clean up subscriptions
+		if (messagesUnsubscribe) {
+			messagesUnsubscribe();
+		}
+
+		// Clean up Firebase Auth listener
+		if (authUnsubscribe) {
+			authUnsubscribe();
+		}
+
+		// Set user offline
+		if (currentUser?.id) {
+			realtimeChatService.setUserOffline(currentUser.id);
+		}
+	});
 </script>
 
 <div class="flex h-full flex-col bg-slate-900">
@@ -206,12 +330,31 @@
 		on:navigateBack={() => goto('/chat')}
 	/>
 
+	<!-- Debug Panel (only in development) -->
+	{#if import.meta.env.DEV}
+		<div class="border-b border-red-500/30 bg-red-900/20 p-2 text-xs">
+			<div class="flex items-center gap-2">
+				<span>Debug:</span>
+				<span>User: {currentUser?.id || 'None'}</span>
+				<span>Firebase: {auth.currentUser?.uid || 'None'}</span>
+				<span>Ready: {firebaseAuthReady}</span>
+				<button class="rounded bg-blue-600 px-2 py-1 text-white" on:click={debugFirebaseAuth}>
+					Test Auth
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<MessageList
 		bind:this={messageListComponent}
 		{isLoading}
 		{errorMessage}
 		{groupedMessages}
 		{currentUser}
+		{chatId}
+		{isLoadingOlder}
+		{hasMoreMessages}
+		on:loadOlder={loadOlderMessages}
 	/>
 
 	<!-- Input Area: Switches between recording and text input -->
@@ -229,6 +372,8 @@
 				bind:isUploadingImage
 				bind:uploadedImagePath
 				bind:selectedFile
+				{chatId}
+				currentUserId={currentUser?.id || ''}
 				on:sendMessage={handleSendMessage}
 				on:startRecording={handleStartRecording}
 				on:selectFile={handleSelectFile}
