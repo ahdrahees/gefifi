@@ -34,6 +34,9 @@
 	let messagesUnsubscribe: Unsubscribe | null = null;
 	let isLoadingOlder = false;
 	let hasMoreMessages = true;
+	let infiniteScrollEnabled = false; // Prevent infinite scroll on initial load
+	let typingUnsubscribe: Unsubscribe | null = null;
+	let typingUsers: Array<{ userId: string; userName: string }> = [];
 
 	// --- Chat & Participant State ---
 	let chatId: string;
@@ -70,31 +73,9 @@
 	let firebaseAuthReady = false;
 	let authUnsubscribe: (() => void) | null = null;
 
-	// Debug function to manually trigger Firebase Auth
-	async function debugFirebaseAuth() {
-		console.log('[Debug] Current user:', currentUser?.id);
-		console.log('[Debug] Firebase Auth user:', auth.currentUser?.uid);
-
-		if (currentUser?.id && !auth.currentUser) {
-			console.log('[Debug] Manually triggering Firebase sign-in...');
-			try {
-				const response = await apiClient.getFirebaseToken();
-				console.log('[Debug] Got Firebase token:', !!response.firebaseToken);
-
-				if (response.firebaseToken) {
-					const userCredential = await signInWithCustomToken(auth, response.firebaseToken);
-					console.log('[Debug] Firebase sign-in successful:', userCredential.user.uid);
-				}
-			} catch (error) {
-				console.error('[Debug] Firebase sign-in failed:', error);
-			}
-		}
-	}
-
 	// Set up Firebase Auth listener
 	onMount(() => {
 		authUnsubscribe = onAuthStateChanged(auth, (user) => {
-			console.log('[Chat] Firebase Auth state changed:', user?.uid || 'Not authenticated');
 			firebaseAuthReady = !!user;
 
 			// Set up presence when both conditions are met
@@ -106,7 +87,6 @@
 
 	// Set up presence when user is available and Firebase Auth is ready
 	$: if (currentUser?.id && firebaseAuthReady) {
-		console.log('[Chat] Both conditions met - setting user online');
 		realtimeChatService.setUserOnline(currentUser.id);
 	}
 
@@ -147,6 +127,9 @@
 
 			// Set up real-time message listener
 			setupRealtimeMessages(cId);
+
+			// Set up typing indicators
+			setupTypingIndicators(cId);
 		} catch (err: any) {
 			errorMessage = err.message || 'Could not load chat information.';
 			isLoading = false;
@@ -163,37 +146,100 @@
 		messagesUnsubscribe = realtimeChatService.subscribeToMessages(
 			cId,
 			(newMessages) => {
+				const wasInitialLoad = isLoading; // Capture the loading state before changing it
 				messages = newMessages;
 				isLoading = false;
 
-				// Scroll to bottom for new messages (but not on initial load)
-				if (!isLoading) {
-					messageListComponent?.scrollToBottom('smooth');
+				if (wasInitialLoad) {
+					// Initial load - scroll to bottom immediately and enable infinite scroll after delay
+					console.log('[Chat] Initial load complete, setting up infinite scroll');
+					setTimeout(() => {
+						messageListComponent?.scrollToBottom('auto');
+						// Enable infinite scroll after initial scroll is complete
+						setTimeout(() => {
+							infiniteScrollEnabled = true;
+							console.log('[Chat] Infinite scroll enabled');
+						}, 100); // Wait 100ms after scroll to enable infinite scroll
+					}, 50);
 				} else {
-					// Initial load - scroll to bottom immediately
-					setTimeout(() => messageListComponent?.scrollToBottom('auto'), 100);
+					// Subsequent messages - scroll to bottom smoothly
+					messageListComponent?.scrollToBottom('smooth');
 				}
 			},
 			50 // Initial message limit
 		);
 	}
 
+	function setupTypingIndicators(cId: string) {
+		// Clean up existing subscription
+		if (typingUnsubscribe) {
+			typingUnsubscribe();
+		}
+
+		// Subscribe to typing indicators
+		if (currentUser?.id) {
+			typingUnsubscribe = realtimeChatService.subscribeToTyping(
+				cId,
+				currentUser.id,
+				(typingUserIds) => {
+					// Convert user IDs to user objects (for now just use IDs as names)
+					// TODO: Fetch actual user names from user IDs
+					const newTypingUsers = typingUserIds.map((userId) => ({
+						userId,
+						userName: 'User' // Placeholder - should fetch actual names
+					}));
+
+					const wasEmpty = typingUsers.length === 0;
+					typingUsers = newTypingUsers;
+
+					// Auto-scroll to bottom when typing indicators appear (only if user is near bottom)
+					if (!wasEmpty && typingUsers.length > 0) {
+						// Check if user is near bottom before auto-scrolling for typing indicators
+						setTimeout(() => {
+							if (messageListComponent?.isNearBottom()) {
+								messageListComponent?.scrollToBottom('smooth');
+							}
+						}, 100);
+					}
+				}
+			);
+		}
+	}
+
 	async function loadOlderMessages(event: CustomEvent<{ lastMessage: Message }>) {
-		if (isLoadingOlder || !hasMoreMessages) return;
+		console.log('[Chat] loadOlderMessages called with:', event.detail);
+		console.log('[Chat] Current state:', {
+			infiniteScrollEnabled,
+			isLoadingOlder,
+			hasMoreMessages,
+			currentMessagesCount: messages.length
+		});
+
+		// Don't load older messages if infinite scroll is not enabled yet (prevents initial load issues)
+		if (!infiniteScrollEnabled || isLoadingOlder || !hasMoreMessages) {
+			console.log('[Chat] Skipping load - conditions not met');
+			return;
+		}
 
 		isLoadingOlder = true;
 		const { lastMessage } = event.detail;
+
+		console.log('[Chat] Loading older messages before:', lastMessage.id, lastMessage.timestamp);
 
 		try {
 			await realtimeChatService.loadOlderMessages(
 				chatId,
 				lastMessage,
 				(olderMessages) => {
+					console.log('[Chat] Received older messages:', olderMessages.length);
 					if (olderMessages.length === 0) {
 						hasMoreMessages = false;
+						console.log('[Chat] No more messages available');
 					} else {
 						// Prepend older messages
+						const previousCount = messages.length;
 						messages = [...olderMessages, ...messages];
+						console.log('[Chat] Messages updated:', previousCount, '->', messages.length);
 						// Maintain scroll position
 						messageListComponent?.maintainScrollPosition();
 					}
@@ -217,7 +263,7 @@
 			...(uploadedImagePath && { images: [uploadedImagePath] })
 		};
 
-		// Clear typing indicator
+		// Clear typing indicator when sending message
 		if (currentUser?.id) {
 			realtimeChatService.clearTyping(chatId, currentUser.id);
 		}
@@ -308,6 +354,10 @@
 			messagesUnsubscribe();
 		}
 
+		if (typingUnsubscribe) {
+			typingUnsubscribe();
+		}
+
 		// Clean up Firebase Auth listener
 		if (authUnsubscribe) {
 			authUnsubscribe();
@@ -330,21 +380,6 @@
 		on:navigateBack={() => goto('/chat')}
 	/>
 
-	<!-- Debug Panel (only in development) -->
-	{#if import.meta.env.DEV}
-		<div class="border-b border-red-500/30 bg-red-900/20 p-2 text-xs">
-			<div class="flex items-center gap-2">
-				<span>Debug:</span>
-				<span>User: {currentUser?.id || 'None'}</span>
-				<span>Firebase: {auth.currentUser?.uid || 'None'}</span>
-				<span>Ready: {firebaseAuthReady}</span>
-				<button class="rounded bg-blue-600 px-2 py-1 text-white" on:click={debugFirebaseAuth}>
-					Test Auth
-				</button>
-			</div>
-		</div>
-	{/if}
-
 	<MessageList
 		bind:this={messageListComponent}
 		{isLoading}
@@ -354,6 +389,8 @@
 		{chatId}
 		{isLoadingOlder}
 		{hasMoreMessages}
+		{infiniteScrollEnabled}
+		{typingUsers}
 		on:loadOlder={loadOlderMessages}
 	/>
 
@@ -389,3 +426,42 @@
 {#if permissionState === 'denied'}
 	<PermissionModal on:close={() => (permissionState = 'prompt')} />
 {/if}
+
+<style>
+	/* Beautiful custom scrollbar matching your dark theme */
+	.scrollable-content::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+		background-color: transparent;
+	}
+	.scrollable-content::-webkit-scrollbar-track {
+		background: rgba(30, 41, 59, 0.6); /* slate-800/60 */
+		border-radius: 9999px;
+		margin: 4px;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb {
+		background: linear-gradient(
+			135deg,
+			rgba(16, 185, 129, 0.6),
+			rgba(5, 150, 105, 0.8)
+		); /* emerald gradient */
+		border-radius: 9999px;
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		transition: all 0.2s ease;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb:hover {
+		background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
+		border-color: rgba(16, 185, 129, 0.4);
+		transform: scale(1.1);
+	}
+	.scrollable-content::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+
+	/* Firefox */
+	.scrollable-content {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(16, 185, 129, 0.6) rgba(30, 41, 59, 0.6);
+		color-scheme: dark;
+	}
+</style>

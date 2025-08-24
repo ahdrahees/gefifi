@@ -86,10 +86,10 @@
 			</button>
 
 			{#if isLoading}
-				<div class="h-10 w-10 flex-shrink-0 animate-pulse rounded-full bg-slate-700" />
+				<div class="h-10 w-10 flex-shrink-0 animate-pulse rounded-full bg-slate-700"></div>
 				<div class="min-w-0 flex-1 space-y-2">
-					<div class="h-4 w-32 animate-pulse rounded bg-slate-700" />
-					<div class="h-3 w-20 animate-pulse rounded bg-slate-700" />
+					<div class="h-4 w-32 animate-pulse rounded bg-slate-700"></div>
+					<div class="h-3 w-20 animate-pulse rounded bg-slate-700"></div>
 				</div>
 			{:else if otherParticipantProfile}
 				{@const typeInfo = getUserTypeDisplay(otherParticipantProfile.userType)}
@@ -109,12 +109,13 @@
 					</div>
 					<div class="flex items-center gap-3 truncate text-slate-400">
 						<OnlineStatus userId={otherParticipantProfile.id} showLastSeen={true} size="sm" />
-						<span class="truncate">
-							{otherParticipantProfile.profile?.expertise ||
-								otherParticipantProfile.profile?.category ||
-								'Available'}
-						</span>
-
+						{#if otherParticipantProfile?.userType !== 'customer'}
+							<span class="truncate">
+								{otherParticipantProfile.profile?.expertise ||
+									otherParticipantProfile.profile?.category ||
+									'Available'}
+							</span>
+						{/if}
 						{#if otherParticipantProfile.profile?.location}
 							<span class="flex items-baseline"
 								>• <svg

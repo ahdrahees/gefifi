@@ -1,9 +1,12 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/MessageList.svelte -->
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, createEventDispatcher } from 'svelte';
 	import type { AuthUser, Message } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+
+	// Create event dispatcher for parent communication
+	const dispatch = createEventDispatcher();
 
 	// Child Components
 	import AudioMessageView from '$lib/components/chat/AudioMessageView.svelte';
@@ -18,11 +21,14 @@
 	export let chatId: string = '';
 	export let isLoadingOlder: boolean = false;
 	export let hasMoreMessages: boolean = true;
+	export let infiniteScrollEnabled: boolean = true;
+	export let typingUsers: Array<{ userId: string; userName: string }> = [];
 
 	// --- INTERNAL STATE & BINDINGS ---
 	let messagesContainer: HTMLElement;
-	let isNearBottom: boolean = true;
+	let isUserNearBottom: boolean = true;
 	let previousScrollHeight: number = 0;
+	let hasUserScrolled: boolean = false;
 
 	// --- PUBLIC API (for parent component) ---
 	export const scrollToBottom = async (behavior: 'smooth' | 'auto' = 'auto') => {
@@ -31,6 +37,17 @@
 		if (messagesContainer) {
 			messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior });
 		}
+	};
+
+	export const isNearBottom = (): boolean => {
+		if (!messagesContainer) return false;
+		const threshold = 150; // Same threshold as in handleScroll
+		return (
+			messagesContainer.scrollHeight -
+				messagesContainer.scrollTop -
+				messagesContainer.clientHeight <
+			threshold
+		);
 	};
 
 	export const maintainScrollPosition = async () => {
@@ -47,17 +64,43 @@
 	const handleScroll = () => {
 		if (!messagesContainer) return;
 
+		// Mark that user has scrolled (enables infinite scroll)
+		if (!hasUserScrolled) {
+			hasUserScrolled = true;
+			console.log('[MessageList] User has scrolled - infinite scroll enabled');
+		}
+
 		const threshold = 150; // Pixels from the bottom
 		const atBottom =
 			messagesContainer.scrollHeight -
 				messagesContainer.scrollTop -
 				messagesContainer.clientHeight <
 			threshold;
-		isNearBottom = atBottom;
+		isUserNearBottom = atBottom;
 
 		// Check if user scrolled near the top to load older messages
 		const nearTop = messagesContainer.scrollTop < 100;
-		if (nearTop && hasMoreMessages && !isLoadingOlder && groupedMessages.length > 0) {
+		const shouldLoadOlder =
+			nearTop &&
+			hasMoreMessages &&
+			!isLoadingOlder &&
+			groupedMessages.length > 0 &&
+			(infiniteScrollEnabled || hasUserScrolled);
+
+		if (nearTop) {
+			console.log('[MessageList] Near top detected:', {
+				nearTop,
+				hasMoreMessages,
+				isLoadingOlder,
+				groupedMessagesLength: groupedMessages.length,
+				infiniteScrollEnabled,
+				hasUserScrolled,
+				shouldLoadOlder
+			});
+		}
+
+		if (shouldLoadOlder) {
+			console.log('[MessageList] Triggering loadOlderMessages');
 			loadOlderMessages();
 		}
 	};
@@ -66,14 +109,21 @@
 		// Store current scroll height before loading
 		previousScrollHeight = messagesContainer.scrollHeight;
 
-		// Find the first message (oldest currently loaded)
-		const firstMessage = groupedMessages.find((item) => item.type === 'message')?.data as Message;
-		if (firstMessage) {
-			// Dispatch event to parent to load older messages
-			const event = new CustomEvent('loadOlder', {
-				detail: { lastMessage: firstMessage }
-			});
-			messagesContainer.dispatchEvent(event);
+		// Find the oldest message currently loaded (first message in the list)
+		// Since messages are displayed oldest-first, the first message is the oldest
+		const messageItems = groupedMessages.filter((item) => item.type === 'message');
+		const oldestMessage = messageItems[0]?.data as Message;
+
+		console.log('[MessageList] loadOlderMessages called');
+		console.log('[MessageList] Total grouped messages:', groupedMessages.length);
+		console.log('[MessageList] Message items:', messageItems.length);
+		console.log('[MessageList] Oldest message:', oldestMessage?.id, oldestMessage?.timestamp);
+
+		if (oldestMessage) {
+			// Dispatch Svelte event to parent component
+			dispatch('loadOlder', { lastMessage: oldestMessage });
+		} else {
+			console.warn('[MessageList] No oldest message found to load older messages');
 		}
 	};
 
@@ -109,7 +159,7 @@
 	<div
 		bind:this={messagesContainer}
 		on:scroll={handleScroll}
-		class="absolute inset-0 overflow-y-auto p-4"
+		class="scrollable-content absolute inset-0 overflow-y-auto p-4"
 	>
 		{#if isLoading}
 			<div class="flex h-full items-center justify-center">
@@ -219,14 +269,12 @@
 				{/each}
 
 				<!-- Typing indicator -->
-				{#if chatId && currentUser}
-					<TypingIndicator {chatId} currentUserId={currentUser.id} />
-				{/if}
+				<TypingIndicator {typingUsers} />
 			</div>
 		{/if}
 	</div>
 
-	{#if !isNearBottom}
+	{#if !isUserNearBottom}
 		<button
 			on:click={() => scrollToBottom('smooth')}
 			class="absolute right-4 bottom-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-slate-600/40 text-white backdrop-blur-sm transition-transform hover:scale-110"
@@ -242,3 +290,42 @@
 		</button>
 	{/if}
 </div>
+
+<style>
+	/* Beautiful custom scrollbar matching your dark theme */
+	.scrollable-content::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+		background-color: transparent;
+	}
+	.scrollable-content::-webkit-scrollbar-track {
+		background: rgba(30, 41, 59, 0.6); /* slate-800/60 */
+		border-radius: 9999px;
+		margin: 4px;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb {
+		background: linear-gradient(
+			135deg,
+			rgba(16, 185, 129, 0.6),
+			rgba(5, 150, 105, 0.8)
+		); /* emerald gradient */
+		border-radius: 9999px;
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		transition: all 0.2s ease;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb:hover {
+		background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
+		border-color: rgba(16, 185, 129, 0.4);
+		transform: scale(1.1);
+	}
+	.scrollable-content::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+
+	/* Firefox */
+	.scrollable-content {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(16, 185, 129, 0.6) rgba(30, 41, 59, 0.6);
+		color-scheme: dark;
+	}
+</style>

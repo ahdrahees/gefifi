@@ -55,25 +55,20 @@
 	}
 </script>
 
-<div class="flex items-center gap-1.5">
-	<!-- Online/Offline Indicator -->
-	<div class="relative">
-		<div
-			class="rounded-full {sizeConfig[size].dot}"
-			class:bg-emerald-500={isOnline}
-			class:bg-slate-500={!isOnline}
-		></div>
-		{#if isOnline}
-			<div
-				class="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75 {sizeConfig[
-					size
-				].dot}"
-			></div>
-		{/if}
-	</div>
+<!-- Online/Offline Indicator positioned as overlay -->
+<div
+	class="absolute right-0 bottom-0 {sizeConfig[size].dot} rounded-full border-2 border-slate-800"
+	class:bg-emerald-500={isOnline}
+	class:bg-slate-500={!isOnline}
+>
+	{#if isOnline}
+		<div class="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75"></div>
+	{/if}
+</div>
 
-	<!-- Status Text -->
-	{#if showLastSeen}
+<!-- Status Text (only show if requested) -->
+{#if showLastSeen}
+	<div class="mt-1 text-center">
 		<span class="text-slate-400 {sizeConfig[size].text}">
 			{#if isOnline}
 				Online
@@ -83,5 +78,5 @@
 				Offline
 			{/if}
 		</span>
-	{/if}
-</div>
+	</div>
+{/if}

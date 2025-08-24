@@ -1,8 +1,12 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/chat/+page.svelte -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
-	import { API_BASE_URL } from '$lib/config';
+	import { realtimeChatService } from '$lib/services/realtimeChat';
+	import apiClient from '$lib/api';
+	import type { Chat } from '$lib/types';
+	import type { Unsubscribe } from 'firebase/firestore';
+	import OnlineStatus from '$lib/components/chat/OnlineStatus.svelte';
 
 	type UserProfile = {
 		id: string;
@@ -18,35 +22,22 @@
 		};
 	};
 
-	type ChatListItem = {
-		id: string;
-		participantIds: string[];
-		workRequestId?: string;
-		lastMessageSnippet?: string;
-		unreadCount?: number;
-		updatedAt: string;
-		displayName?: string;
+	type EnrichedChat = Chat & {
+		displayName: string;
 		avatarUrl?: string;
 		otherUserProfile?: UserProfile;
-		lastMessage?: {
-			id: string;
-			content: string;
-			timestamp: string;
-			senderId: string;
-		};
+		lastMessageSnippet: string;
+		unreadCount: number;
 	};
 
 	let currentUser: AuthUser | null = null;
-	let token: string | null = null;
-	let chats: ChatListItem[] = [];
+	let chats: EnrichedChat[] = [];
 	let isLoading = true;
 	let errorMessage = '';
 	let fetchedUserProfiles = new Map<string, UserProfile>();
+	let chatsUnsubscribe: Unsubscribe | null = null;
 
-	authStore.subscribe((auth) => {
-		currentUser = auth.user;
-		token = auth.token;
-	});
+	$: ({ user: currentUser } = $authStore);
 
 	function getUserTypeDisplay(userType: string): { label: string; color: string; bgColor: string } {
 		switch (userType) {
@@ -94,140 +85,119 @@
 		return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 	}
 
-	async function fetchChats() {
+	async function fetchUserProfiles(userIds: string[]): Promise<void> {
+		const newUserIds = userIds.filter((id) => !fetchedUserProfiles.has(id));
+
+		if (newUserIds.length === 0) return;
+
+		await Promise.all(
+			newUserIds.map(async (userId) => {
+				try {
+					const userData = await apiClient.getUserById(userId);
+					fetchedUserProfiles.set(userId, userData);
+				} catch (error) {
+					console.error(`Failed to fetch user profile for ${userId}:`, error);
+					fetchedUserProfiles.set(userId, {
+						id: userId,
+						email: '',
+						userType: 'unknown'
+					});
+				}
+			})
+		);
+	}
+
+	function enrichChats(rawChats: Chat[]): EnrichedChat[] {
+		return rawChats.map((chat) => {
+			const otherParticipantIds = chat.participants.filter(
+				(pId: string) => pId !== currentUser?.id
+			);
+
+			let displayName = 'Chat';
+			let avatarUrl: string | undefined = undefined;
+			let otherUserProfile: UserProfile | undefined = undefined;
+
+			if (otherParticipantIds.length > 0) {
+				const otherPId = otherParticipantIds[0];
+				otherUserProfile = fetchedUserProfiles.get(otherPId);
+				displayName = formatDisplayName(otherUserProfile);
+				avatarUrl = otherUserProfile?.profile?.avatarUrl;
+			} else if (chat.participants.length === 1 && chat.participants[0] === currentUser?.id) {
+				displayName = 'Personal Notes';
+				avatarUrl = currentUser?.profile?.avatarUrl;
+			}
+
+			let lastMessageSnippet = 'No messages yet...';
+
+			// Check both lastMessage and lastMessageContent for backward compatibility
+			const lastMsg = chat.lastMessage;
+			if (lastMsg && (lastMsg.content || lastMsg.audioType || lastMsg.images)) {
+				// Handle different message types
+				if (lastMsg.audioType === 'voice') {
+					lastMessageSnippet =
+						lastMsg.senderId === currentUser?.id ? 'You: 🎤 Voice message' : '🎤 Voice message';
+				} else if (lastMsg.images && lastMsg.images.length > 0) {
+					lastMessageSnippet = lastMsg.senderId === currentUser?.id ? 'You: 📷 Photo' : '📷 Photo';
+				} else if (lastMsg.content && lastMsg.content.trim()) {
+					const prefix = lastMsg.senderId === currentUser?.id ? 'You: ' : '';
+					lastMessageSnippet = prefix + lastMsg.content.trim();
+				}
+			}
+
+			return {
+				...chat,
+				displayName,
+				avatarUrl,
+				otherUserProfile,
+				lastMessageSnippet,
+				unreadCount: 0 // TODO: Implement unread count logic
+			} as EnrichedChat;
+		});
+	}
+
+	async function setupRealtimeChats(): Promise<void> {
+		if (!currentUser?.id) return;
+
 		isLoading = true;
 		errorMessage = '';
 
-		if (!currentUser || !token) {
-			errorMessage = 'User not authenticated. Cannot load chats.';
-			isLoading = false;
-			return;
-		}
-
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/chat`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
+			// Set up real-time chat list subscription
+			chatsUnsubscribe = realtimeChatService.subscribeToUserChats(
+				currentUser.id,
+				async (rawChats) => {
+					// Collect all participant IDs for profile fetching
+					const allParticipantIds = new Set<string>();
+					rawChats.forEach((chat) => {
+						chat.participants
+							.filter((pId) => pId !== currentUser?.id)
+							.forEach((pId) => allParticipantIds.add(pId));
+					});
 
-			if (!response.ok) {
-				const errorData = await response
-					.json()
-					.catch(() => ({ message: `Failed to fetch chats: ${response.statusText}` }));
-				throw new Error(errorData.message);
-			}
+					// Fetch user profiles for participants we don't have yet
+					await fetchUserProfiles(Array.from(allParticipantIds));
 
-			const rawChats: {
-				id: string;
-				participants: string[];
-				workRequestId?: string;
-				updatedAt: string;
-				createdAt: string;
-				lastMessage: {
-					id: string;
-					content: string;
-					timestamp: string;
-					senderId: string;
-				} | null;
-			}[] = await response.json();
-
-			// Collect all unique other participant IDs
-			const allOtherParticipantIds = new Set<string>();
-			rawChats.forEach((chat) => {
-				chat.participants
-					.filter((pId: string) => pId !== currentUser?.id)
-					.forEach((pId: string) => allOtherParticipantIds.add(pId));
-			});
-
-			// Fetch profiles for unique IDs not already cached
-			await Promise.all(
-				Array.from(allOtherParticipantIds).map(async (pId) => {
-					if (!fetchedUserProfiles.has(pId) && token) {
-						try {
-							const userRes = await fetch(`${API_BASE_URL}/api/users/${pId}`, {
-								headers: { Authorization: `Bearer ${token}` }
-							});
-							if (userRes.ok) {
-								const userData: UserProfile = await userRes.json();
-								fetchedUserProfiles.set(pId, userData);
-							} else {
-								fetchedUserProfiles.set(pId, { id: pId, email: '', userType: 'unknown' });
-							}
-						} catch (e) {
-							fetchedUserProfiles.set(pId, { id: pId, email: '', userType: 'unknown' });
-						}
-					}
-				})
-			);
-
-			const enrichedChats: ChatListItem[] = rawChats.map((chat) => {
-				const otherParticipantIds = chat.participants.filter(
-					(pId: string) => pId !== currentUser?.id
-				);
-
-				let displayName = 'Chat';
-				let avatarUrl: string | undefined = undefined;
-				let otherUserProfile: UserProfile | undefined = undefined;
-
-				if (otherParticipantIds.length > 0) {
-					const otherPId = otherParticipantIds[0];
-					otherUserProfile = fetchedUserProfiles.get(otherPId);
-					displayName = formatDisplayName(otherUserProfile);
-					avatarUrl = otherUserProfile?.profile?.avatarUrl;
-				} else if (chat.participants.length === 1 && chat.participants[0] === currentUser?.id) {
-					displayName = 'Personal Notes';
-					avatarUrl = currentUser?.profile?.avatarUrl;
+					// Enrich chats with user profiles and display info
+					chats = enrichChats(rawChats);
+					isLoading = false;
 				}
-
-				let lastMessageSnippet = 'No messages yet...';
-				if (chat.lastMessage) {
-					// Add a prefix if the current user sent the last message
-					if (chat.lastMessage.senderId === currentUser?.id) {
-						lastMessageSnippet = `You: ${chat.lastMessage.content}`;
-					} else {
-						lastMessageSnippet = chat.lastMessage.content;
-					}
-				}
-
-				return {
-					id: chat.id,
-					participantIds: chat.participants,
-					workRequestId: chat.workRequestId,
-					updatedAt: chat.updatedAt,
-					displayName,
-					avatarUrl,
-					otherUserProfile,
-					lastMessage: chat.lastMessage ?? undefined,
-					lastMessageSnippet,
-					unreadCount: 0 // Placeholder
-				};
-			});
-
-			chats = enrichedChats.sort(
-				(a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
 			);
-		} catch (err: unknown) {
-			console.error('Chat list fetch error:', err);
-			errorMessage = (err as Error).message || 'An error occurred while loading chats.';
-		} finally {
+		} catch (error) {
+			console.error('Error setting up real-time chats:', error);
+			errorMessage = 'Failed to load conversations. Please try again.';
 			isLoading = false;
 		}
 	}
 
-	onMount(() => {
-		const unsubscribe = authStore.subscribe((auth) => {
-			if (auth.user && auth.token && !auth.isLoading) {
-				currentUser = auth.user;
-				token = auth.token;
-				fetchChats();
-			} else if (!auth.isLoading && !auth.user) {
-				errorMessage = 'User not authenticated.';
-				isLoading = false;
-			}
-		});
+	// Set up real-time chats when user is available
+	$: if (currentUser?.id && !chatsUnsubscribe) {
+		setupRealtimeChats();
+	}
 
-		return () => {
-			unsubscribe();
-		};
+	onDestroy(() => {
+		if (chatsUnsubscribe) {
+			chatsUnsubscribe();
+		}
 	});
 </script>
 
@@ -254,36 +224,14 @@
 				<div>
 					<h1 class="text-2xl font-bold text-emerald-400">Messages</h1>
 					<p class="text-sm text-slate-400">
-						{chats.length} conversation{chats.length === 1 ? '' : 's'}
+						{#if isLoading}
+							Loading conversations...
+						{:else}
+							{chats.length} conversation{chats.length === 1 ? '' : 's'}
+						{/if}
 					</p>
 				</div>
 			</div>
-
-			<button
-				class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none"
-				on:click={fetchChats}
-				disabled={isLoading}
-			>
-				{#if isLoading}
-					<svg class="h-4 w-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-						/>
-					</svg>
-				{:else}
-					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-						/>
-					</svg>
-				{/if}
-			</button>
 		</div>
 	</header>
 
@@ -293,16 +241,19 @@
 			<div class="flex h-full items-center justify-center">
 				<div class="text-center">
 					<div
-						class="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-500"
+						class="mb-6 inline-block h-16 w-16 animate-spin rounded-full border-4 border-slate-700 border-t-emerald-500"
 					></div>
-					<p class="text-slate-300">Loading your conversations...</p>
+					<h3 class="mb-2 text-lg font-semibold text-slate-300">Loading Conversations</h3>
+					<p class="text-slate-400">Setting up real-time messaging...</p>
 				</div>
 			</div>
 		{:else if errorMessage}
 			<div class="flex h-full items-center justify-center p-6">
-				<div class="max-w-md rounded-xl border border-red-500/20 bg-red-500/10 p-6 text-center">
-					<div class="mb-4 inline-block rounded-full bg-red-500/20 p-3">
-						<svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<div
+					class="max-w-md rounded-2xl border border-red-500/20 bg-red-500/5 p-8 text-center backdrop-blur-sm"
+				>
+					<div class="mb-6 inline-block rounded-full bg-red-500/20 p-4">
+						<svg class="h-8 w-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
@@ -311,13 +262,13 @@
 							/>
 						</svg>
 					</div>
-					<h3 class="mb-2 text-lg font-semibold text-red-300">Unable to Load Chats</h3>
-					<p class="mb-4 text-sm text-red-200">{errorMessage}</p>
+					<h3 class="mb-3 text-xl font-semibold text-red-300">Connection Error</h3>
+					<p class="mb-6 text-sm text-red-200/80">{errorMessage}</p>
 					<button
-						class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:outline-none"
-						on:click={fetchChats}
+						class="rounded-lg bg-red-600 px-6 py-3 text-sm font-medium text-white transition-all hover:bg-red-700 hover:shadow-lg focus:ring-2 focus:ring-red-500 focus:outline-none"
+						on:click={() => setupRealtimeChats()}
 					>
-						Try Again
+						Retry Connection
 					</button>
 				</div>
 			</div>
@@ -351,102 +302,79 @@
 				{#each chats as chat (chat.id)}
 					<a
 						href={`/chat/${chat.id}`}
-						class="block rounded-xl bg-slate-800/50 p-4 transition-all duration-200 hover:bg-slate-700/50 hover:shadow-lg hover:shadow-emerald-500/5 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 focus:outline-none"
+						class="group block rounded-xl border border-slate-600/30 bg-slate-700/30 p-3.5 transition-all duration-200 hover:border-emerald-500/30 hover:bg-slate-600/40 hover:shadow-lg"
 					>
-						<div class="flex items-center gap-4">
-							<!-- Avatar -->
-							<div class="relative">
+						<div class="flex items-center gap-3">
+							<!-- Avatar with Online Status -->
+							<div class="relative flex-shrink-0">
 								<img
 									src={chat.avatarUrl || '/images/default-avatar.png'}
 									alt="Avatar for {chat.displayName}"
-									class="h-14 w-14 rounded-full border-2 border-slate-600 object-cover"
+									class="h-12 w-12 rounded-full border-2 border-slate-600 object-cover"
 									loading="lazy"
 								/>
-								<!-- Online indicator (placeholder) -->
-								<div
-									class="absolute right-0 bottom-0 h-4 w-4 rounded-full border-2 border-slate-800 bg-emerald-500"
-								></div>
+								<!-- Online Status Indicator -->
+								{#if chat.otherUserProfile?.id}
+									<OnlineStatus userId={chat.otherUserProfile.id} size="sm" />
+								{/if}
 							</div>
 
 							<!-- Content -->
 							<div class="min-w-0 flex-1">
-								<div class="mb-1 flex items-start justify-between">
-									<div class="flex items-center gap-2">
-										<h3 class="truncate font-semibold text-slate-200">
+								<div class="mb-1 flex items-center justify-between gap-2">
+									<div class="flex min-w-0 flex-1 items-center gap-2">
+										<h3
+											class="truncate font-semibold text-emerald-300 group-hover:text-emerald-200"
+										>
 											{chat.displayName}
 										</h3>
 										{#if chat.otherUserProfile}
 											{@const typeInfo = getUserTypeDisplay(chat.otherUserProfile.userType)}
 											<span
-												class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium {typeInfo.color} {typeInfo.bgColor}"
+												class="hidden items-center rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex {typeInfo.color} {typeInfo.bgColor} flex-shrink-0 border border-current/20"
 											>
 												{typeInfo.label}
 											</span>
 										{/if}
 									</div>
-									<span class="flex-shrink-0 text-xs text-slate-500">
+									<span class="flex-shrink-0 text-xs text-slate-500 group-hover:text-slate-400">
 										{formatLastSeen(chat.updatedAt)}
 									</span>
 								</div>
 
 								<!-- User details -->
 								{#if chat.otherUserProfile?.profile}
-									<div class="mb-2 flex items-center gap-2 text-xs text-slate-400">
+									<div
+										class="mb-1.5 flex items-center gap-2 overflow-hidden text-xs text-slate-400"
+									>
 										{#if chat.otherUserProfile.userType === 'expert' && chat.otherUserProfile.profile.expertise}
-											<span class="flex items-center gap-1">
-												<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 7.172V5z"
-													/>
-												</svg>
-												{chat.otherUserProfile.profile.expertise}
-											</span>
+											<span
+												class="max-w-[120px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+												>{chat.otherUserProfile.profile.expertise}</span
+											>
 										{:else if chat.otherUserProfile.userType === 'supplier' && chat.otherUserProfile.profile.category}
-											<span class="flex items-center gap-1">
-												<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-													/>
-												</svg>
-												{chat.otherUserProfile.profile.category}
-											</span>
+											<span
+												class="max-w-[120px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+												>{chat.otherUserProfile.profile.category}</span
+											>
 										{/if}
 										{#if chat.otherUserProfile.profile.location}
-											<span class="flex items-center gap-1">
-												<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-													/>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-													/>
-												</svg>
-												{chat.otherUserProfile.profile.location}
-											</span>
+											<span
+												class="max-w-[100px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+												>📍 {chat.otherUserProfile.profile.location}</span
+											>
 										{/if}
 									</div>
 								{/if}
 
 								<!-- Last message -->
 								<div class="flex items-center justify-between">
-									<p class="flex-1 truncate text-sm text-slate-400">
+									<p class="flex-1 truncate text-sm text-slate-400 group-hover:text-slate-300">
 										{chat.lastMessageSnippet}
 									</p>
 									{#if chat.unreadCount && chat.unreadCount > 0}
 										<span
-											class="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white"
+											class="ml-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white"
 										>
 											{chat.unreadCount}
 										</span>
@@ -460,3 +388,41 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	/* Beautiful custom scrollbar matching your dark theme */
+	.scrollable-content::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+		background-color: transparent;
+	}
+	.scrollable-content::-webkit-scrollbar-track {
+		background: rgba(30, 41, 59, 0.6); /* slate-800/60 */
+		border-radius: 9999px;
+		margin: 4px;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb {
+		background: linear-gradient(
+			135deg,
+			rgba(16, 185, 129, 0.6),
+			rgba(5, 150, 105, 0.8)
+		); /* emerald gradient */
+		border-radius: 9999px;
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		transition: all 0.2s ease;
+	}
+	.scrollable-content::-webkit-scrollbar-thumb:hover {
+		background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
+		border-color: rgba(16, 185, 129, 0.4);
+		transform: scale(1.1);
+	}
+	.scrollable-content::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+	/* Firefox */
+	.scrollable-content {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(16, 185, 129, 0.6) rgba(30, 41, 59, 0.6);
+		color-scheme: dark;
+	}
+</style>

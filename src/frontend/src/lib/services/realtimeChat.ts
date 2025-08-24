@@ -7,16 +7,14 @@ import {
 	limit,
 	onSnapshot,
 	startAfter,
-	type DocumentSnapshot,
+	where,
 	type Unsubscribe,
 	doc,
 	setDoc,
 	deleteDoc,
-	serverTimestamp,
-	where,
-	type QueryDocumentSnapshot
+	serverTimestamp
 } from 'firebase/firestore';
-import { db, auth } from '$lib/firebase';
+import { db } from '$lib/firebase';
 import type { Message, Chat } from '$lib/types';
 
 export interface RealtimeChatService {
@@ -66,19 +64,12 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 		callback: (messages: Message[]) => void,
 		messageLimit: number = 50
 	): Unsubscribe {
-		console.log('[RealtimeChat] Setting up message subscription for chat:', chatId);
-		console.log(
-			'[RealtimeChat] Firebase Auth current user:',
-			auth.currentUser?.uid || 'Not authenticated'
-		);
-
 		const messagesRef = collection(db, `chats/${chatId}/messages`);
 		const messagesQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(messageLimit));
 
 		return onSnapshot(
 			messagesQuery,
 			(snapshot) => {
-				console.log('[RealtimeChat] Message snapshot received, count:', snapshot.size);
 				const messages: Message[] = [];
 				snapshot.forEach((doc) => {
 					const data = doc.data();
@@ -94,10 +85,6 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 			},
 			(error) => {
 				console.error('[RealtimeChat] Error in message subscription:', error);
-				console.error(
-					'[RealtimeChat] Firebase Auth status:',
-					auth.currentUser?.uid || 'Not authenticated'
-				);
 				callback([]); // Return empty array on error
 			}
 		);
@@ -114,27 +101,58 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 	): Promise<void> {
 		try {
 			const messagesRef = collection(db, `chats/${chatId}/messages`);
-			const lastMessageDoc = doc(db, `chats/${chatId}/messages`, lastMessage.id);
+			const { getDocs, Timestamp } = await import('firebase/firestore');
 
-			// Get the document snapshot for pagination
-			const lastDocSnapshot = await import('firebase/firestore').then(({ getDoc }) =>
-				getDoc(lastMessageDoc)
+			console.log(
+				`[RealtimeChat] Loading older messages before: ${lastMessage.id} (${lastMessage.timestamp})`
 			);
 
-			if (!lastDocSnapshot.exists()) {
-				callback([]);
-				return;
-			}
+			// Use string timestamp for comparison since database stores strings
+			const lastMessageTimestamp = lastMessage.timestamp;
+			console.log(`[RealtimeChat] Using string timestamp for comparison:`, lastMessageTimestamp);
 
+			// Test the timestamp comparison directly
+			console.log(`[RealtimeChat] Testing timestamp comparison:`);
+			console.log(`[RealtimeChat] Target timestamp (string): ${lastMessage.timestamp}`);
+			console.log(`[RealtimeChat] Target timestamp (Firestore):`, lastMessageTimestamp);
+
+			// Test query without the where clause first
+			const testQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(5));
+			const testSnapshot = await getDocs(testQuery);
+			console.log(`[RealtimeChat] Latest 5 messages for comparison:`);
+			testSnapshot.forEach((doc, index) => {
+				const data = doc.data();
+				const docTimestamp = data.timestamp?.toDate?.()?.toISOString() || data.timestamp;
+				console.log(`  ${index + 1}. ${doc.id}: ${docTimestamp} (${typeof data.timestamp})`);
+			});
+
+			// Query for messages older than the last message using timestamp comparison
+			console.log(
+				`[RealtimeChat] Executing query: messages where timestamp < ${lastMessage.timestamp}`
+			);
 			const olderMessagesQuery = query(
 				messagesRef,
 				orderBy('timestamp', 'desc'),
-				startAfter(lastDocSnapshot),
+				where('timestamp', '<', lastMessageTimestamp),
 				limit(messageLimit)
 			);
 
-			const { getDocs } = await import('firebase/firestore');
+			// Also test a simple query to see if there are ANY older messages
+			const simpleOlderQuery = query(messagesRef, orderBy('timestamp', 'asc'), limit(10));
+			const simpleSnapshot = await getDocs(simpleOlderQuery);
+			console.log(`[RealtimeChat] Oldest 10 messages in database:`);
+			simpleSnapshot.forEach((doc, index) => {
+				const data = doc.data();
+				const docTimestamp = data.timestamp?.toDate?.()?.toISOString() || data.timestamp;
+				const isOlder = new Date(docTimestamp) < new Date(lastMessage.timestamp);
+				console.log(`  ${index + 1}. ${docTimestamp} (older than target: ${isOlder})`);
+			});
+
 			const snapshot = await getDocs(olderMessagesQuery);
+
+			console.log(
+				`[RealtimeChat] Found ${snapshot.size} older messages before ${lastMessage.timestamp}`
+			);
 
 			const olderMessages: Message[] = [];
 			snapshot.forEach((doc) => {
@@ -146,7 +164,7 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 				} as Message);
 			});
 
-			// Reverse to maintain chronological order
+			// Reverse to maintain chronological order (oldest first)
 			callback(olderMessages.reverse());
 		} catch (error) {
 			console.error('[RealtimeChat] Error loading older messages:', error);
@@ -167,17 +185,58 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 
 		return onSnapshot(
 			userChatsQuery,
-			(snapshot) => {
+			async (snapshot) => {
 				const chats: Chat[] = [];
-				snapshot.forEach((doc) => {
-					const data = doc.data();
-					chats.push({
-						id: doc.id,
-						...data,
-						createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-						updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-					} as Chat);
-				});
+
+				// Process each chat and fetch its last message
+				await Promise.all(
+					snapshot.docs.map(async (doc) => {
+						const data = doc.data();
+						const chatId = doc.id;
+
+						// Fetch the last message for this chat
+						let lastMessage = null;
+						try {
+							const messagesRef = collection(db, `chats/${chatId}/messages`);
+							const lastMessageQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(1));
+
+							const { getDocs } = await import('firebase/firestore');
+							const messageSnapshot = await getDocs(lastMessageQuery);
+
+							if (!messageSnapshot.empty) {
+								const messageDoc = messageSnapshot.docs[0];
+								const messageData = messageDoc.data();
+								lastMessage = {
+									id: messageDoc.id,
+									content: messageData.content || '',
+									timestamp:
+										messageData.timestamp?.toDate?.()?.toISOString() || messageData.timestamp,
+									senderId: messageData.senderId,
+									audioType: messageData.audioType,
+									images: messageData.images
+								};
+							}
+						} catch (error) {
+							console.error(
+								`[RealtimeChat] Error fetching last message for chat ${chatId}:`,
+								error
+							);
+						}
+
+						chats.push({
+							id: chatId,
+							participants: data.participants || [],
+							workRequestId: data.workRequestId,
+							materialRequestId: data.materialRequestId,
+							createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+							updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+							lastMessage
+						} as Chat);
+					})
+				);
+
+				// Sort chats by updatedAt (most recent first)
+				chats.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
 				callback(chats);
 			},
@@ -192,12 +251,6 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 	 * Set user as online and start heartbeat
 	 */
 	async setUserOnline(userId: string): Promise<void> {
-		console.log('[RealtimeChat] Setting user online:', userId);
-		console.log(
-			'[RealtimeChat] Firebase Auth current user:',
-			auth.currentUser?.uid || 'Not authenticated'
-		);
-
 		try {
 			const presenceRef = doc(db, 'presence', userId);
 			await setDoc(
@@ -209,15 +262,10 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 				{ merge: true }
 			);
 
-			console.log('[RealtimeChat] User presence set successfully');
 			// Start heartbeat to maintain online status
 			this.startPresenceHeartbeat(userId);
 		} catch (error) {
 			console.error('[RealtimeChat] Error setting user online:', error);
-			console.error(
-				'[RealtimeChat] Firebase Auth status:',
-				auth.currentUser?.uid || 'Not authenticated'
-			);
 		}
 	}
 
