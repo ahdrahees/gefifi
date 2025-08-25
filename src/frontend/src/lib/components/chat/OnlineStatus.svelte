@@ -7,6 +7,7 @@
 	export let userId: string;
 	export let showLastSeen: boolean = false;
 	export let size: 'sm' | 'md' | 'lg' = 'md';
+	export let disableDotIndicator: boolean = false;
 
 	let isOnline = false;
 	let lastSeen: Date | null = null;
@@ -56,20 +57,26 @@
 </script>
 
 <!-- Online/Offline Indicator positioned as overlay -->
-<div
-	class="absolute right-0 bottom-0 {sizeConfig[size].dot} rounded-full border-2 border-slate-800"
-	class:bg-emerald-500={isOnline}
-	class:bg-slate-500={!isOnline}
->
-	{#if isOnline}
-		<div class="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75"></div>
-	{/if}
-</div>
+{#if !disableDotIndicator}
+	<div
+		class="absolute right-0 bottom-0 {sizeConfig[size].dot} rounded-full border-2 border-slate-800"
+		class:bg-emerald-500={isOnline}
+		class:bg-slate-500={!isOnline}
+	>
+		{#if isOnline}
+			<div class="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75"></div>
+		{/if}
+	</div>
+{/if}
 
 <!-- Status Text (only show if requested) -->
 {#if showLastSeen}
-	<div class="mt-1 text-center">
-		<span class="text-slate-400 {sizeConfig[size].text}">
+	<div class="text-center">
+		<span
+			class="{sizeConfig[size].text} rounded-md bg-slate-600/30 px-1.5 py-0.5"
+			class:text-slate-200={isOnline}
+			class:text-slate-400={!isOnline}
+		>
 			{#if isOnline}
 				Online
 			{:else if lastSeen}

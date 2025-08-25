@@ -87,17 +87,13 @@
 			groupedMessages.length > 0 &&
 			(infiniteScrollEnabled || hasUserScrolled);
 
-		if (nearTop) {
-			console.log('[MessageList] Near top detected:', {
-				nearTop,
-				hasMoreMessages,
-				isLoadingOlder,
-				groupedMessagesLength: groupedMessages.length,
-				infiniteScrollEnabled,
-				hasUserScrolled,
-				shouldLoadOlder
-			});
-		}
+		// Debug logging can be removed in production
+		// if (nearTop) {
+		// 	console.log('[MessageList] Near top detected:', {
+		// 		nearTop, hasMoreMessages, isLoadingOlder, groupedMessagesLength: groupedMessages.length,
+		// 		infiniteScrollEnabled, hasUserScrolled, shouldLoadOlder
+		// 	});
+		// }
 
 		if (shouldLoadOlder) {
 			console.log('[MessageList] Triggering loadOlderMessages');
@@ -114,10 +110,11 @@
 		const messageItems = groupedMessages.filter((item) => item.type === 'message');
 		const oldestMessage = messageItems[0]?.data as Message;
 
-		console.log('[MessageList] loadOlderMessages called');
-		console.log('[MessageList] Total grouped messages:', groupedMessages.length);
-		console.log('[MessageList] Message items:', messageItems.length);
-		console.log('[MessageList] Oldest message:', oldestMessage?.id, oldestMessage?.timestamp);
+		// Debug logging can be removed in production
+		// console.log('[MessageList] loadOlderMessages called');
+		// console.log('[MessageList] Total grouped messages:', groupedMessages.length);
+		// console.log('[MessageList] Message items:', messageItems.length);
+		// console.log('[MessageList] Oldest message:', oldestMessage?.id, oldestMessage?.timestamp);
 
 		if (oldestMessage) {
 			// Dispatch Svelte event to parent component

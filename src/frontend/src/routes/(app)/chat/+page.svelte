@@ -310,12 +310,12 @@
 								<img
 									src={chat.avatarUrl || '/images/default-avatar.png'}
 									alt="Avatar for {chat.displayName}"
-									class="h-12 w-12 rounded-full border-2 border-slate-600 object-cover"
+									class="box-content h-12 w-12 rounded-full border-2 border-slate-600 object-cover"
 									loading="lazy"
 								/>
 								<!-- Online Status Indicator -->
 								{#if chat.otherUserProfile?.id}
-									<OnlineStatus userId={chat.otherUserProfile.id} size="sm" />
+									<OnlineStatus userId={chat.otherUserProfile.id} size="lg" />
 								{/if}
 							</div>
 
