@@ -186,7 +186,12 @@
 					// TODO: Fetch actual user names from user IDs
 					const newTypingUsers = typingUserIds.map((userId) => ({
 						userId,
-						userName: 'User' // Placeholder - should fetch actual names
+						userName:
+							otherParticipantProfile?.id === userId
+								? otherParticipantProfile.userType !== 'supplier'
+									? otherParticipantProfile.profile.fullName || 'User'
+									: otherParticipantProfile.profile.companyName || 'User'
+								: 'User' // Placeholder - should fetch actual names
 					}));
 
 					const wasEmpty = typingUsers.length === 0;
