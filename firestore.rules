@@ -2,8 +2,67 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    // Helper function to check for sign-in.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // --- Collections ---
+
+    // USERS: Users can read their own profile. Signed-in users can read public profiles of experts/suppliers.
+    match /users/{userId} {
+      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn() && (request.auth.uid == userId || resource.data.userType in ['expert', 'supplier']);
+    }
+
+    // CHATS: A user can read/write a chat document IF their UID is in its 'participants' array.
+    match /chats/{chatId} {
+      allow read, write: if isSignedIn() && request.auth.uid in resource.data.participants;
+    }
+
+    // MESSAGES (Subcollection): THIS IS THE CORRECTED RULE.
+    // The path is now explicit and un-nested.
+    // A user can read/write messages in a subcollection IF they are a participant of the parent chat document.
+    match /chats/{chatId}/messages/{messageId} {
+        allow read, write: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    // WORK & MATERIAL REQUESTS: Publicly readable, but only the owner can create/update.
+    match /workRequests/{requestId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.resource.data.customerId == request.auth.uid;
+    }
+
+    match /materialRequests/{requestId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.resource.data.customerId == request.auth.uid;
+    }
+
+    // CONTRACTS: Only the two parties involved can read/write.
+    match /contracts/{contractId} {
+      allow read, write: if isSignedIn() && (request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.expertSupplierId);
+    }
+
+    // PROJECTS: Only the participants involved can read/write.
+    match /projects/{projectId} {
+       allow read, write: if isSignedIn() && (
+         request.auth.uid == resource.data.customerId ||
+         (resource.data.workComponent != null && request.auth.uid == resource.data.workComponent.expertId) ||
+         (resource.data.materialComponent != null && request.auth.uid == resource.data.materialComponent.supplierId)
+       );
+    }
+
+    // PRESENCE: Users can read/write their own presence and read others' presence.
+    match /presence/{userId} {
+      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn();
+    }
+
+    // TYPING INDICATORS: Users can read/write typing indicators in chats they participate in.
+    match /chats/{chatId}/typing/{userId} {
+      allow write: if isSignedIn() && request.auth.uid == userId && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      allow read: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
     }
   }
 }

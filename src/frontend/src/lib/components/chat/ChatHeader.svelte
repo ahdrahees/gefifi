@@ -4,6 +4,9 @@
 	import { goto } from '$app/navigation';
 	import type { AuthUser } from '$lib/types';
 	import { authStore } from '$lib/stores/auth';
+	import OnlineStatus from './OnlineStatus.svelte';
+	import DropdownMenu from '../ui/DropdownMenu.svelte';
+	import MarqueeText from '../ui/MarqueeText.svelte';
 
 	export let isLoading: boolean = true;
 	export let chatPageTitle: string = 'Chat';
@@ -15,7 +18,7 @@
 
 	// Determine if we should show the contract button
 	$: hasRequest = workRequestId || materialRequestId;
-	$: contractButtonText = workRequestId ? 'Create Expert Contract' : 'Create Material Contract';
+	$: contractButtonText = 'Create Contract';
 
 	function handleBackClick() {
 		dispatch('navigateBack');
@@ -68,7 +71,7 @@
 
 <header class="sticky top-0 z-20 border-b border-slate-700/50 bg-slate-800/60 p-3 backdrop-blur-sm">
 	<div class="flex items-center justify-between">
-		<div class="flex min-w-0 items-center gap-3">
+		<div class="flex w-full min-w-0 items-center gap-3">
 			<button
 				on:click={handleBackClick}
 				class="flex-shrink-0 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
@@ -85,19 +88,23 @@
 			</button>
 
 			{#if isLoading}
-				<div class="h-10 w-10 flex-shrink-0 animate-pulse rounded-full bg-slate-700" />
+				<div class="h-10 w-10 flex-shrink-0 animate-pulse rounded-full bg-slate-700"></div>
 				<div class="min-w-0 flex-1 space-y-2">
-					<div class="h-4 w-32 animate-pulse rounded bg-slate-700" />
-					<div class="h-3 w-20 animate-pulse rounded bg-slate-700" />
+					<div class="h-4 w-32 animate-pulse rounded bg-slate-700"></div>
+					<div class="h-3 w-20 animate-pulse rounded bg-slate-700"></div>
 				</div>
 			{:else if otherParticipantProfile}
 				{@const typeInfo = getUserTypeDisplay(otherParticipantProfile.userType)}
-				<img
-					src={otherParticipantProfile.profile?.avatarUrl || '/images/default-avatar.png'}
-					alt="Avatar"
-					class="h-10 w-10 flex-shrink-0 rounded-full border-2 border-slate-600 object-cover"
-				/>
-				<div class="min-w-0 flex-1">
+				<!-- Avatar with Online Status -->
+				<div class="relative flex-shrink-0">
+					<img
+						src={otherParticipantProfile.profile?.avatarUrl || '/images/default-avatar.png'}
+						alt="Avatar"
+						class="box-content h-10 w-10 flex-shrink-0 rounded-full border-2 border-slate-600 object-cover"
+					/>
+					<OnlineStatus userId={otherParticipantProfile.id} size="md" />
+				</div>
+				<div class="w-full min-w-0 flex-1 space-y-1">
 					<div class="flex items-center gap-2">
 						<h2 class="truncate font-semibold text-slate-200">{chatPageTitle}</h2>
 						<span
@@ -106,53 +113,88 @@
 							{typeInfo.label}
 						</span>
 					</div>
-					<p class=" flex items-center truncate text-slate-400">
-						{otherParticipantProfile.profile?.expertise ||
-							otherParticipantProfile.profile?.category ||
-							'Available'}
-
-						{#if otherParticipantProfile.profile?.location}
-							<span class="ml-2 flex items-baseline"
-								>• <svg
-									class="mx-1 inline h-3 w-3"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle
-										cx="12"
-										cy="10"
-										r="3"
-									/></svg
-								>{otherParticipantProfile.profile?.location}
-							</span>
+					<div class="flex w-full items-center gap-3 truncate text-xs text-slate-400">
+						<OnlineStatus
+							userId={otherParticipantProfile.id}
+							showLastSeen={true}
+							disableDotIndicator
+							size="sm"
+						/>
+						{#if otherParticipantProfile.userType === 'expert' && otherParticipantProfile.profile.expertise}
+							<MarqueeText
+								text={otherParticipantProfile.profile.expertise}
+								maxWidth="120px"
+								responsiveMaxWidth="max-w-[80px] sm:max-w-[120px] lg:max-w-[150px] xl:max-w-[200px] 2xl:max-w-[300px]"
+							/>
+						{:else if otherParticipantProfile.userType === 'supplier' && otherParticipantProfile.profile.category}
+							<MarqueeText
+								text={otherParticipantProfile.profile.category}
+								responsiveMaxWidth="max-w-[80px] sm:max-w-[120px] lg:max-w-[150px] xl:max-w-[200px] 2xl:max-w-[300px]"
+							/>
 						{/if}
-					</p>
+						{#if otherParticipantProfile.profile?.location}
+							<MarqueeText
+								text="📍 {otherParticipantProfile.profile.location}"
+								responsiveMaxWidth="max-w-[80px] sm:max-w-[100px] lg:max-w-[125px] xl:max-w-[150px] 2xl:max-w-[200px]"
+							/>
+						{/if}
+					</div>
 				</div>
 			{/if}
 		</div>
 
-		<div class="flex items-center gap-2">
+		<div class="flex max-w-fit items-center gap-2">
 			{#if hasRequest}
-				<button
-					on:click={handleCreateContract}
-					class="flex-shrink-0 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
-					title="Create a formal contract for this {workRequestId
-						? 'work request'
-						: 'material request'}"
-				>
-					<svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
+				<DropdownMenu position="right" let:closeDropdown>
+					<svelte:fragment slot="trigger">
+						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+							/>
+						</svg>
+					</svelte:fragment>
+
+					<!-- Dropdown Menu Items -->
+					<button
+						type="button"
+						class="dropdown-menu-item"
+						on:click={() => {
+							handleCreateContract();
+							closeDropdown();
+						}}
+						title="Create a formal contract for this {workRequestId
+							? 'work request'
+							: 'material request'}"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
 							stroke-linecap="round"
 							stroke-linejoin="round"
-							stroke-width="2"
-							d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-						/>
-					</svg>
-					{contractButtonText}
-				</button>
+							class="lucide lucide-file-plus2-icon lucide-file-plus-2"
+							><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4" /><path
+								d="M14 2v4a2 2 0 0 0 2 2h4"
+							/><path d="M3 15h6" /><path d="M6 12v6" /></svg
+						>
+						{contractButtonText}
+					</button>
+
+					<!-- Future menu items can be added here -->
+					<!-- Example: -->
+					<!-- <div class="dropdown-menu-separator"></div> -->
+					<!-- <button type="button" class="dropdown-menu-item" on:click={() => { handleSomeAction(); closeDropdown(); }}>
+						<svg>...</svg>
+						Some Action
+					</button> -->
+				</DropdownMenu>
 			{/if}
 		</div>
 	</div>

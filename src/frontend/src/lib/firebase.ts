@@ -3,6 +3,7 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, type Auth } from 'firebase/auth';
 import { getFunctions, connectFunctionsEmulator, type Functions } from 'firebase/functions';
+import { getFirestore, connectFirestoreEmulator, type Firestore } from 'firebase/firestore';
 
 /**
  * Your web app's Firebase configuration.
@@ -31,9 +32,10 @@ if (!getApps().length) {
 }
 
 // --- Services ---
-// Get a reference to the Auth and Functions services.
+// Get a reference to the Auth, Functions, and Firestore services.
 const auth: Auth = getAuth(app);
 const functions: Functions = getFunctions(app, 'asia-south1');
+const db: Firestore = getFirestore(app);
 
 // --- Emulator Connection ---
 // This is the crucial part. It tells the Firebase SDK
@@ -42,10 +44,11 @@ const functions: Functions = getFunctions(app, 'asia-south1');
 if (import.meta.env.DEV) {
 	console.log('[Firebase] Development mode detected. Connecting to local emulators...');
 	try {
-		// Point the Auth and Functions SDKs to their local emulators
+		// Point the Auth, Functions, and Firestore SDKs to their local emulators
 		connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
 		connectFunctionsEmulator(functions, 'localhost', 5001);
-		console.log('[Firebase] Auth and Functions emulators connected successfully.');
+		connectFirestoreEmulator(db, 'localhost', 8080);
+		console.log('[Firebase] Auth, Functions, and Firestore emulators connected successfully.');
 	} catch (error) {
 		console.warn(
 			'[Firebase] Error connecting to emulators. This might happen on a hot reload and is usually safe to ignore.',
@@ -57,4 +60,4 @@ if (import.meta.env.DEV) {
 }
 
 // Export the initialized services for use in other components.
-export { app, auth, functions };
+export { app, auth, functions, db };
