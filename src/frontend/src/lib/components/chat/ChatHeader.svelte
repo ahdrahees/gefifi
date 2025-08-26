@@ -6,6 +6,7 @@
 	import { authStore } from '$lib/stores/auth';
 	import OnlineStatus from './OnlineStatus.svelte';
 	import DropdownMenu from '../ui/DropdownMenu.svelte';
+	import MarqueeText from '../ui/MarqueeText.svelte';
 
 	export let isLoading: boolean = true;
 	export let chatPageTitle: string = 'Chat';
@@ -120,21 +121,22 @@
 							size="sm"
 						/>
 						{#if otherParticipantProfile.userType === 'expert' && otherParticipantProfile.profile.expertise}
-							<span
-								class="max-w-[80px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5 sm:max-w-[120px] lg:max-w-[150px] xl:max-w-[200px] 2xl:max-w-[300px]"
-								>{otherParticipantProfile.profile.expertise}</span
-							>
+							<MarqueeText
+								text={otherParticipantProfile.profile.expertise}
+								maxWidth="120px"
+								responsiveMaxWidth="max-w-[80px] sm:max-w-[120px] lg:max-w-[150px] xl:max-w-[200px] 2xl:max-w-[300px]"
+							/>
 						{:else if otherParticipantProfile.userType === 'supplier' && otherParticipantProfile.profile.category}
-							<span
-								class="max-w-[80px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5 sm:max-w-[120px] lg:max-w-[150px] xl:max-w-[200px] 2xl:max-w-[300px]"
-								>{otherParticipantProfile.profile.category}</span
-							>
+							<MarqueeText
+								text={otherParticipantProfile.profile.category}
+								responsiveMaxWidth="max-w-[80px] sm:max-w-[120px] lg:max-w-[150px] xl:max-w-[200px] 2xl:max-w-[300px]"
+							/>
 						{/if}
 						{#if otherParticipantProfile.profile?.location}
-							<span
-								class="max-w-[80px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5 sm:max-w-[100px] lg:max-w-[125px] xl:max-w-[150px] 2xl:max-w-[200px]"
-								>📍 {otherParticipantProfile.profile.location}</span
-							>
+							<MarqueeText
+								text="📍 {otherParticipantProfile.profile.location}"
+								responsiveMaxWidth="max-w-[80px] sm:max-w-[100px] lg:max-w-[125px] xl:max-w-[150px] 2xl:max-w-[200px]"
+							/>
 						{/if}
 					</div>
 				</div>
