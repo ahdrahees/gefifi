@@ -11,6 +11,8 @@ node_modules
 .zed
 .cursor
 backend/dist
+.kiro
+.vscode
 
 # OS
 .DS_Store
