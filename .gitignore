@@ -42,3 +42,4 @@ firestore-migration
 
 # Firebase emulator
 .emulator-persisted-data
+*.log
