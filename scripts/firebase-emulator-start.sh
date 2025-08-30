@@ -1,12 +1,19 @@
-# firebase emulators:start --project gefifi-demo-app --only functions,firestore,storage
+#!/bin/bash
 
-# firebase emulators:start --only functions,auth --project gefifi-demo-app
+# Firebase Emulator Start Script
+# Starts Firebase emulators with data persistence for local development
 
-# GOO
+echo "Starting Firebase Emulators..."
 
-# Start the emulators without data persistence
-# GOOGLE_APPLICATION_CREDENTIALS="${PWD}/functions/gcp-credentials.json" firebase emulators:start --only auth,functions,firestore,storage
+# Set Google Application Credentials
+export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/functions/gcp-credentials.json"
 
+# Start emulators with data persistence
+# - Imports existing data on startup
+# - Exports data on shutdown to preserve state
+firebase emulators:start \
+  --only auth,functions,firestore,storage \
+  --export-on-exit .emulator-persisted-data \
+  --import .emulator-persisted-data
 
-# To persist data in the Firebase emulators, you can use the following command:
-GOOGLE_APPLICATION_CREDENTIALS="${PWD}/functions/gcp-credentials.json" firebase emulators:start --only auth,functions,firestore,storage --export-on-exit .emulator-persisted-data --import .emulator-persisted-data
+echo "Firebase Emulators stopped"

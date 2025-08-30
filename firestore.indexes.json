@@ -1,0 +1,20 @@
+{
+	"// Note": "Firebase CLI may show 'delete index' warning due to format differences - always answer 'No'",
+	"indexes": [
+		{
+			"collectionGroup": "chats",
+			"fields": [
+				{
+					"fieldPath": "participants",
+					"arrayConfig": "CONTAINS"
+				},
+				{
+					"fieldPath": "updatedAt",
+					"order": "DESCENDING"
+				}
+			],
+			"density": "SPARSE_ALL"
+		}
+	],
+	"fieldOverrides": []
+}
