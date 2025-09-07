@@ -64,14 +64,14 @@ export type WorkRequest = {
 	timeline?: string;
 	materialsSuggested?: string;
 	status:
-		| 'open'
-		| 'in_discussion'
-		| 'awaiting_quotes'
-		| 'contracted'
-		| 'in_progress'
-		| 'completed'
-		| 'cancelled'
-		| 'closed';
+	| 'open'
+	| 'in_discussion'
+	| 'awaiting_quotes'
+	| 'contracted'
+	| 'in_progress'
+	| 'completed'
+	| 'cancelled'
+	| 'closed';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
@@ -133,6 +133,11 @@ export type Chat = {
 		content: string;
 		timestamp: string;
 		senderId: string;
+		images?: string[];
+		audioType?: 'voice';
+		contractId?: string;
+		ExpertRequestId?: string;
+		MaterialRequestId?: string;
 	};
 };
 
@@ -150,6 +155,10 @@ export type Message = {
 	audioUrl?: string;
 	audioDuration?: number;
 	signedAudioUrl?: string; // Temporary signed URL for playback
+	// Entity reference fields for clickable messages
+	contractId?: string; // Reference to contract for navigation
+	ExpertRequestId?: string; // Reference to work request for navigation (preparing for future migration)
+	MaterialRequestId?: string; // Reference to material request for navigation
 };
 
 /**

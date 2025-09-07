@@ -1,6 +1,7 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/MessageList.svelte -->
 <script lang="ts">
 	import { tick, createEventDispatcher } from 'svelte';
+	import { goto } from '$app/navigation';
 	import type { AuthUser, Message } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
@@ -12,13 +13,14 @@
 	import AudioMessageView from '$lib/components/chat/AudioMessageView.svelte';
 	import DateSeparator from '$lib/components/chat/DateSeparator.svelte';
 	import TypingIndicator from '$lib/components/chat/TypingIndicator.svelte';
+	import SystemMessage from '$lib/components/chat/SystemMessage.svelte';
 
 	// --- PROPS ---
 	export let isLoading: boolean = true;
 	export let errorMessage: string = '';
 	export let groupedMessages: Array<{ type: 'date' | 'message'; id: string; data: any }> = [];
 	export let currentUser: AuthUser | null = null;
-	export let chatId: string = '';
+	export const chatId: string = '';
 	export let isLoadingOlder: boolean = false;
 	export let hasMoreMessages: boolean = true;
 	export let infiniteScrollEnabled: boolean = true;
@@ -131,7 +133,7 @@
 	const parseAndSanitize = (content: string): string => {
 		if (typeof window !== 'undefined') {
 			// Ensure links open in a new tab and are secure
-			const rawHtml = marked.parse(content, { gfm: true, breaks: true });
+			const rawHtml = marked.parse(content, { gfm: true, breaks: true }) as string;
 			const sanitized = DOMPurify.sanitize(rawHtml, { ADD_ATTR: ['target'] });
 			// Post-process to add target="_blank" to all links
 			const doc = new DOMParser().parseFromString(sanitized, 'text/html');
@@ -142,6 +144,15 @@
 			return doc.body.innerHTML;
 		}
 		return content; // Fallback for SSR (though unlikely to be rendered)
+	};
+
+	const handleUserMessageClick = (message: Message) => {
+		// Only handle clicks for messages with entity references
+		if (message.ExpertRequestId) {
+			goto(`/my-requests/${message.ExpertRequestId}`);
+		} else if (message.MaterialRequestId) {
+			goto(`/my-requests/${message.MaterialRequestId}`);
+		}
 	};
 </script>
 
@@ -191,29 +202,7 @@
 						{@const message = item.data as Message}
 						<!-- System Message -->
 						{#if message.senderId === 'system'}
-							<div class="flex items-center justify-center py-2">
-								<div
-									class="flex items-center justify-center gap-2 rounded-full bg-slate-700/50 px-4 py-2"
-								>
-									<svg
-										class="h-4 w-4 text-slate-400"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-										/>
-									</svg>
-
-									<span class="text-[11px] text-slate-400 sm:text-xs"
-										>{@html parseAndSanitize(message.content)}</span
-									>
-								</div>
-							</div>
+							<SystemMessage {message} />
 						{:else}
 							<!-- User Message -->
 							<div
@@ -221,45 +210,120 @@
 								class:justify-end={message.senderId === currentUser?.id}
 								class:justify-start={message.senderId !== currentUser?.id}
 							>
-								<div
-									class="max-w-md rounded-xl px-3 py-2 shadow-md"
-									class:rounded-br-none={message.senderId === currentUser?.id}
-									class:bg-emerald-600={message.senderId === currentUser?.id}
-									class:text-white={message.senderId === currentUser?.id}
-									class:rounded-bl-none={message.senderId !== currentUser?.id}
-									class:bg-slate-700={message.senderId !== currentUser?.id}
-									class:text-slate-100={message.senderId !== currentUser?.id}
-								>
-									{#if message.audioType === 'voice'}
-										<AudioMessageView {message} />
-									{:else}
-										{#if message.images && message.images.length > 0}
-											<div class="mb-2 space-y-2">
-												{#each message.images as imageSrc (imageSrc)}
-													<img
-														src={imageSrc}
-														alt="Chat attachment"
-														class="max-w-xs rounded-lg border border-slate-600 object-contain"
-													/>
-												{/each}
-											</div>
-										{/if}
-										{#if message.content && message.content.trim()}
-											<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
-												{@html parseAndSanitize(message.content)}
-											</div>
-										{/if}
-									{/if}
+								{#if message.ExpertRequestId || message.MaterialRequestId}
+									<!-- User Message with Clickable Action -->
 									<div
-										class="mt-1 text-xs"
-										class:text-right={message.senderId === currentUser?.id}
-										class:text-emerald-200={message.senderId === currentUser?.id}
-										class:text-left={message.senderId !== currentUser?.id}
-										class:text-slate-400={message.senderId !== currentUser?.id}
+										class="max-w-md rounded-xl px-3 py-2 shadow-md"
+										class:rounded-br-none={message.senderId === currentUser?.id}
+										class:bg-emerald-600={message.senderId === currentUser?.id}
+										class:text-white={message.senderId === currentUser?.id}
+										class:rounded-bl-none={message.senderId !== currentUser?.id}
+										class:bg-slate-700={message.senderId !== currentUser?.id}
+										class:text-slate-100={message.senderId !== currentUser?.id}
 									>
-										{formatTimestamp(message.timestamp)}
+										<!-- Message Content -->
+										{#if message.audioType === 'voice'}
+											<AudioMessageView {message} />
+										{:else}
+											{#if message.images && message.images.length > 0}
+												<div class="mb-2 space-y-2">
+													{#each message.images as imageSrc (imageSrc)}
+														<img
+															src={imageSrc}
+															alt="Chat attachment"
+															class="max-w-xs rounded-lg border border-slate-600 object-contain"
+														/>
+													{/each}
+												</div>
+											{/if}
+											{#if message.content && message.content.trim()}
+												<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
+													{@html parseAndSanitize(message.content)}
+												</div>
+											{/if}
+										{/if}
+
+										<!-- Timestamp and Action Button Row -->
+										<div
+											class="mt-2 flex items-center justify-between gap-2"
+											class:flex-row-reverse={message.senderId === currentUser?.id}
+										>
+											<!-- Timestamp -->
+											<div
+												class="text-xs"
+												class:text-emerald-200={message.senderId === currentUser?.id}
+												class:text-slate-400={message.senderId !== currentUser?.id}
+											>
+												{formatTimestamp(message.timestamp)}
+											</div>
+
+											<!-- View Request Button -->
+											<button
+												class="view-request-button group flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 shadow-lg transition-all duration-200 hover:scale-105 hover:border-emerald-400/50 hover:bg-slate-700 hover:shadow-lg hover:shadow-emerald-500/20"
+												aria-label="View request details"
+												on:click={() => handleUserMessageClick(message)}
+											>
+												<span>View request</span>
+												<svg
+													class="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+												>
+													<path
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														stroke-width="2"
+														d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M14 4h6m0 0v6m0-6L10 14"
+													/>
+												</svg>
+											</button>
+										</div>
 									</div>
-								</div>
+								{:else}
+									<!-- Non-clickable User Message -->
+									<div
+										class="max-w-md rounded-xl px-3 py-2 shadow-md"
+										class:rounded-br-none={message.senderId === currentUser?.id}
+										class:bg-emerald-600={message.senderId === currentUser?.id}
+										class:text-white={message.senderId === currentUser?.id}
+										class:rounded-bl-none={message.senderId !== currentUser?.id}
+										class:bg-slate-700={message.senderId !== currentUser?.id}
+										class:text-slate-100={message.senderId !== currentUser?.id}
+									>
+										<!-- Message Content -->
+										{#if message.audioType === 'voice'}
+											<AudioMessageView {message} />
+										{:else}
+											{#if message.images && message.images.length > 0}
+												<div class="mb-2 space-y-2">
+													{#each message.images as imageSrc (imageSrc)}
+														<img
+															src={imageSrc}
+															alt="Chat attachment"
+															class="max-w-xs rounded-lg border border-slate-600 object-contain"
+														/>
+													{/each}
+												</div>
+											{/if}
+											{#if message.content && message.content.trim()}
+												<div class="prose prose-sm prose-p:my-1 max-w-none text-inherit">
+													{@html parseAndSanitize(message.content)}
+												</div>
+											{/if}
+										{/if}
+
+										<div
+											class="mt-1 text-xs"
+											class:text-right={message.senderId === currentUser?.id}
+											class:text-emerald-200={message.senderId === currentUser?.id}
+											class:text-left={message.senderId !== currentUser?.id}
+											class:text-slate-400={message.senderId !== currentUser?.id}
+										>
+											{formatTimestamp(message.timestamp)}
+										</div>
+									</div>
+								{/if}
 							</div>
 						{/if}
 					{/if}
@@ -324,5 +388,11 @@
 		scrollbar-width: thin;
 		scrollbar-color: rgba(16, 185, 129, 0.6) rgba(30, 41, 59, 0.6);
 		color-scheme: dark;
+	}
+
+	/* View Request Button Hover Effects */
+	.view-request-button:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
 	}
 </style>

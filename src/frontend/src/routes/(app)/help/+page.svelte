@@ -4,16 +4,8 @@
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { db } from '$lib/firebase';
 	import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-
-	// Types for help content
-	type HelpSection = {
-		id: string;
-		title: string;
-		content: string;
-		userTypes: ('customer' | 'expert' | 'supplier')[];
-		links?: { text: string; url: string }[];
-		expanded: boolean;
-	};
+	import { helpContentMap, type HelpSection } from '$lib/components/help/HelpContent';
+	import HelpSectionComponent from '$lib/components/help/HelpSection.svelte';
 
 	// State
 	let currentUser: AuthUser | null = null;
@@ -35,756 +27,12 @@
 		currentUser = auth.user;
 	});
 
-	// Help content with internationalization structure
-	const helpContent: Record<string, { sections: HelpSection[] }> = {
-		en: {
-			sections: [
-				// CUSTOMER HELP SECTIONS
-				{
-					id: 'customer-getting-started',
-					title: 'Getting Started as a Customer',
-					content: `Welcome to GEFIFI! As a customer, you can post work requests to find skilled experts and material requests to get quotes from suppliers.
-
-**Step 1: Complete your profile**
-Add your name, location, and contact details. Upload a profile photo for better trust.
-
-**Step 2: Post your first request**
-Choose between Work Request (for hiring experts) or Material Request (for buying materials). Fill in detailed requirements and specifications.
-
-**Step 3: Review interested professionals**
-Experts and suppliers will express interest in your requests. Review their profiles, experience, and ratings.
-
-**Step 4: Create contracts**
-Formalize agreements with selected professionals. Set clear terms, timelines, and payment schedules.
-
-**Step 5: Track your projects**
-Monitor progress through our project management system. Communicate with professionals via chat.`,
-					userTypes: ['customer'],
-					links: [
-						{ text: 'Create New Request', url: '/customer/create-request' },
-						{ text: 'View My Requests', url: '/my-requests' },
-						{ text: 'Edit Profile', url: '/profile' }
-					],
-					expanded: false
-				},
-				{
-					id: 'customer-work-requests',
-					title: 'How to Post a Work Request',
-					content: `Work requests help you find skilled experts like plumbers, electricians, masons, and contractors for your construction projects.
-
-**Step-by-step process:**
-
-**1. Navigate to Create Request**
-Go to "Create Request" and select "Work Request". You'll see the work request creation form.
-
-**2. Fill in project details:**
-- **Title**: Brief summary (e.g., "Bathroom Renovation", "Kitchen Remodeling")
-- **Category**: Select from 11+ categories (Plumbing, Electrical, Masonry, etc.)
-- **Description**: Detailed project requirements and specifications
-- **Location**: Where the work will be performed
-- **Expected Cost**: Your budget estimate (optional but helpful)
-- **Timeline**: When you need the work completed
-- **Materials Suggested**: Any specific material requirements
-
-**3. Upload images**
-Add photos of the work area or reference images. Supported formats: JPEG, PNG, GIF, WebP. Maximum 10 images per request, each up to 10MB.
-
-**4. Submit your request**
-Review all details before submitting. Your request will be visible to experts in your area.
-
-**After posting:**
-Experts can express interest in your project. You can invite specific experts you find. Review interested experts' profiles and start conversations through chat.`,
-					userTypes: ['customer'],
-					links: [
-						{ text: 'Create Work Request', url: '/customer/create-work-request' },
-						{ text: 'Browse Work Requests', url: '/work-requests' },
-						{ text: 'Find Experts', url: '/find-professionals?type=expert' }
-					],
-					expanded: false
-				},
-				{
-					id: 'customer-material-requests',
-					title: 'How to Post a Material Request',
-					content: `Material requests help you get quotes from suppliers for construction materials and supplies.
-
-**Step-by-step process:**
-
-**1. Navigate to Create Request**
-Go to "Create Request" and select "Material Request". Access the material request creation form.
-
-**2. Fill in material details:**
-- **Title**: Brief description (e.g., "Cement and Steel for Foundation")
-- **Description**: Detailed material requirements and specifications
-- **Delivery Location**: Where materials should be delivered
-- **Delivery Date**: When you need the materials (optional)
-- **Link to Work Request**: Connect to existing project (optional)
-
-**3. Add material items:**
-For each material you need:
-- **Item name**: (e.g., "Cement bags", "Steel rods", "Paint buckets")
-- **Quantity**: (e.g., "50 bags", "2 tons", "500 ft")
-- **Notes/specifications**: (e.g., "Grade 43", "10mm diameter", "Weather resistant")
-
-**4. Upload documents**
-Add specifications, drawings, or reference files. Supported file types: PDF, Word, Excel, Images, CAD files (DWG, DXF). Maximum 25MB per file, up to 20 files per request.
-
-**5. Submit your request**
-Review all details and attachments. Suppliers will receive your request and can provide quotes.`,
-					userTypes: ['customer'],
-					links: [
-						{ text: 'Create Material Request', url: '/customer/create-material-request' },
-						{ text: 'Browse Material Requests', url: '/material-requests' },
-						{ text: 'Find Suppliers', url: '/find-professionals?type=supplier' }
-					],
-					expanded: false
-				},
-
-				// EXPERT HELP SECTIONS
-				{
-					id: 'expert-getting-started',
-					title: 'Getting Started as an Expert',
-					content: `Welcome to GEFIFI! As an expert, you can find construction projects and connect with customers who need your skills.
-
-**First steps:**
-
-**1. Complete your profile**
-Add your expertise, experience, and location. Choose from categories like Plumbing, Electrical, Masonry, Carpentry, Interior Design, General Construction, and more.
-
-**2. Browse work requests**
-Find projects that match your skills. Filter by location, category, and budget.
-
-**3. Express interest**
-Show customers you're available for their projects. Send personalized messages explaining your relevant experience.
-
-**4. Chat with customers**
-Discuss project details and requirements. Answer questions and provide professional advice.
-
-**5. Create contracts**
-Formalize agreements for selected projects. Set clear terms, timelines, and payment schedules.`,
-					userTypes: ['expert'],
-					links: [
-						{ text: 'Browse Work Requests', url: '/work-requests' },
-						{ text: 'Edit Profile', url: '/profile' },
-						{ text: 'My Projects', url: '/my-projects' }
-					],
-					expanded: false
-				},
-				{
-					id: 'expert-find-work',
-					title: 'Finding Work Requests',
-					content: `Work requests are posted by customers looking for skilled experts. Here's how to find relevant projects:
-
-**Browsing work requests:**
-1. Go to "Work Requests" to see all available projects
-2. **Filter by status**: Focus on "Open" requests
-3. **Search by keywords**: Find projects matching your expertise
-4. **Check location**: Look for projects in your service area
-5. **Review project details**: Understand scope, timeline, and budget
-
-**Work request statuses:**
-- **Open**: Available for expressions of interest
-- **In Discussion**: Customer is talking with interested experts
-- **Awaiting Quotes**: Customer is collecting quotes
-- **Contracted**: Project has been assigned
-- **In Progress**: Work is being performed
-- **Completed**: Project finished
-
-**What to look for:**
-- **Clear requirements**: Well-defined project scope
-- **Reasonable timeline**: Achievable completion dates
-- **Budget alignment**: Projects within your pricing range
-- **Customer profile**: Complete customer information`,
-					userTypes: ['expert'],
-					links: [
-						{ text: 'Browse Work Requests', url: '/work-requests' },
-						{ text: 'Browse by Category', url: '/work-requests?category=plumbing' }
-					],
-					expanded: false
-				},
-				{
-					id: 'expert-express-interest',
-					title: 'Expressing Interest in Projects',
-					content: `When you find a suitable work request, you can express interest to let the customer know you're available.
-
-**How to express interest:**
-1. **From work request details**: Click "Express Interest" button
-2. **Add a personalized message**: Explain your relevant experience
-3. **Include your approach**: Brief description of how you'd handle the project
-4. **Mention timeline**: When you could start and complete the work
-5. **Submit**: Customer will see your interest and can contact you
-
-**Tips for effective interest messages:**
-- **Be specific**: Reference details from the project description
-- **Show expertise**: Mention relevant experience or similar projects
-- **Be professional**: Use clear, respectful communication
-- **Include questions**: Show you're thinking about project requirements
-- **Mention availability**: When you could start the work
-
-**After expressing interest:**
-Customer can see your profile and interest message. You may receive a chat invitation from the customer. Customer might invite you to create a contract.`,
-					userTypes: ['expert'],
-					links: [
-						{ text: 'Browse Work Requests', url: '/work-requests' },
-						{ text: 'My Chats', url: '/chat' }
-					],
-					expanded: false
-				},
-
-				// SUPPLIER HELP SECTIONS
-				{
-					id: 'supplier-getting-started',
-					title: 'Getting Started as a Supplier',
-					content: `Welcome to GEFIFI! As a supplier, you can provide construction materials and supplies to customers and contractors.
-
-**First steps:**
-
-**1. Complete your profile**
-Add company name, material categories, and location. Choose from categories like Cement & Steel, Paints & Finishes, Electrical Supplies, Plumbing Materials, Tools & Equipment, and more.
-
-**2. Browse material requests**
-Find customers needing your products. Filter by material type, location, and delivery requirements.
-
-**3. Express interest**
-Show customers you can fulfill their requirements. Provide detailed quotes with competitive pricing.
-
-**4. Provide quotes**
-Offer competitive pricing and delivery terms. Include quality information and certifications.
-
-**5. Create contracts**
-Formalize supply agreements. Set clear delivery terms, payment schedules, and quality standards.`,
-					userTypes: ['supplier'],
-					links: [
-						{ text: 'Browse Material Requests', url: '/material-requests' },
-						{ text: 'Edit Profile', url: '/profile' },
-						{ text: 'My Projects', url: '/my-projects' }
-					],
-					expanded: false
-				},
-
-				// ADDITIONAL CUSTOMER SECTIONS
-				{
-					id: 'customer-contract-conditions',
-					title: 'When Can You Create Contracts and What Are the Conditions?',
-					content: `Understanding when and how you can create contracts is essential for successful project management.
-
-**When can customers create contracts?**
-- After experts or suppliers express interest in your requests
-- When you want to hire someone who showed interest in your project
-- Only with professionals who are in your request's interested or invited lists
-- For both work requests (expert contracts) and material requests (material contracts)
-
-**Required conditions for contract creation:**
-- **Authorization**: You must be the customer who posted the request
-- **Professional interest**: The expert/supplier must have expressed interest or been invited
-- **Request status**: Your request should be in an appropriate status (typically 'open' or 'in_discussion')
-- **Active participants**: Both you and the professional must have active accounts
-
-**Contract creation process:**
-1. **Navigate to interested professionals**: Go to your request details page
-2. **Review interested parties**: Check the list of experts/suppliers who expressed interest
-3. **Select a professional**: Click "Create Contract" next to their profile
-4. **Fill contract details**: Complete all required fields including work scope, timeline, and payment terms
-5. **Submit for signatures**: Both parties must sign to activate the contract
-
-**Two types of contracts:**
-- **Expert Contracts**: For hiring skilled workers (plumbers, electricians, contractors)
-- **Material Contracts**: For purchasing materials and supplies from suppliers
-
-**Contract authorization rules:**
-- Only the customer who posted the request can initiate contract creation
-- The professional must be in the interested or invited list for that specific request
-- Both parties must be verified users with complete profiles
-- The request must not already have an active contract with that professional`,
-					userTypes: ['customer'],
-					links: [
-						{ text: 'View My Requests', url: '/my-requests' },
-						{ text: 'Create New Request', url: '/customer/create-request' },
-						{ text: 'My Contracts', url: '/contracts' }
-					],
-					expanded: false
-				},
-				{
-					id: 'how-contracts-work',
-					title: 'How Contracts Work - Two Contract Types',
-					content: `GEFIFI supports two types of contracts, each designed for specific business relationships in the construction industry.
-
-**Expert Contracts (for hiring skilled workers):**
-- **Purpose**: Hire experts like plumbers, electricians, masons, contractors
-- **Scope**: Detailed work specifications, labor requirements, and service delivery
-- **Timeline**: Project start date, milestones, and completion schedule
-- **Payment**: Labor costs, advance payments, and completion-based payments
-- **Warranty**: Service warranty periods and quality guarantees
-- **Deliverables**: Completed work, quality standards, and final inspection
-
-**Material Contracts (for purchasing supplies):**
-- **Purpose**: Purchase construction materials and supplies from suppliers
-- **Scope**: Material specifications, quantities, quality grades, and brands
-- **Timeline**: Delivery schedules, installation timelines, and availability
-- **Payment**: Material costs, delivery charges, and payment terms
-- **Quality**: Material certifications, quality standards, and return policies
-- **Logistics**: Delivery location, handling requirements, and storage
-
-**Contract workflow for both types:**
-1. **Draft Status**: Contract is being created or edited
-2. **Awaiting Signatures**: Both parties need to sign
-3. **Signed**: Contract is active and work/delivery can begin
-4. **In Progress**: Work is being performed or materials are being delivered
-5. **Completed**: Project finished successfully
-6. **Other statuses**: Disputed, cancelled, or terminated as needed
-
-**Key differences:**
-- **Expert contracts** focus on labor, skills, and service delivery
-- **Material contracts** focus on products, quantities, and supply logistics
-- **Payment terms** vary based on industry standards for each type
-- **Warranty periods** differ between services and materials
-- **Completion criteria** are defined differently for work vs. supply contracts`,
-					userTypes: ['customer', 'expert', 'supplier'],
-					links: [
-						{ text: 'View My Contracts', url: '/contracts' },
-						{ text: 'Create Work Request', url: '/customer/create-work-request' },
-						{ text: 'Create Material Request', url: '/customer/create-material-request' }
-					],
-					expanded: false
-				},
-				{
-					id: 'contract-comments-system',
-					title: 'How to Comment on Contracts',
-					content: `The contract comment system enables communication and collaboration throughout the contract lifecycle.
-
-**Three types of contract comments:**
-
-**1. General Comments**
-- **Purpose**: Regular communication about contract progress
-- **Who can add**: Both customer and expert/supplier
-- **When to use**: Project updates, clarifications, general discussions
-- **File attachments**: Yes, you can attach relevant files
-
-**2. Revision Request Comments**
-- **Purpose**: Request changes to contract terms
-- **Who can add**: Both parties (customer and expert/supplier)
-- **When to use**: When contract terms need modification
-- **Effect**: Changes contract status to 'revision_requested'
-- **File attachments**: Yes, include supporting documents
-
-**3. Signature Comments**
-- **Purpose**: Add comments when signing the contract
-- **Who can add**: The person signing the contract
-- **When to use**: During the digital signing process
-- **Required**: Yes, signature comments are mandatory
-- **File attachments**: Yes, you can attach documents with your signature
-
-**How to add comments:**
-1. **Navigate to contract**: Go to the contract details page
-2. **Scroll to comments section**: Find the comments area at the bottom
-3. **Choose comment type**: Select general, revision request, or signature comment
-4. **Write your comment**: Add detailed, clear communication
-5. **Attach files (optional)**: Add supporting documents if needed
-6. **Submit**: Your comment will be visible to both parties
-
-**Comment guidelines:**
-- **Be specific**: Clearly explain your points or requests
-- **Stay professional**: Maintain courteous and respectful communication
-- **Include details**: Provide sufficient context for your comments
-- **Attach evidence**: Include relevant files, photos, or documents
-- **Respond promptly**: Address comments and questions in a timely manner
-
-**File attachments in comments:**
-- **Supported formats**: PDF, Word, Excel, images, CAD files
-- **File size limit**: 25MB per file
-- **Multiple files**: You can attach multiple files to a single comment
-- **Security**: Files are securely stored and accessible only to contract parties`,
-					userTypes: ['customer', 'expert', 'supplier'],
-					links: [{ text: 'View My Contracts', url: '/contracts' }],
-					expanded: false
-				},
-				{
-					id: 'contract-editing-process',
-					title: 'How to Edit Contracts - Revision Process',
-					content: `Contract editing follows a structured revision process to ensure both parties agree to changes.
-
-**Contract editing process:**
-
-**Step 1: Request Revision**
-- **Who can request**: Both customer and expert/supplier
-- **When possible**: During 'draft' or 'awaiting_signatures' status
-- **How to request**: Add a 'revision_request' type comment
-- **Include details**: Explain what needs to be changed and why
-- **Attach files**: Include supporting documents if needed
-- **Status change**: Contract status changes to 'revision_requested'
-
-**Step 2: Edit Contract (Customer Only)**
-- **Who can edit**: Currently only the customer (contract creator)
-- **When possible**: Only when contract status is 'revision_requested'
-- **Access editing**: Click "Edit Contract" button on contract details page
-- **Make changes**: Update contract terms, timeline, payment, or attachments
-- **Save changes**: Contract returns to 'draft' status after editing
-
-**Step 3: Review and Re-sign**
-- **Both parties review**: Check the updated contract terms
-- **Sign again**: Both parties must sign the revised contract
-- **Status progression**: 'draft' → 'awaiting_signatures' → 'signed'
-
-**Important editing rules:**
-- **Only revision_requested contracts** can be edited
-- **Customer authorization**: Currently only customers can edit contracts
-- **Complete re-signing required**: All previous signatures are cleared after editing
-- **Status reset**: Edited contracts return to draft status
-- **Audit trail**: All changes and comments are preserved
-
-**What can be edited:**
-- **Work details**: Scope of work or material specifications
-- **Financial terms**: Total amount, payment terms, advance amount
-- **Timeline**: Start date, completion date, milestones
-- **Terms and conditions**: Legal terms, warranty, cancellation policy
-- **Attachments**: Add or remove contract documents
-
-**What cannot be edited:**
-- **Contract parties**: Customer and expert/supplier cannot be changed
-- **Request linkage**: Cannot change which request the contract is linked to
-- **Contract type**: Cannot change between expert and material contract
-- **Contract ID**: Unique identifier remains the same
-
-**Best practices for contract editing:**
-- **Clear communication**: Explain revision requests thoroughly
-- **Prompt responses**: Address revision requests quickly
-- **Document changes**: Keep records of what was changed and why
-- **Mutual agreement**: Ensure both parties understand and agree to changes`,
-					userTypes: ['customer', 'expert', 'supplier'],
-					links: [{ text: 'View My Contracts', url: '/contracts' }],
-					expanded: false
-				},
-				{
-					id: 'request-editing-guide',
-					title: 'How to Edit Work and Material Requests',
-					content: `You can edit your requests to update details, but only under specific conditions.
-
-**When can you edit requests?**
-- **Status requirement**: Only requests with 'open' status can be edited
-- **Owner authorization**: Only the customer who created the request can edit
-- **Account verification**: You must be logged in as a customer
-- **No active contracts**: Requests with signed contracts typically cannot be edited
-
-**What can be edited in Work Requests:**
-- **Basic details**: Title, description, location
-- **Project specifications**: Category, timeline, expected cost
-- **Materials**: Suggested materials and requirements
-- **Images**: Add new images or remove existing ones (up to 10 images)
-- **Status**: Change request status if needed
-
-**What can be edited in Material Requests:**
-- **Basic details**: Title, description, delivery location, delivery date
-- **Material items**: Add, remove, or modify item specifications
-- **Item details**: Item names, quantities, notes, and specifications
-- **Attachments**: Add new documents or remove existing ones
-- **Linked requests**: Connect to or disconnect from work requests
-
-**How to edit requests:**
-1. **Go to My Requests**: Navigate to your requests list
-2. **Select request**: Click on the request you want to edit
-3. **Check status**: Ensure the request status is 'open'
-4. **Click Edit**: Use the "Edit Request" button
-5. **Make changes**: Update the necessary fields
-6. **Handle files**: Add new files or remove existing ones
-7. **Save changes**: Submit your updates
-
-**File handling during editing:**
-- **Work Requests**: Can update images (JPEG, PNG, GIF, WebP)
-- **Material Requests**: Can update documents (PDF, Word, Excel, CAD files)
-- **File limits**: Same as creation (10MB for images, 25MB for documents)
-- **Existing files**: Can be removed during editing
-- **New files**: Can be added during the editing process
-
-**Editing restrictions:**
-- **Contracted requests**: Cannot edit requests that have active contracts
-- **Status limitations**: Only 'open' status requests can be edited
-- **Owner only**: Only the customer who created the request can edit
-- **Professional interest**: Editing may affect interested professionals
-
-**Impact of editing on interested professionals:**
-- **Existing interest**: Professionals who already expressed interest remain interested
-- **Notifications**: Interested professionals may be notified of changes
-- **Chat continuity**: Existing chats and conversations continue
-- **Contract validity**: Significant changes may require contract updates`,
-					userTypes: ['customer'],
-					links: [
-						{ text: 'My Requests', url: '/my-requests' },
-						{ text: 'Create New Request', url: '/customer/create-request' }
-					],
-					expanded: false
-				},
-
-				// ADDITIONAL EXPERT SECTIONS
-				{
-					id: 'expert-contract-perspective',
-					title: 'Creating Contracts from Expert Perspective',
-					content: `As an expert, you can also initiate contract creation after expressing interest in work requests.
-
-**When can experts create contracts?**
-- After expressing interest in a customer's work request
-- When invited by a customer to their work request
-- Only for work requests where you're in the interested or invited list
-- When the work request status allows contract creation
-
-**Expert contract creation process:**
-1. **Express interest first**: Show interest in relevant work requests
-2. **Wait for customer response**: Customer may contact you via chat
-3. **Discuss project details**: Clarify requirements, timeline, and expectations
-4. **Initiate contract**: You can also create the contract if customer agrees
-5. **Fill contract details**: Add your professional terms and conditions
-6. **Submit for signatures**: Both parties must sign to activate
-
-**What experts should include in contracts:**
-- **Detailed work scope**: Specific tasks, methods, and deliverables
-- **Professional standards**: Quality standards and industry best practices
-- **Timeline commitments**: Realistic start dates and completion schedules
-- **Material responsibilities**: Who provides what materials and tools
-- **Payment terms**: Fair pricing, advance requirements, and payment schedule
-- **Warranty provisions**: Service guarantees and maintenance periods
-
-**Expert contract authorization:**
-- Must have expressed interest or been invited to the work request
-- Must be a verified expert with complete profile
-- Cannot create multiple contracts for the same work request
-- Customer must approve and sign the contract for it to be valid`,
-					userTypes: ['expert'],
-					links: [
-						{ text: 'Browse Work Requests', url: '/work-requests' },
-						{ text: 'My Contracts', url: '/contracts' }
-					],
-					expanded: false
-				},
-
-				// ADDITIONAL SUPPLIER SECTIONS
-				{
-					id: 'supplier-find-requests',
-					title: 'How to Find Material Requests',
-					content: `Material requests are posted by customers needing construction materials. Here's how to find relevant opportunities:
-
-**Browsing material requests:**
-1. Go to "Material Requests" to see all requirements
-2. **Filter by status**: Focus on "Open" and "Quoting" requests
-3. **Search by material type**: Find requests for your products
-4. **Check delivery location**: Look for requests in your delivery area
-5. **Review requirements**: Understand quantities and specifications
-
-**Material request statuses:**
-- **Open**: Available for expressions of interest
-- **Quoting**: Customer is collecting quotes from suppliers
-- **Ordered**: Customer has placed an order
-- **Contracted**: Supply agreement is in place
-- **Completed**: Materials delivered successfully
-
-**What to look for:**
-- **Clear specifications**: Well-defined material requirements
-- **Reasonable quantities**: Orders you can fulfill
-- **Delivery timeline**: Achievable delivery dates
-- **Complete customer info**: Verified customer details
-
-**Finding the right opportunities:**
-- **Match your inventory**: Look for materials you stock or can source
-- **Consider delivery area**: Focus on locations you can serve efficiently
-- **Check quantity requirements**: Ensure you can meet the volume needed
-- **Review delivery timelines**: Confirm you can meet the schedule
-- **Assess customer credibility**: Look for complete customer profiles`,
-					userTypes: ['supplier'],
-					links: [
-						{ text: 'Browse Material Requests', url: '/material-requests' },
-						{ text: 'Filter by Material Type', url: '/material-requests?category=cement' }
-					],
-					expanded: false
-				},
-				{
-					id: 'supplier-express-interest',
-					title: 'How to Send Interest and Provide Quotes',
-					content: `When you find a material request you can fulfill, express interest and provide detailed quotes.
-
-**How to express interest:**
-1. **From material request details**: Click "Express Interest" button
-2. **Provide detailed quote**: Include pricing for each item
-3. **Specify delivery terms**: Timeline, location, and delivery charges
-4. **Add quality information**: Brand details, specifications, certifications
-5. **Include minimum order**: If you have minimum quantity requirements
-6. **Submit**: Customer will see your quote and can contact you
-
-**Quote components to include:**
-- **Item-wise pricing**: Price per unit for each material
-- **Quantity discounts**: Better rates for larger orders
-- **Delivery charges**: Transportation and handling costs
-- **Delivery timeline**: How quickly you can deliver
-- **Payment terms**: Credit terms, advance requirements
-- **Quality assurance**: Brand names, quality certificates
-
-**Tips for competitive quotes:**
-- **Be detailed**: Specify exact materials and quality grades
-- **Show flexibility**: Offer alternative materials if available
-- **Highlight advantages**: Faster delivery, better quality, competitive pricing
-- **Be responsive**: Quick responses show professionalism
-- **Provide references**: Mention past successful deliveries
-
-**After expressing interest:**
-- Customer can see your quote and profile
-- You may receive a chat invitation for discussions
-- Customer might create a material contract with you
-- Be prepared to negotiate terms and answer questions`,
-					userTypes: ['supplier'],
-					links: [
-						{ text: 'Browse Material Requests', url: '/material-requests' },
-						{ text: 'My Chats', url: '/chat' }
-					],
-					expanded: false
-				},
-				{
-					id: 'supplier-contract-perspective',
-					title: 'Creating Material Contracts from Supplier Perspective',
-					content: `As a supplier, you can also initiate material contract creation after expressing interest in material requests.
-
-**When can suppliers create contracts?**
-- After expressing interest in a customer's material request
-- When invited by a customer to their material request
-- Only for material requests where you're in the interested or invited list
-- When the material request status allows contract creation
-
-**Supplier contract creation process:**
-1. **Express interest first**: Show interest in relevant material requests
-2. **Provide detailed quote**: Include comprehensive pricing and terms
-3. **Discuss requirements**: Clarify specifications, delivery, and quality standards
-4. **Initiate contract**: You can create the contract if customer agrees
-5. **Fill contract details**: Add your supply terms and conditions
-6. **Submit for signatures**: Both parties must sign to activate
-
-**What suppliers should include in contracts:**
-- **Material specifications**: Exact grades, brands, and quality standards
-- **Quantity details**: Precise quantities and measurement units
-- **Delivery terms**: Timeline, location, handling, and logistics
-- **Quality certifications**: Material certificates and compliance documents
-- **Payment terms**: Pricing, advance requirements, and credit terms
-- **Return policy**: Conditions for returns or exchanges
-
-**Supplier contract authorization:**
-- Must have expressed interest or been invited to the material request
-- Must be a verified supplier with complete profile
-- Cannot create multiple contracts for the same material request
-- Customer must approve and sign the contract for it to be valid`,
-					userTypes: ['supplier'],
-					links: [
-						{ text: 'Browse Material Requests', url: '/material-requests' },
-						{ text: 'My Contracts', url: '/contracts' }
-					],
-					expanded: false
-				},
-
-				// COMMON HELP SECTIONS
-				{
-					id: 'chat-communication',
-					title: 'Using the Chat System',
-					content: `GEFIFI's chat system enables real-time communication between customers, experts, and suppliers.
-
-**Chat features:**
-- **Text messages**: Send and receive instant messages
-- **Voice messages**: Record and send audio messages (up to 5 minutes)
-- **Image sharing**: Share photos, documents, and files
-- **Typing indicators**: See when others are typing
-- **Online status**: Know when participants are available
-- **Message history**: Access complete conversation history
-
-**How to start a chat:**
-1. **Express interest**: Automatically creates a chat with the customer
-2. **From profiles**: Send interest from professional profiles
-3. **Contract discussions**: Chats are created for each contract
-
-**Voice messages:**
-Press and hold the microphone button to record. Listen to your recording before sending. Release to send, or swipe to cancel.
-
-**File sharing:**
-Share images (JPEG, PNG, GIF, WebP up to 10MB) and documents (PDF, Word, Excel up to 25MB). Send up to 10 files at once.
-
-**Privacy and security:**
-All messages and files are securely stored. Only chat participants can see messages. Files are protected with time-limited access.`,
-					userTypes: ['customer', 'expert', 'supplier'],
-					links: [{ text: 'Open Chat', url: '/chat' }],
-					expanded: false
-				},
-				{
-					id: 'profile-management',
-					title: 'Managing Your Profile',
-					content: `Your profile is crucial for building trust and attracting the right opportunities.
-
-**Profile sections:**
-- **Basic information**: Name, email, location, phone number
-- **Professional details**: Experience, expertise/category
-- **Profile photo**: Upload a professional avatar image
-- **Company information**: For suppliers, add company details
-
-**For customers:**
-- **Full name**: Your name for communications
-- **Location**: Your project location area
-- **Contact**: Phone number for urgent communications
-
-**For experts:**
-- **Expertise**: Your specialization (Plumbing, Electrical, etc.)
-- **Experience**: Years in the construction industry
-- **Service area**: Locations where you work
-
-**For suppliers:**
-- **Company name**: Your business name
-- **Category**: Types of materials you supply
-- **Supply area**: Delivery locations you serve
-
-**Profile photo guidelines:**
-Professional appearance with clear, high-quality image. Supported formats: JPEG, PNG, GIF, WebP, SVG. Maximum 2MB file size. Square images work best.
-
-**Why complete your profile:**
-Complete profiles get more responses, help with better matching, and show you're serious about your business.`,
-					userTypes: ['customer', 'expert', 'supplier'],
-					links: [{ text: 'Edit Profile', url: '/profile' }],
-					expanded: false
-				},
-				{
-					id: 'troubleshooting',
-					title: 'Troubleshooting Common Issues',
-					content: `Solutions to common problems and technical issues.
-
-**Login and account issues:**
-- **Forgot password**: Use the password reset option on login page
-- **Account locked**: Contact support if you can't access your account
-- **Profile updates**: Refresh the page if changes don't appear immediately
-- **Session expired**: Log out and log back in if you see authentication errors
-
-**File upload issues:**
-- **Large files**: Ensure files are under size limits (2MB for avatars, 25MB for documents)
-- **Unsupported formats**: Check that file types are supported
-- **Upload failures**: Try refreshing the page and uploading again
-- **Image previews**: Clear browser cache if images don't display properly
-
-**Chat and messaging:**
-- **Messages not sending**: Check your internet connection
-- **Voice messages not playing**: Ensure browser has media permissions
-- **File sharing failures**: Verify file size and format requirements
-- **Connection issues**: Refresh the page or restart your browser
-
-**Performance issues:**
-- **Slow loading**: Clear browser cache and cookies
-- **Browser compatibility**: Use updated versions of Chrome, Firefox, or Safari
-- **Mobile issues**: Try the desktop version for full functionality
-- **Offline access**: Some features require internet connection
-
-**When to contact support:**
-Contact support for payment issues, account verification problems, persistent technical bugs, or if this help section doesn't answer your question.`,
-					userTypes: ['customer', 'expert', 'supplier'],
-					links: [{ text: 'Contact Support', url: '#contact-support' }],
-					expanded: false
-				}
-			]
-		},
-		// Placeholder for other languages
-		hi: { sections: [] },
-		ml: { sections: [] },
-		ta: { sections: [] }
-	};
-
 	// Analytics function
 	async function trackHelpAnalytics(data: any) {
-		if (!currentUser) return;
+		if (!currentUser) {
+			console.log('No user logged in, skipping analytics');
+			return;
+		}
 
 		try {
 			const analyticsDoc = doc(db, 'help_analytics', `${Date.now()}_${currentUser.id}`);
@@ -794,23 +42,31 @@ Contact support for payment issues, account verification problems, persistent te
 				userId: currentUser.id,
 				userType: currentUser.userType
 			});
+			console.log('Analytics tracked successfully:', data);
 		} catch (error) {
-			console.error('Failed to track help analytics:', error);
+			console.warn('Failed to track help analytics (continuing anyway):', error);
+			// Don't throw the error, just log it
 		}
 	}
 
 	// Search functionality
 	function searchHelpContent(query: string) {
-		const sections = helpContent[selectedLanguage]?.sections || [];
+		console.log('searchHelpContent called:', { query, selectedLanguage });
+		const sections =
+			helpContentMap[selectedLanguage as keyof typeof helpContentMap]?.sections || [];
+		console.log('Total sections found:', sections.length);
+
 		if (!query.trim()) {
-			filteredSections = sections.filter((section) =>
+			filteredSections = sections.filter((section: HelpSection) =>
 				currentUser ? section.userTypes.includes(currentUser.userType) : true
 			);
+			console.log('Filtered sections (no search):', filteredSections.length);
+			console.log('Current user type:', currentUser?.userType);
 			return;
 		}
 
 		const searchTerms = query.toLowerCase().split(' ');
-		filteredSections = sections.filter((section) => {
+		filteredSections = sections.filter((section: HelpSection) => {
 			if (currentUser && !section.userTypes.includes(currentUser.userType)) {
 				return false;
 			}
@@ -827,7 +83,8 @@ Contact support for payment issues, account verification problems, persistent te
 	}
 
 	// Expand/collapse sections
-	function toggleSection(sectionId: string) {
+	function toggleSection(event: CustomEvent) {
+		const sectionId = event.detail;
 		const section = filteredSections.find((s) => s.id === sectionId);
 		if (section) {
 			section.expanded = !section.expanded;
@@ -841,7 +98,8 @@ Contact support for payment issues, account verification problems, persistent te
 	}
 
 	// Feedback functions
-	async function provideFeedback(sectionId: string, helpful: boolean) {
+	async function handleFeedback(event: CustomEvent) {
+		const { sectionId, helpful } = event.detail;
 		await trackHelpAnalytics({
 			action: helpful ? 'helpful' : 'not_helpful',
 			sectionId: sectionId
@@ -859,15 +117,27 @@ Contact support for payment issues, account verification problems, persistent te
 
 	// Initialize on mount
 	onMount(() => {
+		console.log('Help page mounted, initializing...');
+		console.log('helpContentMap keys:', Object.keys(helpContentMap));
+		console.log('English sections count:', helpContentMap.en?.sections?.length);
+
+		// Initialize with empty search to show all sections
 		searchHelpContent('');
+
+		// Track analytics (now with internal error handling)
 		trackHelpAnalytics({
 			action: 'view',
 			sectionId: 'help_page'
 		});
 	});
 
-	// Reactive search
-	$: searchHelpContent(searchQuery);
+	// Reactive search - trigger when searchQuery OR selectedLanguage changes
+	$: {
+		if (typeof searchQuery !== 'undefined') {
+			console.log('Reactive search triggered:', { searchQuery, selectedLanguage });
+			searchHelpContent(searchQuery);
+		}
+	}
 
 	// User type display
 	function getUserTypeDisplay(userType: string) {
@@ -933,8 +203,15 @@ Contact support for payment issues, account verification problems, persistent te
 				{#each languages as language}
 					<button
 						on:click={() => {
+							console.log('language clicked:', language);
 							selectedLanguage = language.code;
-							searchHelpContent(searchQuery);
+							console.log('selectedLanguage set to:', selectedLanguage);
+
+							// Directly call search function to bypass reactive issues
+							setTimeout(() => {
+								console.log('Calling searchHelpContent directly');
+								searchHelpContent(searchQuery);
+							}, 0);
 						}}
 						class="rounded-md px-3 py-2 text-sm font-medium transition-colors {selectedLanguage ===
 						language.code
@@ -1145,126 +422,7 @@ Contact support for payment issues, account verification problems, persistent te
 			</div>
 		{:else}
 			{#each filteredSections as section (section.id)}
-				<article
-					class="rounded-xl border border-slate-600/30 bg-slate-800/40 shadow-xl backdrop-blur-sm"
-				>
-					<!-- Section Header -->
-					<button
-						on:click={() => toggleSection(section.id)}
-						class="flex w-full items-center justify-between p-6 text-left transition-colors hover:bg-slate-700/20"
-					>
-						<div class="flex items-center gap-4">
-							<div class="flex-shrink-0">
-								<div class="rounded-lg bg-emerald-500/20 p-2">
-									<svg
-										class="h-5 w-5 text-emerald-400"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-										/>
-									</svg>
-								</div>
-							</div>
-							<div>
-								<h2 class="text-xl font-semibold text-emerald-300">{section.title}</h2>
-								<div class="mt-1 flex flex-wrap gap-2">
-									{#each section.userTypes as userType}
-										<span
-											class="rounded-full px-2 py-1 text-xs font-medium {getUserTypeDisplay(
-												userType
-											).bgColor} {getUserTypeDisplay(userType).color}"
-										>
-											{getUserTypeDisplay(userType).label}
-										</span>
-									{/each}
-								</div>
-							</div>
-						</div>
-						<div
-							class="flex-shrink-0 transform transition-transform {section.expanded
-								? 'rotate-180'
-								: ''}"
-						>
-							<svg
-								class="h-5 w-5 text-slate-400"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M19 9l-7 7-7-7"
-								/>
-							</svg>
-						</div>
-					</button>
-
-					<!-- Section Content -->
-					{#if section.expanded}
-						<div class="border-t border-slate-600/30 px-6 pb-6">
-							<!-- Content -->
-							<div class="prose prose-invert mt-6 max-w-none text-slate-200">
-								{@html section.content
-									.replace(/\n\n/g, '</p><p class="mt-4 text-slate-200">')
-									.replace(/\n/g, '<br>')
-									.replace(
-										/\*\*(.*?)\*\*/g,
-										'<strong class="text-emerald-300 font-semibold">$1</strong>'
-									)
-									.replace(/^(.*)$/g, '<p class="text-slate-200">$1</p>')}
-							</div>
-
-							<!-- Links -->
-							{#if section.links && section.links.length > 0}
-								<div class="mt-6 flex flex-wrap gap-3">
-									{#each section.links as link}
-										<a
-											href={link.url}
-											class="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-300 transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/20"
-										>
-											<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													stroke-width="2"
-													d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-												/>
-											</svg>
-											{link.text}
-										</a>
-									{/each}
-								</div>
-							{/if}
-
-							<!-- Feedback -->
-							<div class="mt-6 flex items-center justify-between border-t border-slate-600/20 pt-4">
-								<span class="text-sm text-slate-400">Was this helpful?</span>
-								<div class="flex gap-2">
-									<button
-										on:click={() => provideFeedback(section.id, true)}
-										class="rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-1 text-sm text-green-300 transition-colors hover:border-green-500/50 hover:bg-green-500/20"
-									>
-										👍 Yes
-									</button>
-									<button
-										on:click={() => provideFeedback(section.id, false)}
-										class="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1 text-sm text-red-300 transition-colors hover:border-red-500/50 hover:bg-red-500/20"
-									>
-										👎 No
-									</button>
-								</div>
-							</div>
-						</div>
-					{/if}
-				</article>
+				<HelpSectionComponent {section} on:toggle={toggleSection} on:feedback={handleFeedback} />
 			{/each}
 		{/if}
 	</main>
