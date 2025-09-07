@@ -1,6 +1,7 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/ChatInput.svelte -->
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { realtimeChatService } from '$lib/services/realtimeChat';
 
 	// --- PROPS ---
 	export let isSending: boolean = false;
@@ -8,9 +9,12 @@
 	export let uploadedImagePath: string | null = null;
 	export let selectedFile: File | null = null;
 	export let value: string = ''; // For two-way binding of textarea content
+	export let chatId: string = '';
+	export let currentUserId: string = '';
 
 	// --- INTERNAL STATE & BINDINGS ---
 	let fileInput: HTMLInputElement;
+	let typingTimeout: NodeJS.Timeout | null = null;
 
 	// --- EVENTS ---
 	const dispatch = createEventDispatcher<{
@@ -39,6 +43,26 @@
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
 			handleSendMessage();
+		}
+	};
+
+	const handleInput = () => {
+		// Set typing indicator
+		if (chatId && currentUserId && value.trim()) {
+			realtimeChatService.setTyping(chatId, currentUserId);
+
+			// Clear previous timeout
+			if (typingTimeout) {
+				clearTimeout(typingTimeout);
+			}
+
+			// Clear typing indicator after 2 seconds of no typing
+			typingTimeout = setTimeout(() => {
+				realtimeChatService.clearTyping(chatId, currentUserId);
+			}, 2000);
+		} else if (chatId && currentUserId) {
+			// Clear typing if input is empty
+			realtimeChatService.clearTyping(chatId, currentUserId);
 		}
 	};
 </script>
@@ -100,6 +124,7 @@
 		<textarea
 			bind:value
 			on:keydown={handleKeyPress}
+			on:input={handleInput}
 			disabled={isSending}
 			rows="1"
 			placeholder="Type a message..."

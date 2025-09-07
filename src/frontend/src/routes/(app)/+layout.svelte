@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
+	import PWAInstallPrompt from '$lib/components/ui/PWAInstallPrompt.svelte';
 
 	console.log('[Debug] (app)/+layout.svelte script is executing.');
 
@@ -218,6 +219,9 @@
 		</main>
 	</div>
 </div>
+
+<!-- PWA Install Prompt -->
+<PWAInstallPrompt />
 
 <style lang="postcss">
 	::-webkit-scrollbar {

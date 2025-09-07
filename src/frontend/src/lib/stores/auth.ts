@@ -108,7 +108,7 @@ async function loadUserFromStorage() {
 				store.update((s) => ({ ...s, token: token, isAuthenticated: false, user: null })); // Temporarily set token for api.ts
 
 				const freshUser = await apiClient.getMe();
-				updateAuthData(token, freshUser); // This updates the store correctly with the fresh user
+				await updateAuthData(token, freshUser); // This updates the store correctly with the fresh user AND signs into Firebase
 			} catch (apiError: any) {
 				console.warn(
 					'Token re-validation with /api/auth/me failed, logging out:',
@@ -139,13 +139,18 @@ async function signInToFirebase(sessionToken: string) {
 
 		if (firebaseToken) {
 			console.log('[Firebase] Signing in with custom token...');
-			await signInWithCustomToken(auth, firebaseToken);
-			console.log('[Firebase] Silent sign-in successful. User is authenticated.');
+			const userCredential = await signInWithCustomToken(auth, firebaseToken);
+			console.log('[Firebase] Silent sign-in successful. User is authenticated.', {
+				uid: userCredential.user.uid,
+				email: userCredential.user.email
+			});
+		} else {
+			console.error('[Firebase] No firebase token received from backend');
 		}
 	} catch (error) {
-		console.error('Firebase silent sign-in failed:', error);
+		console.error('[Firebase] Silent sign-in failed:', error);
 		// This is not a critical failure for the app's main auth,
-		// but voice messages will not work.
+		// but real-time features will not work.
 	}
 }
 

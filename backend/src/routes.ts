@@ -168,7 +168,8 @@ const validateProfileData = (
 async function sendSystemMessage(
 	participant1Id: string,
 	participant2Id: string,
-	messageContent: string
+	messageContent: string,
+	entityIds?: { contractId?: string; ExpertRequestId?: string; MaterialRequestId?: string }
 ) {
 	try {
 		const allChats = await chatsDB.getAll();
@@ -186,7 +187,8 @@ async function sendSystemMessage(
 				id: messageId,
 				senderId: 'system',
 				content: `[System] ${messageContent}`,
-				timestamp: now
+				timestamp: now,
+				...entityIds // Spread the optional entity IDs
 			};
 			await chatsDB.createInSubcollection(relevantChat.id, 'messages', notificationMessage);
 			await chatsDB.update(relevantChat.id, { updatedAt: now });
@@ -720,7 +722,8 @@ router.put(
 					await sendSystemMessage(
 						user.id,
 						expertId,
-						`Work request "${workRequest.title}" status updated to: ${status}`
+						`Work request "${workRequest.title}" status updated to: ${status}`,
+						{ ExpertRequestId: workRequest.id }
 					);
 				}
 			} else if (isAssociatedExpert) {
@@ -728,7 +731,8 @@ router.put(
 				await sendSystemMessage(
 					user.id,
 					workRequest.customerId,
-					`Work request "${workRequest.title}" status updated to: ${status}`
+					`Work request "${workRequest.title}" status updated to: ${status}`,
+					{ ExpertRequestId: workRequest.id }
 				);
 			}
 
@@ -992,7 +996,8 @@ router.put(
 					await sendSystemMessage(
 						user.id,
 						supplierId,
-						`Material request "${materialRequest.title}" status updated to: ${status}`
+						`Material request "${materialRequest.title}" status updated to: ${status}`,
+						{ MaterialRequestId: materialRequest.id }
 					);
 				}
 			} else if (isAssociatedSupplier) {
@@ -1000,7 +1005,8 @@ router.put(
 				await sendSystemMessage(
 					user.id,
 					materialRequest.customerId,
-					`Material request "${materialRequest.title}" status updated to: ${status}`
+					`Material request "${materialRequest.title}" status updated to: ${status}`,
+					{ MaterialRequestId: materialRequest.id }
 				);
 			}
 
@@ -1395,7 +1401,10 @@ router.post(
 					id: messageId,
 					senderId: sender.id,
 					content: finalMessageContent,
-					timestamp: now
+					timestamp: now,
+					// Add entity reference IDs for clickable messages
+					...(workRequestId && { ExpertRequestId: workRequestId }),
+					...(materialRequestId && { MaterialRequestId: materialRequestId })
 				};
 				await chatsDB.createInSubcollection(existingChat.id, 'messages', newMessage);
 				existingChat.updatedAt = now;
@@ -2180,7 +2189,8 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			`A new contract draft (ID: ${createdContract.id.substring(
 				0,
 				8
-			)}) has been created and is ready for review.`
+			)}) has been created and is ready for review.`,
+			{ contractId: createdContract.id }
 		);
 
 		// Optionally, update the status of the original request
@@ -2364,10 +2374,17 @@ router.put(
 							}
 
 							// Send system message about signature comment
+							let signatureMessage = `The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`;
+							if (signatureFiles && signatureFiles.length > 0) {
+								signatureMessage += ` and ${signatureFiles.length} attachment${signatureFiles.length > 1 ? 's' : ''}`;
+							}
+							signatureMessage += '.';
+
 							await sendSystemMessage(
 								contract.customerId,
 								contract.expertSupplierId,
-								`The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`
+								signatureMessage,
+								{ contractId: contract.id }
 							);
 						} catch (commentError) {
 							console.error('Failed to create signature comment:', commentError);
@@ -2378,7 +2395,8 @@ router.put(
 						await sendSystemMessage(
 							contract.customerId,
 							contract.expertSupplierId,
-							`The contract has been fully signed by the ${signerRole} and is now active.`
+							`The contract has been fully signed by the ${signerRole} and is now active.`,
+							{ contractId: contract.id }
 						);
 					}
 
@@ -2498,10 +2516,17 @@ router.put(
 							}
 
 							// Send system message about signature comment
+							let partialSignatureMessage = `The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`;
+							if (signatureFiles && signatureFiles.length > 0) {
+								partialSignatureMessage += ` and ${signatureFiles.length} attachment${signatureFiles.length > 1 ? 's' : ''}`;
+							}
+							partialSignatureMessage += '. Awaiting other party\'s signature.';
+
 							await sendSystemMessage(
 								contract.customerId,
 								contract.expertSupplierId,
-								`The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}". Awaiting other party's signature.`
+								partialSignatureMessage,
+								{ contractId: contract.id }
 							);
 						} catch (commentError) {
 							console.error('Failed to create signature comment:', commentError);
@@ -2512,7 +2537,8 @@ router.put(
 						await sendSystemMessage(
 							contract.customerId,
 							contract.expertSupplierId,
-							`The ${signerRole} has signed the contract. Awaiting other party's signature.`
+							`The ${signerRole} has signed the contract. Awaiting other party's signature.`,
+							{ contractId: contract.id }
 						);
 					}
 
@@ -2657,10 +2683,19 @@ router.post(
 			const commentTypeLabel = type === 'revision_request' ? 'revision request' : 'comment';
 			const authorDisplayName =
 				userProfile.profile?.fullName || userProfile.email.split('@')[0] || 'User';
+
+			// Create message with attachment info if applicable
+			let systemMessageContent = `${authorDisplayName} has added a ${commentTypeLabel} to the contract`;
+			if (attachments.length > 0) {
+				systemMessageContent += ` with ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`;
+			}
+			systemMessageContent += '.';
+
 			await sendSystemMessage(
 				contract.customerId,
 				contract.expertSupplierId,
-				`${authorDisplayName} has added a ${commentTypeLabel} to the contract.`
+				systemMessageContent,
+				{ contractId: contract.id }
 			);
 
 			res.status(200).json({
@@ -2787,7 +2822,8 @@ router.put(
 			await sendSystemMessage(
 				contract.customerId,
 				contract.expertSupplierId,
-				'The contract has been updated to address the revision request and is ready for signing again.'
+				'The contract has been updated to address the revision request and is ready for signing again.',
+				{ contractId: contract.id }
 			);
 
 			res.status(200).json(updatedContract);
@@ -2856,7 +2892,8 @@ router.put(
 			await sendSystemMessage(
 				updatedContract.customerId,
 				updatedContract.expertSupplierId,
-				`The contract status was updated to: ${newStatus.replace(/_/g, ' ')}.`
+				`The contract status was updated to: ${newStatus.replace(/_/g, ' ')}.`,
+				{ contractId: updatedContract.id }
 			);
 
 			res.status(200).json(updatedContract);

@@ -11,6 +11,8 @@ node_modules
 .zed
 .cursor
 backend/dist
+.kiro
+.vscode
 
 # OS
 .DS_Store
@@ -42,3 +44,4 @@ firestore-migration
 
 # Firebase emulator
 .emulator-persisted-data
+*.log

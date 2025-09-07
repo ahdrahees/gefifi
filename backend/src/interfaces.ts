@@ -59,14 +59,14 @@ export interface WorkRequest extends Identifiable {
 	timeline?: string;
 	materialsSuggested?: string;
 	status:
-		| 'open'
-		| 'in_discussion'
-		| 'awaiting_quotes'
-		| 'contracted'
-		| 'in_progress'
-		| 'completed'
-		| 'cancelled'
-		| 'closed';
+	| 'open'
+	| 'in_discussion'
+	| 'awaiting_quotes'
+	| 'contracted'
+	| 'in_progress'
+	| 'completed'
+	| 'cancelled'
+	| 'closed';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
@@ -134,6 +134,10 @@ export interface Message extends Identifiable {
 	audioType?: 'voice';
 	audioUrl?: string; // Private GCS path for the audio file
 	audioDuration?: number; // Duration in seconds
+	// --- Entity reference fields for clickable messages ---
+	contractId?: string; // Reference to contract for navigation
+	ExpertRequestId?: string; // Reference to work request for navigation (preparing for future migration)
+	MaterialRequestId?: string; // Reference to material request for navigation
 }
 
 // --- Contract and Project Types ---
@@ -192,15 +196,15 @@ export interface Contract extends Identifiable {
 
 	// Status & Tracking
 	status:
-		| 'draft'
-		| 'revision_requested'
-		| 'awaiting_signatures'
-		| 'signed'
-		| 'in_progress'
-		| 'completed'
-		| 'disputed'
-		| 'cancelled'
-		| 'terminated';
+	| 'draft'
+	| 'revision_requested'
+	| 'awaiting_signatures'
+	| 'signed'
+	| 'in_progress'
+	| 'completed'
+	| 'disputed'
+	| 'cancelled'
+	| 'terminated';
 	createdAt: string;
 	updatedAt: string;
 }
