@@ -149,6 +149,12 @@ export type Message = {
 	senderId: string;
 	content: string;
 	images?: string[];
+	attachments?: Array<{
+		fileName: string;
+		filePath: string; // GCS file URL
+		fileType: string; // MIME type
+		size: number; // File size in bytes
+	}>; // Array of file attachments (non-images)
 	timestamp: string;
 	// Voice message support
 	audioType?: 'voice';

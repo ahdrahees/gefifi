@@ -51,10 +51,9 @@
 	let isRecording = false;
 	let permissionState: 'prompt' | 'granted' | 'denied' = 'prompt';
 
-	// --- Image Upload State ---
-	let selectedFile: File | null = null;
-	let uploadedImagePath: string | null = null;
-	let isUploadingImage = false;
+	// --- File Upload State ---
+	let selectedFiles: File[] = [];
+	let isUploadingFiles = false;
 
 	// --- Contract Modal State ---
 	// let showContractModal = false; // No longer needed with page-based contract creation
@@ -260,35 +259,95 @@
 
 	// --- Message Sending Logic ---
 	const handleSendMessage = async () => {
-		if ((!newMessageContent.trim() && !uploadedImagePath) || isSendingMessage) return;
+		if ((!newMessageContent.trim() && selectedFiles.length === 0) || isSendingMessage) return;
 
 		isSendingMessage = true;
-		const payload = {
-			content: newMessageContent.trim(),
-			...(uploadedImagePath && { images: [uploadedImagePath] })
-		};
+		isUploadingFiles = true;
 
 		// Clear typing indicator when sending message
 		if (currentUser?.id) {
 			realtimeChatService.clearTyping(chatId, currentUser.id);
 		}
 
-		// Reset input fields immediately
-		newMessageContent = '';
-		uploadedImagePath = null;
-		selectedFile = null;
-
 		try {
+			// Upload files first if any are selected
+			let images: string[] = [];
+			let attachments: Array<{
+				fileName: string;
+				filePath: string;
+				fileType: string;
+				size: number;
+			}> = [];
+			let messageId: string | null = null;
+
+			if (selectedFiles.length > 0) {
+				// Upload each file
+				for (const file of selectedFiles) {
+					const formData = new FormData();
+					formData.append('file', file);
+					// Don't send messageId - let backend generate it for the first file
+					if (messageId) {
+						formData.append('messageId', messageId); // Use the same messageId for subsequent files
+						console.log('🔍 [DEBUG] Sending messageId to backend:', messageId);
+					} else {
+						console.log('🔍 [DEBUG] No messageId provided, backend will generate one');
+					}
+
+					const result = await apiClient.uploadChatFile(chatId, formData);
+					console.log('🔍 [DEBUG] Upload result:', {
+						messageId: result.messageId,
+						fileName: result.fileName
+					});
+
+					// Use the messageId from the first file for all subsequent files
+					if (!messageId) {
+						messageId = result.messageId;
+						console.log('🔍 [DEBUG] Set messageId from first file:', messageId);
+					}
+
+					// Separate images from other files
+					if (file.type.startsWith('image/')) {
+						images.push(result.filePath);
+					} else {
+						attachments.push({
+							fileName: result.fileName, // This is now the original filename
+							filePath: result.filePath,
+							fileType: file.type,
+							size: file.size
+						});
+					}
+				}
+			}
+
+			// Prepare message payload
+			const payload: any = {
+				content: newMessageContent.trim()
+			};
+
+			if (images.length > 0) {
+				payload.images = images;
+			}
+			if (attachments.length > 0) {
+				payload.attachments = attachments;
+			}
+			if (messageId) {
+				payload.messageId = messageId; // Include the messageId from file uploads
+			}
+
+			// Reset input fields immediately
+			newMessageContent = '';
+			selectedFiles = [];
+
 			// Send message via API (this will trigger real-time update)
 			await apiClient.sendChatMessage(chatId, payload);
 			// No need to manually update messages - real-time listener will handle it
 		} catch (err) {
 			console.error('Send message error:', err);
 			// Restore content on failure
-			newMessageContent = payload.content;
-			uploadedImagePath = payload.images ? payload.images[0] : null;
+			// Note: We don't restore files as they would need to be re-uploaded
 		} finally {
 			isSendingMessage = false;
+			isUploadingFiles = false;
 		}
 	};
 
@@ -311,26 +370,17 @@
 		}
 	};
 
-	// --- Image Upload Logic ---
-	const handleSelectFile = async (event: CustomEvent<{ file: File }>) => {
-		selectedFile = event.detail.file;
-		isUploadingImage = true;
-		const formData = new FormData();
-		formData.append('file', selectedFile);
-		try {
-			const result = await apiClient.uploadFile(formData);
-			uploadedImagePath = result.filePath;
-		} catch (err: any) {
-			errorMessage = `Image upload failed: ${err.message}`;
-			handleRemoveImage();
-		} finally {
-			isUploadingImage = false;
-		}
+	// --- File Upload Logic ---
+	const handleSelectFiles = (event: CustomEvent<{ files: File[] }>) => {
+		selectedFiles = event.detail.files;
 	};
 
-	const handleRemoveImage = () => {
-		uploadedImagePath = null;
-		selectedFile = null;
+	const handleRemoveFile = (event: CustomEvent<{ index: number }>) => {
+		selectedFiles = selectedFiles.filter((_, i) => i !== event.detail.index);
+	};
+
+	const handleClearFiles = () => {
+		selectedFiles = [];
 	};
 
 	// --- Voice Recording Logic ---
@@ -411,15 +461,15 @@
 			<ChatInput
 				bind:value={newMessageContent}
 				bind:isSending={isSendingMessage}
-				bind:isUploadingImage
-				bind:uploadedImagePath
-				bind:selectedFile
+				bind:isUploadingFiles
+				bind:selectedFiles
 				{chatId}
 				currentUserId={currentUser?.id || ''}
 				on:sendMessage={handleSendMessage}
 				on:startRecording={handleStartRecording}
-				on:selectFile={handleSelectFile}
-				on:removeImage={handleRemoveImage}
+				on:selectFiles={handleSelectFiles}
+				on:removeFile={handleRemoveFile}
+				on:clearFiles={handleClearFiles}
 			/>
 		{/if}
 	</div>
