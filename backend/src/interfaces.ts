@@ -129,6 +129,12 @@ export interface Message extends Identifiable {
 	senderId: string; // User ID of the sender, or 'system'
 	content: string; // Text content of the message
 	images?: string[]; // Array of GCS file URLs for images
+	attachments?: Array<{
+		fileName: string;
+		filePath: string; // GCS file URL
+		fileType: string; // MIME type
+		size: number; // File size in bytes
+	}>; // Array of file attachments (non-images)
 	timestamp: string; // ISO 8601 date string
 	// --- Voice message fields ---
 	audioType?: 'voice';

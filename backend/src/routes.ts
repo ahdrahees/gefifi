@@ -110,6 +110,48 @@ const avatarUpload = multer({
 	}
 });
 
+// --- Multer Configuration for Chat File Attachments ---
+const chatFileUpload = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 30 * 1024 * 1024, // 30MB limit per file for chat attachments
+		files: 1 // Only one file per request for chat
+	},
+	fileFilter: (req, file, cb) => {
+		// Accept common construction-related file types
+		const allowedTypes = [
+			// Images
+			'image/jpeg',
+			'image/jpg',
+			'image/png',
+			'image/gif',
+			'image/webp',
+			// Documents
+			'application/pdf',
+			'application/msword',
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+			'application/vnd.ms-excel',
+			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			// CAD files (some browsers may not set MIME types correctly for these)
+			'application/octet-stream' // For .dwg, .dxf files
+		];
+
+		if (
+			allowedTypes.includes(file.mimetype) ||
+			file.originalname.toLowerCase().endsWith('.dwg') ||
+			file.originalname.toLowerCase().endsWith('.dxf')
+		) {
+			cb(null, true);
+		} else {
+			cb(
+				new Error(
+					`File type not allowed: ${file.mimetype}. Allowed types: images, PDF, Word, Excel, DWG, DXF.`
+				)
+			);
+		}
+	}
+});
+
 // Entity configuration for file limits
 const ENTITY_CONFIG = {
 	'material-requests': { maxFiles: 10, collection: materialRequestsDB },
@@ -1759,28 +1801,48 @@ router.post(
 		try {
 			const user = req.user as JwtPayload;
 			const chatId = req.params.chatId;
-			// Destructure content, images, and voice message data from request body
+			// Destructure content, images, attachments, and voice message data from request body
 			const {
 				content,
 				images,
+				attachments,
 				audioType,
 				audioUrl,
-				audioDuration
+				audioDuration,
+				messageId
 			}: {
 				content?: string;
 				images?: string[];
+				attachments?: Array<{
+					fileName: string;
+					filePath: string;
+					fileType: string;
+					size: number;
+				}>;
 				audioType?: 'voice';
 				audioUrl?: string;
 				audioDuration?: number;
+				messageId?: string;
 			} = req.body;
 
-			// Validate that either content, images, or voice message are provided and correctly formatted
+			// Validate that either content, images, attachments, or voice message are provided and correctly formatted
 			const hasValidContent = content && typeof content === 'string' && content.trim() !== '';
 			const hasValidImages =
 				images &&
 				Array.isArray(images) &&
 				images.length > 0 &&
 				images.every((img: string) => typeof img === 'string');
+			const hasValidAttachments =
+				attachments &&
+				Array.isArray(attachments) &&
+				attachments.length > 0 &&
+				attachments.every((att: any) =>
+					att &&
+					typeof att.fileName === 'string' &&
+					typeof att.filePath === 'string' &&
+					typeof att.fileType === 'string' &&
+					typeof att.size === 'number'
+				);
 			const hasValidVoiceMessage =
 				audioType === 'voice' &&
 				audioUrl &&
@@ -1790,16 +1852,23 @@ router.post(
 				typeof audioDuration === 'number' &&
 				audioDuration > 0;
 
-			if (!hasValidContent && !hasValidImages && !hasValidVoiceMessage) {
+			if (!hasValidContent && !hasValidImages && !hasValidAttachments && !hasValidVoiceMessage) {
 				return res
 					.status(400)
-					.json({ message: 'Message content, images, or voice message are required.' });
+					.json({ message: 'Message content, images, attachments, or voice message are required.' });
 			}
 			// If images are provided, but not in the correct format (e.g. not an array of strings)
 			if (images && Array.isArray(images) && images.length > 0 && !hasValidImages) {
 				return res.status(400).json({
 					message:
 						'Images must be an array of strings (file paths) and cannot be empty strings if the array is not empty.'
+				});
+			}
+			// If attachments are provided, but not in the correct format
+			if (attachments && Array.isArray(attachments) && attachments.length > 0 && !hasValidAttachments) {
+				return res.status(400).json({
+					message:
+						'Attachments must be an array of objects with fileName, filePath, fileType, and size properties.'
 				});
 			}
 			// Further check for empty strings within the images array if it's not empty.
@@ -1816,12 +1885,14 @@ router.post(
 					.json({ message: 'Forbidden. You are not a participant of this chat.' });
 			}
 			const now = new Date().toISOString();
-			const messageId = crypto.randomUUID();
+			const finalMessageId = messageId || crypto.randomUUID();
+			console.log('🔍 [DEBUG] Message creation - messageId from body:', messageId, 'finalMessageId:', finalMessageId);
 			const newMessage: Message = {
-				id: messageId,
+				id: finalMessageId,
 				senderId: user.id,
-				content: content || '', // Use provided content, or empty string if only images/voice are sent
+				content: content || '', // Use provided content, or empty string if only images/attachments/voice are sent
 				images: images && hasValidImages ? images : [], // Use validated images, or an empty array
+				attachments: attachments && hasValidAttachments ? attachments : [], // Use validated attachments, or an empty array
 				timestamp: now,
 				// Add voice message fields if present
 				...(hasValidVoiceMessage && {
@@ -3114,3 +3185,4 @@ router.put(
 
 console.log('API routes module (routes.ts) initialized with core endpoints.');
 export default router;
+export { chatFileUpload };
