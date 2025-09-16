@@ -67,8 +67,8 @@ console.log('--- END DIAGNOSTIC LOGGING ---');
 // .env file is now loaded before Firebase initialization above
 
 // Import API routes
-import apiRoutes from './routes';
-import { uploadFile, uploadAudioFile } from './file-storage';
+import apiRoutes, { chatFileUpload } from './routes';
+import { uploadFile, uploadAudioFile, uploadChatAttachment } from './file-storage';
 
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
@@ -178,6 +178,61 @@ app.post(
 			console.error('Voice upload endpoint error:', error);
 			const message =
 				error instanceof Error ? error.message : 'An unknown error occurred during voice upload.';
+			res.status(500).json({ message });
+		}
+	}
+);
+
+// --- Chat File Attachment Upload Endpoint ---
+app.post(
+	'/api/chat/:chatId/upload-file',
+	chatFileUpload.single('file'),
+	async (req: Request, res: Response) => {
+		try {
+			if (!req.file) {
+				return res
+					.status(400)
+					.json({ message: 'No file uploaded. Please select a file to upload.' });
+			}
+
+			const { chatId } = req.params;
+			const { messageId } = req.body;
+
+			console.log('🔍 [DEBUG] Chat file upload - chatId:', chatId, 'messageId from body:', messageId);
+
+			if (!chatId) {
+				return res
+					.status(400)
+					.json({ message: 'ChatId is required for file upload.' });
+			}
+
+			// Upload the file to the chat attachments bucket
+			const { filePath, fileName, messageId: generatedMessageId } = await uploadChatAttachment(req.file, chatId, messageId);
+			console.log('🔍 [DEBUG] Upload result - generatedMessageId:', generatedMessageId, 'fileName:', fileName);
+
+			res.status(200).json({
+				message: 'File uploaded successfully!',
+				filePath: filePath, // Public GCS URL
+				fileName: fileName,
+				originalName: req.file.originalname,
+				mimeType: req.file.mimetype,
+				size: req.file.size,
+				chatId: chatId,
+				messageId: generatedMessageId
+			});
+		} catch (error: unknown) {
+			console.error('Chat file upload endpoint error:', error);
+			const message =
+				error instanceof Error ? error.message : 'An unknown error occurred during file upload.';
+
+			// Handle multer errors
+			if (message.includes('File type not allowed')) {
+				return res.status(400).json({ message });
+			}
+			if (message.includes('File too large')) {
+				return res.status(400).json({ message: 'File too large. Maximum file size is 30MB.' });
+			}
+
 			res.status(500).json({ message });
 		}
 	}

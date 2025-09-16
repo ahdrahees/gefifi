@@ -174,9 +174,16 @@ interface ChatData {
 interface ChatMessageData {
 	content?: string;
 	images?: string[];
+	attachments?: Array<{
+		fileName: string;
+		filePath: string;
+		fileType: string;
+		size: number;
+	}>;
 	audioType?: 'voice';
 	audioUrl?: string;
 	audioDuration?: number;
+	messageId?: string;
 }
 
 interface ContractData {
@@ -213,14 +220,14 @@ interface ContractResponse {
 }
 type ContractStatusUpdatePayload = {
 	status:
-		| 'draft'
-		| 'awaiting_signatures'
-		| 'signed'
-		| 'in_progress'
-		| 'completed'
-		| 'disputed'
-		| 'cancelled'
-		| 'terminated';
+	| 'draft'
+	| 'awaiting_signatures'
+	| 'signed'
+	| 'in_progress'
+	| 'completed'
+	| 'disputed'
+	| 'cancelled'
+	| 'terminated';
 };
 
 interface UserProfileUpdateData {
@@ -258,10 +265,18 @@ const apiClient = {
 	// --- File Upload ---
 	uploadFile: (
 		formData: FormData
-	): Promise<{ filePath: string; fileName: string; message?: string; [key: string]: any }> => {
+	): Promise<{ filePath: string; fileName: string; message?: string;[key: string]: any }> => {
 		// Note: The backend /api/upload is currently NOT authenticated.
 		// If it were, requiresAuth would be true.
 		return request('/upload', 'POST', formData, false, true);
+	},
+
+	// --- Chat File Upload ---
+	uploadChatFile: (
+		chatId: string,
+		formData: FormData
+	): Promise<{ filePath: string; fileName: string; uniqueFilename: string; messageId: string; originalName: string; mimeType: string; size: number; message?: string;[key: string]: any }> => {
+		return request(`/chat/${chatId}/upload-file`, 'POST', formData, true, true);
 	},
 
 	// --- Entity Attachments ---

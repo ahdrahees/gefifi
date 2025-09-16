@@ -15,7 +15,7 @@
 		'.dwg',
 		'.dxf'
 	];
-	export let maxFileSize: number = 25 * 1024 * 1024; // 25MB
+	export let maxFileSize: number = 30 * 1024 * 1024; // 30MB
 	export let multiple: boolean = true;
 	export let files: Writable<File[]>;
 
@@ -218,7 +218,7 @@
 				<p class="text-lg font-semibold">
 					Drag & drop files here or <span class="text-emerald-400">browse</span>
 				</p>
-				<p class="text-sm">Supports: Images, PDF, Word, Excel, DWG, DXF (Max 25MB)</p>
+				<p class="text-sm">Supports: Images, PDF, Word, Excel, DWG, DXF (Max 30MB)</p>
 			</div>
 			<input
 				id="file-upload"
