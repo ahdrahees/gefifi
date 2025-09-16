@@ -9,36 +9,36 @@ import type { HandleClientError, NavigationEvent } from '@sveltejs/kit';
  * @type {import('@sveltejs/kit').HandleClientError}
  */
 export const handleError: HandleClientError = ({ error, event }) => {
-  console.error('[GEFIFI Client Error Hook] An error occurred:', {
-    error,
-    routeId: event.route.id,
-    url: event.url.pathname,
-  });
+	console.error('[GEFIFI Client Error Hook] An error occurred:', {
+		error,
+		routeId: event.route.id,
+		url: event.url.pathname
+	});
 
-  // You can customize the error object returned to your $error.svelte page
-  const status = (error as any)?.status || 500;
-  let message = 'An unexpected error occurred. Please try refreshing the page.';
+	// You can customize the error object returned to your $error.svelte page
+	const status = (error as any)?.status || 500;
+	let message = 'An unexpected error occurred. Please try refreshing the page.';
 
-  if (error instanceof Error) {
-    // For specific known errors, you might want custom messages
-    // For example, if it's an ApiError from your API client
-    if ((error as any).name === 'ApiError') {
-      message = (error as any).data?.message || error.message || 'An API error occurred.';
-    } else {
-      message = error.message;
-    }
-  } else if (typeof error === 'string') {
-    message = error;
-  }
+	if (error instanceof Error) {
+		// For specific known errors, you might want custom messages
+		// For example, if it's an ApiError from your API client
+		if ((error as any).name === 'ApiError') {
+			message = (error as any).data?.message || error.message || 'An API error occurred.';
+		} else {
+			message = error.message;
+		}
+	} else if (typeof error === 'string') {
+		message = error;
+	}
 
-  // Example: Send to an error tracking service
-  // Sentry.captureException(error, { extra: { event } });
+	// Example: Send to an error tracking service
+	// Sentry.captureException(error, { extra: { event } });
 
-  return {
-    message: `Oops! ${message}`,
-    status,
-    errorId: 'CLIENT_HOOK_ERROR',
-  };
+	return {
+		message: `Oops! ${message}`,
+		status,
+		errorId: 'CLIENT_HOOK_ERROR'
+	};
 };
 
 /*
@@ -115,17 +115,17 @@ export const handleError: HandleClientError = ({ error, event }) => {
         }
 
         if (isAuthRoute && currentAuth.isLoggedIn) {
-          // console.log(`[Layout] User logged in, trying to access ${currentPath}. Redirecting to /dashboard.`);
-          if (currentPath !== '/dashboard') { // Prevent loop if dashboard is somehow an auth route
-            goto('/dashboard', { replaceState: true });
+          // console.log(`[Layout] User logged in, trying to access ${currentPath}. Redirecting to /home.`);
+          if (currentPath !== '/home') { // Prevent loop if homepage is somehow an auth route
+            goto('/home', { replaceState: true });
           }
         }
       });
 
       // Call loadUserFromStorage if it's not automatically called on store import
       // and needs to be triggered by the layout. (It's currently called on import in auth.ts)
-      // authStore.loadUserFromStorage(); 
-      
+      // authStore.loadUserFromStorage();
+
       return unsubscribe; // Cleanup subscription on component destroy
     }
   });

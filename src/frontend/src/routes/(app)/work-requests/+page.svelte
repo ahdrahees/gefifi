@@ -35,9 +35,9 @@
 			let url = `${API_BASE_URL}/api/work-requests`;
 			// For customers, backend might filter by customerId based on token, or we can pass it as a query param
 			// The current backend GET /api/work-requests fetches all.
-			// The dashboard fetch for customer was: /api/work-requests?customerId=${currentUser.id}
+			// The homepage fetch for customer was: /api/work-requests?customerId=${currentUser.id}
 			// Let's assume for now, if customer, we fetch all and then filter, or adjust if a specific endpoint exists.
-			// For simplicity and consistency with dashboard, let's try to fetch all if expert/supplier,
+			// For simplicity and consistency with homepage, let's try to fetch all if expert/supplier,
 			// and for customer, we can filter client-side or assume backend handles it if no query param is used.
 			// The backend route GET /work-requests currently returns ALL requests.
 			// The POST /work-requests is authenticated.

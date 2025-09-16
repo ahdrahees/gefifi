@@ -1,158 +1,456 @@
 // gefifi-2/backend/src/file-storage.ts
 import { Storage } from '@google-cloud/storage';
 import path from 'path';
-import fs from 'fs';
-import { promisify } from 'util';
 import crypto from 'crypto';
 
 // --- Configuration ---
-
 const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
-const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const GCS_AUDIO_BUCKET_NAME = process.env.GCS_AUDIO_BUCKET_NAME;
 
-// Define the local storage path
-const localUploadsDir = path.join(__dirname, '..', 'uploads');
-
-// Ensure local uploads directory exists
-if (NODE_ENV === 'development' && !fs.existsSync(localUploadsDir)) {
-  fs.mkdirSync(localUploadsDir, { recursive: true });
-  console.log(`[FileStorage] Created local uploads directory at: ${localUploadsDir}`);
-}
-
-// --- Initialize Google Cloud Storage Client (only in production) ---
-
+// --- Lazy Initializer for GCS Client ---
 let storage: Storage | null = null;
-if (NODE_ENV === 'production') {
-  if (!GCS_BUCKET_NAME || !GCP_PROJECT_ID) {
-    console.error('[FileStorage] FATAL ERROR: GCS_BUCKET_NAME and GCP_PROJECT_ID must be set in production environment.');
-    // In a real app, you might throw an error to prevent the server from starting.
-    // throw new Error('Missing GCS configuration for production.');
-  } else {
-    try {
-      // The Storage constructor will automatically use the service account credentials
-      // if the GOOGLE_APPLICATION_CREDENTIALS environment variable is set in your hosting provider,
-      // or if it finds the gcp-credentials.json file when running locally in a simulated prod env.
-      storage = new Storage({
-        projectId: GCP_PROJECT_ID,
-      });
-      console.log('[FileStorage] Google Cloud Storage client initialized for production.');
-    } catch (error) {
-      console.error('[FileStorage] FATAL ERROR: Could not initialize Google Cloud Storage client.', error);
-      storage = null;
-    }
-  }
-} else {
-  console.log(`[FileStorage] Running in '${NODE_ENV}' mode. Using local file storage.`);
+let audioStorage: Storage | null = null;
+
+/**
+ * Gets a singleton instance of the GCS client.
+ * Initializes the client on the first call, which is safer for environments
+ * like Cloud Run where env vars might not be immediately available on script load.
+ * @returns The GCS client instance.
+ */
+function getStorageClient(): Storage {
+	if (!storage) {
+		console.log('[FileStorage] GCS client not initialized. Creating new instance...');
+		if (!GCS_BUCKET_NAME) {
+			throw new Error('[FileStorage] GCS_BUCKET_NAME must be set.');
+		}
+
+		const options: { projectId?: string; apiEndpoint?: string } = {
+			projectId: process.env.GCP_PROJECT_ID || process.env.FIREBASE_PROJECT_ID
+		};
+
+		// If running in a development environment and the Storage emulator host is set,
+		// connect to the emulator.
+		if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+			console.log(
+				`[FileStorage] Connecting to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+			);
+			// The gcloud-node library expects the full URL, including the protocol.
+			// It doesn't need host/port separated like Firestore.
+			options.apiEndpoint = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+		}
+
+		storage = new Storage(options);
+		console.log('[FileStorage] GCS client instance created successfully.');
+	}
+	return storage;
 }
 
-const writeFileAsync = promisify(fs.writeFile);
-
 /**
- * Generates a unique filename while preserving the extension.
- * @param originalName The original name of the uploaded file.
- * @returns A unique filename string.
+ * Gets a singleton instance of the GCS client for audio files.
+ * @returns The GCS client instance for audio storage.
  */
+function getAudioStorageClient(): Storage {
+	if (!audioStorage) {
+		console.log('[FileStorage] Audio GCS client not initialized. Creating new instance...');
+		if (!GCS_AUDIO_BUCKET_NAME) {
+			throw new Error('[FileStorage] GCS_AUDIO_BUCKET_NAME must be set.');
+		}
+
+		const options: { projectId?: string; apiEndpoint?: string } = {
+			projectId: process.env.GCP_PROJECT_ID || process.env.FIREBASE_PROJECT_ID
+		};
+
+		// If running in a development environment and the Storage emulator host is set,
+		// connect to the emulator.
+		if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+			console.log(
+				`[FileStorage] Connecting to Audio GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+			);
+			options.apiEndpoint = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+		}
+
+		audioStorage = new Storage(options);
+		console.log('[FileStorage] Audio GCS client instance created successfully.');
+	}
+	return audioStorage;
+}
+
+// No local directories needed - always use GCP buckets
+
+// Remove writeFileAsync as we no longer use local file storage
+
 const generateUniqueFilename = (originalName: string): string => {
-  const extension = path.extname(originalName);
-  const randomString = crypto.randomBytes(16).toString('hex');
-  return `${Date.now()}-${randomString}${extension}`;
+	const extension = path.extname(originalName);
+	const randomString = crypto.randomBytes(16).toString('hex');
+	return `${Date.now()}-${randomString}${extension}`;
 };
 
-
-// --- Local Storage Implementation ---
-
 /**
- * Saves a file to the local disk in the /uploads directory.
- * @param file The file buffer from multer.
- * @returns The publicly accessible path to the file.
- */
-const uploadToLocalDisk = async (file: Express.Multer.File): Promise<string> => {
-  const uniqueFilename = generateUniqueFilename(file.originalname);
-  const localFilePath = path.join(localUploadsDir, uniqueFilename);
-
-  await writeFileAsync(localFilePath, file.buffer);
-
-  // Return the public URL path
-  return `/uploads/${uniqueFilename}`;
-};
-
-
-// --- Google Cloud Storage Implementation ---
-
-/**
- * Uploads a file to the configured GCS bucket.
- * @param file The file buffer from multer.
- * @returns The fully qualified public URL to the file on GCS.
- */
-const uploadToGCS = async (file: Express.Multer.File): Promise<string> => {
-    if (!storage || !GCS_BUCKET_NAME) {
-        throw new Error('[FileStorage] GCS is not initialized. Cannot upload file.');
-    }
-    const bucket = storage.bucket(GCS_BUCKET_NAME);
-    const uniqueFilename = generateUniqueFilename(file.originalname);
-    const blob = bucket.file(uniqueFilename);
-
-    const blobStream = blob.createWriteStream({
-        resumable: false,
-        contentType: file.mimetype,
-    });
-
-    return new Promise((resolve, reject) => {
-        blobStream.on('error', (err) => {
-            console.error('[FileStorage] GCS Upload Error:', err);
-            reject(new Error('Failed to upload file to Google Cloud Storage.'));
-        });
-
-        blobStream.on('finish', () => {
-            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
-            console.log(`[FileStorage] File uploaded to GCS: ${publicUrl}`);
-            resolve(publicUrl);
-        });
-
-        blobStream.end(file.buffer);
-    });
-};
-
-
-// --- Public API ---
-
-/**
- * The main file upload handler.
- * It determines whether to use local storage or GCS based on the NODE_ENV.
+ * The main file upload handler for general files.
  * @param file The file object from multer (Express.Multer.File).
  * @returns An object containing the public URL (`filePath`) and the `fileName`.
  */
-export const uploadFile = async (file: Express.Multer.File): Promise<{ filePath: string; fileName: string }> => {
-  if (!file) {
-    throw new Error('No file provided for upload.');
-  }
+export const uploadFile = async (
+	file: Express.Multer.File
+): Promise<{ filePath: string; fileName: string }> => {
+	if (!file) {
+		throw new Error('No file provided for upload.');
+	}
 
-  let filePath: string;
-  const fileName = generateUniqueFilename(file.originalname); // Generate once
+	const uniqueFilename = generateUniqueFilename(file.originalname);
 
-  if (NODE_ENV === 'production' && storage) {
-      // In production, upload to GCS
-      const gcsBlob = storage.bucket(GCS_BUCKET_NAME!).file(fileName);
-      const blobStream = gcsBlob.createWriteStream({
-          resumable: false,
-          contentType: file.mimetype,
-      });
+	// Always upload to GCS (both development and production)
+	const gcsClient = getStorageClient();
+	if (!GCS_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_BUCKET_NAME is not set.');
+	}
+	const bucket = gcsClient.bucket(GCS_BUCKET_NAME);
+	const blob = bucket.file(uniqueFilename);
 
-      await new Promise<void>((resolve, reject) => {
-          blobStream.on('error', reject);
-          blobStream.on('finish', () => resolve());
-          blobStream.end(file.buffer);
-      });
+	const blobStream = blob.createWriteStream({
+		resumable: false,
+		contentType: file.mimetype
+	});
 
-      filePath = `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${fileName}`;
+	await new Promise<void>((resolve, reject) => {
+		blobStream.on('error', (err) => {
+			console.error('[FileStorage] GCS Upload Error:', err);
+			reject(new Error('Failed to upload file to Google Cloud Storage.'));
+		});
+		blobStream.on('finish', () => {
+			resolve();
+		});
+		blobStream.end(file.buffer);
+	});
 
-  } else {
-      // In development, save to local disk
-      const localFilePath = path.join(localUploadsDir, fileName);
-      await writeFileAsync(localFilePath, file.buffer);
-      filePath = `/uploads/${fileName}`; // The URL path
-  }
+	let STORAGE_BASE_URL = 'https://storage.googleapis.com';
 
-  return { filePath, fileName };
+	if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+		console.log(
+			`[FileStorage] Uploading file to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+		);
+		STORAGE_BASE_URL = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+	}
+
+	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${uniqueFilename}`;
+	return { filePath, fileName: uniqueFilename };
+};
+
+/**
+ * Generic file upload handler for entity attachments.
+ * Uploads files to organized folders: attachments/[entityType]/[entityId]/[unique_file_name]
+ * @param file The file object from multer (Express.Multer.File).
+ * @param entityType The type of entity (e.g., 'material-requests', 'contracts', 'work-requests').
+ * @param entityId The ID of the entity this file belongs to.
+ * @returns An object containing the public URL (`filePath`) and the `fileName`.
+ */
+export const uploadEntityAttachment = async (
+	file: Express.Multer.File,
+	entityType: string,
+	entityId: string
+): Promise<{ filePath: string; fileName: string }> => {
+	if (!file) {
+		throw new Error('No file provided for upload.');
+	}
+
+	if (!entityType || !entityId) {
+		throw new Error('Entity type and entity ID are required for attachment upload.');
+	}
+
+	const uniqueFilename = generateUniqueFilename(file.originalname);
+	const destinationPath = `attachments/${entityType}/${entityId}/${uniqueFilename}`;
+
+	// Always upload to GCS (both development and production)
+	const gcsClient = getStorageClient();
+	if (!GCS_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_BUCKET_NAME is not set.');
+	}
+
+	const bucket = gcsClient.bucket(GCS_BUCKET_NAME);
+	const blob = bucket.file(destinationPath);
+
+	const blobStream = blob.createWriteStream({
+		resumable: false,
+		contentType: file.mimetype,
+		metadata: {
+			metadata: {
+				entityType: entityType,
+				entityId: entityId,
+				uploadedAt: new Date().toISOString()
+			}
+		}
+	});
+
+	await new Promise<void>((resolve, reject) => {
+		blobStream.on('error', (err) => {
+			console.error('[FileStorage] Entity Attachment GCS Upload Error:', err);
+			reject(new Error('Failed to upload attachment to Google Cloud Storage.'));
+		});
+		blobStream.on('finish', () => {
+			resolve();
+		});
+		blobStream.end(file.buffer);
+	});
+
+	let STORAGE_BASE_URL = 'https://storage.googleapis.com';
+
+	if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+		console.log(
+			`[FileStorage] Uploading entity attachment to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+		);
+		STORAGE_BASE_URL = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+	}
+
+	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${destinationPath}`;
+	return { filePath, fileName: uniqueFilename };
+};
+
+/**
+ * Uploads a user avatar image.
+ * Files are organized by userId in separate folders.
+ * @param file The image file object from multer.
+ * @param userId The ID of the user this avatar belongs to.
+ * @returns An object containing the public storage path and the fileName.
+ */
+export const uploadUserAvatar = async (
+	file: Express.Multer.File,
+	userId: string
+): Promise<{ filePath: string; fileName: string }> => {
+	if (!file) {
+		throw new Error('No avatar file provided for upload.');
+	}
+
+	if (!userId) {
+		throw new Error('User ID is required for avatar upload.');
+	}
+
+	// Validate image file
+	const allowedImageTypes = [
+		'image/jpeg',
+		'image/jpg',
+		'image/png',
+		'image/gif',
+		'image/webp',
+		'image/svg+xml'
+	];
+
+	if (!allowedImageTypes.includes(file.mimetype)) {
+		throw new Error('File must be an image (JPG, PNG, GIF, WebP, SVG).');
+	}
+
+	const uniqueFilename = generateUniqueFilename(file.originalname);
+	const destinationPath = `users/${userId}/avatar/${uniqueFilename}`;
+
+	// Always upload to GCS (both development and production)
+	const gcsClient = getStorageClient();
+	if (!GCS_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_BUCKET_NAME is not set.');
+	}
+
+	const bucket = gcsClient.bucket(GCS_BUCKET_NAME);
+	const blob = bucket.file(destinationPath);
+
+	const blobStream = blob.createWriteStream({
+		resumable: false,
+		contentType: file.mimetype,
+		metadata: {
+			metadata: {
+				userId: userId,
+				uploadedAt: new Date().toISOString()
+			}
+		}
+	});
+
+	await new Promise<void>((resolve, reject) => {
+		blobStream.on('error', (err) => {
+			console.error('[FileStorage] User Avatar GCS Upload Error:', err);
+			reject(new Error('Failed to upload avatar to Google Cloud Storage.'));
+		});
+		blobStream.on('finish', () => {
+			resolve();
+		});
+		blobStream.end(file.buffer);
+	});
+
+	let STORAGE_BASE_URL = 'https://storage.googleapis.com';
+
+	if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+		console.log(
+			`[FileStorage] Uploading user avatar to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+		);
+		STORAGE_BASE_URL = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+	}
+
+	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${destinationPath}`;
+	return { filePath, fileName: uniqueFilename };
+};
+
+/**
+ * Uploads an audio file for voice messages.
+ * Files are organized by chatId in separate folders.
+ * @param file The audio file object from multer.
+ * @param chatId The ID of the chat this audio belongs to.
+ * @param messageId The ID of the message (used for filename).
+ * @returns An object containing the private storage path and the fileName.
+ */
+export const uploadAudioFile = async (
+	file: Express.Multer.File,
+	chatId: string,
+	messageId: string
+): Promise<{ filePath: string; fileName: string }> => {
+	if (!file) {
+		throw new Error('No audio file provided for upload.');
+	}
+
+	if (!chatId || !messageId) {
+		throw new Error('ChatId and messageId are required for audio upload.');
+	}
+
+	// Validate audio file
+	if (!file.mimetype.startsWith('audio/')) {
+		throw new Error('File must be an audio file.');
+	}
+
+	// Generate filename: <messageId>.webm
+	const fileExtension =
+		file.mimetype === 'audio/webm' ? '.webm' : file.mimetype === 'audio/ogg' ? '.ogg' : '.webm';
+	const fileName = `${messageId}${fileExtension}`;
+	const chatFolderPath = `${chatId}/${fileName}`;
+
+	// Always upload to GCS audio bucket (both development and production)
+	const gcsClient = getAudioStorageClient();
+	if (!GCS_AUDIO_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_AUDIO_BUCKET_NAME is not set.');
+	}
+
+	const bucket = gcsClient.bucket(GCS_AUDIO_BUCKET_NAME);
+	const blob = bucket.file(chatFolderPath);
+
+	const blobStream = blob.createWriteStream({
+		resumable: false,
+		contentType: file.mimetype,
+		metadata: {
+			metadata: {
+				chatId: chatId,
+				messageId: messageId,
+				uploadedAt: new Date().toISOString()
+			}
+		}
+	});
+
+	await new Promise<void>((resolve, reject) => {
+		blobStream.on('error', (err) => {
+			console.error('[FileStorage] Audio GCS Upload Error:', err);
+			reject(new Error('Failed to upload audio file to Google Cloud Storage.'));
+		});
+		blobStream.on('finish', () => {
+			resolve();
+		});
+		blobStream.end(file.buffer);
+	});
+
+	// Return the private GCS path (not a public URL)
+	const filePath = chatFolderPath;
+	return { filePath, fileName };
+};
+
+/**
+ * Generates a signed URL for accessing a private audio file.
+ * @param filePath The private GCS path of the audio file.
+ * @param expirationMinutes The number of minutes until the URL expires (default: 15).
+ * @returns The signed URL for accessing the file.
+ */
+export const getSignedAudioUrl = async (
+	filePath: string,
+	expirationMinutes: number = 15
+): Promise<string> => {
+	// Always use GCS signed URLs (both development and production)
+	const gcsClient = getAudioStorageClient();
+	if (!GCS_AUDIO_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_AUDIO_BUCKET_NAME is not set for signed URL generation.');
+	}
+
+	const bucket = gcsClient.bucket(GCS_AUDIO_BUCKET_NAME);
+	const file = bucket.file(filePath);
+
+	const [url] = await file.getSignedUrl({
+		action: 'read',
+		expires: Date.now() + expirationMinutes * 60 * 1000
+	});
+
+	return url;
+};
+
+/**
+ * Uploads a file attachment for chat messages.
+ * Files are organized by chatId in separate folders.
+ * @param file The file object from multer (Express.Multer.File).
+ * @param chatId The ID of the chat this file belongs to.
+ * @param messageId The ID of the message (used for filename).
+ * @returns An object containing the public URL (`filePath`) and the `fileName`.
+ */
+export const uploadChatAttachment = async (
+	file: Express.Multer.File,
+	chatId: string,
+	messageId?: string
+): Promise<{ filePath: string; fileName: string; uniqueFilename: string; messageId: string }> => {
+	if (!file) {
+		throw new Error('No file provided for upload.');
+	}
+
+	if (!chatId) {
+		throw new Error('ChatId is required for chat attachment upload.');
+	}
+
+	// Generate messageId if not provided
+	if (!messageId) {
+		messageId = crypto.randomUUID();
+	}
+
+	const uniqueFilename = generateUniqueFilename(file.originalname);
+	const destinationPath = `chat-attachments/${chatId}/${messageId}/${uniqueFilename}`;
+
+	// Always upload to GCS (both development and production)
+	const gcsClient = getStorageClient();
+	if (!GCS_BUCKET_NAME) {
+		throw new Error('[FileStorage] GCS_BUCKET_NAME is not set.');
+	}
+
+	const bucket = gcsClient.bucket(GCS_BUCKET_NAME);
+	const blob = bucket.file(destinationPath);
+
+	const blobStream = blob.createWriteStream({
+		resumable: false,
+		contentType: file.mimetype,
+		metadata: {
+			metadata: {
+				chatId: chatId,
+				messageId: messageId,
+				uploadedAt: new Date().toISOString()
+			}
+		}
+	});
+
+	await new Promise<void>((resolve, reject) => {
+		blobStream.on('error', (err) => {
+			console.error('[FileStorage] Chat Attachment GCS Upload Error:', err);
+			reject(new Error('Failed to upload chat attachment to Google Cloud Storage.'));
+		});
+		blobStream.on('finish', () => {
+			resolve();
+		});
+		blobStream.end(file.buffer);
+	});
+
+	let STORAGE_BASE_URL = 'https://storage.googleapis.com';
+
+	if (process.env.NODE_ENV !== 'production' && process.env.STORAGE_EMULATOR_HOST) {
+		console.log(
+			`[FileStorage] Uploading chat attachment to GCS Emulator at ${process.env.STORAGE_EMULATOR_HOST}`
+		);
+		STORAGE_BASE_URL = `http://${process.env.STORAGE_EMULATOR_HOST}`;
+	}
+
+	const filePath = `${STORAGE_BASE_URL}/${GCS_BUCKET_NAME}/${destinationPath}`;
+	return { filePath, fileName: file.originalname, uniqueFilename, messageId };
 };

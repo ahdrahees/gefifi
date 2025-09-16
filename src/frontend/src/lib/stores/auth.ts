@@ -2,9 +2,12 @@ import { writable, type Writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import apiClient, { ApiError } from '$lib/api'; // Import the API client and ApiError
 import type { AuthUser } from '$lib/types'; // Import central AuthUser type
+import { auth } from '$lib/firebase'; // Import the central Firebase auth service
+import { signInWithCustomToken, signOut } from 'firebase/auth';
+export type { AuthUser }; // Re-export AuthUser for other modules
 
 export interface AuthState {
-	isLoggedIn: boolean;
+	isAuthenticated: boolean;
 	user: AuthUser | null;
 	token: string | null;
 	error: string | null; // For login/registration errors
@@ -12,7 +15,7 @@ export interface AuthState {
 }
 
 const initialAuthState: AuthState = {
-	isLoggedIn: false,
+	isAuthenticated: false,
 	user: null,
 	token: null,
 	error: null,
@@ -45,13 +48,17 @@ function parseJwt(token: string): { exp?: number; [key: string]: any } | null {
 }
 
 // Helper function to update the store and localStorage
-function updateAuthData(token: string | null, user: AuthUser | null, error: string | null = null) {
+async function updateAuthData(
+	token: string | null,
+	user: AuthUser | null,
+	error: string | null = null
+) {
 	const newAuthState: AuthState = {
-		isLoggedIn: !!(token && user),
+		isAuthenticated: !!(token && user),
 		user,
 		token,
 		error,
-		isLoading: false // Finished loading/updating
+		isLoading: false
 	};
 	store.set(newAuthState);
 
@@ -59,9 +66,16 @@ function updateAuthData(token: string | null, user: AuthUser | null, error: stri
 		if (token && user) {
 			localStorage.setItem('authToken', token);
 			localStorage.setItem('authUser', JSON.stringify(user));
+			// New: Silently sign into Firebase in the background
+			await signInToFirebase(token);
 		} else {
 			localStorage.removeItem('authToken');
 			localStorage.removeItem('authUser');
+			// New: Sign out of Firebase when logging out
+			if (auth.currentUser) {
+				await signOut(auth);
+				console.log('[Firebase] User signed out.');
+			}
 		}
 	}
 }
@@ -91,10 +105,10 @@ async function loadUserFromStorage() {
 				// However, authStore.subscribe in api.ts should handle this.
 				// We must ensure the token is in the store *before* apiClient.getMe() is called by it internally.
 				// The most robust way is to ensure authStore.set is called if a token is read from localStorage.
-				store.update((s) => ({ ...s, token: token, isLoggedIn: false, user: null })); // Temporarily set token for api.ts
+				store.update((s) => ({ ...s, token: token, isAuthenticated: false, user: null })); // Temporarily set token for api.ts
 
 				const freshUser = await apiClient.getMe();
-				updateAuthData(token, freshUser); // This updates the store correctly with the fresh user
+				await updateAuthData(token, freshUser); // This updates the store correctly with the fresh user AND signs into Firebase
 			} catch (apiError: any) {
 				console.warn(
 					'Token re-validation with /api/auth/me failed, logging out:',
@@ -116,11 +130,36 @@ async function loadUserFromStorage() {
 	}
 }
 
+// New: Firebase Sign-In Logic
+async function signInToFirebase(sessionToken: string) {
+	try {
+		console.log('[Firebase] Requesting custom token from backend...');
+		const response = await apiClient.getFirebaseToken(); // API client will use the sessionToken
+		const firebaseToken = response.firebaseToken;
+
+		if (firebaseToken) {
+			console.log('[Firebase] Signing in with custom token...');
+			const userCredential = await signInWithCustomToken(auth, firebaseToken);
+			console.log('[Firebase] Silent sign-in successful. User is authenticated.', {
+				uid: userCredential.user.uid,
+				email: userCredential.user.email
+			});
+		} else {
+			console.error('[Firebase] No firebase token received from backend');
+		}
+	} catch (error) {
+		console.error('[Firebase] Silent sign-in failed:', error);
+		// This is not a critical failure for the app's main auth,
+		// but real-time features will not work.
+	}
+}
+
 // Logout function
-function logout() {
-	updateAuthData(null, null);
-	// To redirect after logout, use `goto` from `$app/navigation` in the component calling logout.
-	// e.g., if (browser) { import('$app/navigation').then(({goto}) => goto('/auth/login')); }
+async function logout() {
+	if (browser) {
+		window.google?.accounts?.id?.disableAutoSelect();
+	}
+	await updateAuthData(null, null);
 }
 
 // Define types for credentials and user data for API calls
@@ -140,7 +179,7 @@ async function login(credentials: LoginCredentials): Promise<AuthUser> {
 	try {
 		const response = await apiClient.login(credentials);
 		if (response.user && response.token) {
-			updateAuthData(response.token, response.user);
+			await updateAuthData(response.token, response.user);
 			return response.user;
 		} else {
 			// This case should ideally be caught by apiClient's error handling
@@ -154,7 +193,7 @@ async function login(credentials: LoginCredentials): Promise<AuthUser> {
 			errorMessage = err.message;
 		}
 		// Ensure user is logged out in the store's state on error
-		updateAuthData(null, null, errorMessage);
+		await updateAuthData(null, null, errorMessage);
 		throw new Error(errorMessage); // Re-throw for the component to handle
 	}
 }
@@ -164,7 +203,7 @@ async function register(userData: RegisterUserData): Promise<AuthUser> {
 	try {
 		const response = await apiClient.register(userData);
 		if (response.user && response.token) {
-			updateAuthData(response.token, response.user);
+			await updateAuthData(response.token, response.user);
 			return response.user;
 		} else {
 			throw new Error('Registration response was incomplete.');
@@ -176,20 +215,55 @@ async function register(userData: RegisterUserData): Promise<AuthUser> {
 		} else if (err instanceof Error) {
 			errorMessage = err.message;
 		}
-		updateAuthData(null, null, errorMessage);
+		await updateAuthData(null, null, errorMessage);
+		throw new Error(errorMessage);
+	}
+}
+
+// --- Google Sign-In Flow ---
+interface GoogleLoginPayload {
+	googleTokenId: string;
+	userTypeForNewUser?: 'customer' | 'expert' | 'supplier';
+	// profileForNewUser is not needed here as we will collect it on a separate page
+}
+interface GoogleAuthResponse {
+	user: AuthUser;
+	token: string;
+	isNewUser: boolean;
+	message?: string;
+}
+
+async function googleLogin(payload: GoogleLoginPayload): Promise<GoogleAuthResponse> {
+	store.update((s) => ({ ...s, isLoading: true, error: null }));
+	try {
+		const response = await apiClient.googleLogin(payload);
+		if (response.user && response.token) {
+			await updateAuthData(response.token, response.user);
+			return response; // Return the full response including isNewUser
+		} else {
+			throw new Error('Google Sign-In response was incomplete.');
+		}
+	} catch (err: unknown) {
+		let errorMessage = 'Google Sign-In failed. Please try again later.';
+		if (err instanceof ApiError && err.data?.message) {
+			errorMessage = err.data.message;
+		} else if (err instanceof Error) {
+			errorMessage = err.message;
+		}
+		await updateAuthData(null, null, errorMessage);
 		throw new Error(errorMessage);
 	}
 }
 
 export const authStore = {
 	subscribe: store.subscribe,
-	// `set` could be used for server-side initialisation if auth state comes from cookies
+	update: store.update,
 	set: store.set,
-	loadUserFromStorage, // Should be called in a root +layout.svelte or +layout.ts on client
+	loadUserFromStorage,
 	logout,
 	login,
 	register,
-	// Expose internal update function if needed by other modules (e.g. API client on token refresh)
+	googleLogin,
 	_updateAuthData: updateAuthData
 };
 

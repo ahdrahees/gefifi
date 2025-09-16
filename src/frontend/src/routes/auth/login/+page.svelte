@@ -39,7 +39,7 @@
 
 			// On successful login (existing user) or registration, the backend returns a token.
 			authStore._updateAuthData(result.token, result.user);
-			goto('/dashboard', { replaceState: true });
+			goto('/home', { replaceState: true });
 		} catch (error: any) {
 			console.error('Google Sign-In Error:', error);
 			if (error instanceof ApiError && error.status === 400) {
@@ -69,7 +69,7 @@
 			// A reactive statement in a layout or a +layout.ts load function
 			// would typically handle redirection based on isLoggedIn.
 			// For now, explicit navigation on success:
-			goto('/dashboard');
+			goto('/home');
 		} catch (error: any) {
 			// The error thrown by authStore.login already has a user-friendly message
 			errorMessage = error.message;
@@ -84,12 +84,12 @@
 	onMount(() => {
 		// Set up redirect for already logged-in users
 		unsubscribeAuth = authStore.subscribe((state) => {
-			if (state.isLoggedIn && !state.isLoading) {
-				goto('/dashboard', { replaceState: true });
+			if (state.isAuthenticated && !state.isLoading) {
+				goto('/home', { replaceState: true });
 			}
 		});
-		if ($authStore.isLoggedIn && !$authStore.isLoading) {
-			goto('/dashboard', { replaceState: true });
+		if ($authStore.isAuthenticated && !$authStore.isLoading) {
+			goto('/home', { replaceState: true });
 		}
 
 		// Initialize Google Sign-In
@@ -127,19 +127,19 @@
 </script>
 
 <div
-	class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 p-4 font-sans text-gray-100"
+	class="flex min-h-screen flex-col justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 px-6 py-12 lg:px-8"
 >
-	<div class="w-full max-w-md">
-		<div class="mb-8 text-center">
-			<a
-				href="/"
-				class="text-5xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
-			</a>
-			<h1 class="mt-2 text-2xl text-sky-300">Welcome Back!</h1>
-			<p class="text-sm text-slate-400">Login to continue your construction journey.</p>
-		</div>
+	<div class="sm:mx-auto sm:w-full sm:max-w-md">
+		<a href="/">
+			<img
+				class="mx-auto h-16 w-auto"
+				src="/images/Gefifi-Logo.png"
+				alt="GEFIFI Construction Marketplace"
+			/>
+		</a>
+		<h2 class="mt-6 text-center text-2xl leading-9 font-bold tracking-tight text-sky-300">
+			Sign in to your account
+		</h2>
 
 		<form
 			on:submit|preventDefault={handleLogin}

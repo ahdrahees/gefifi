@@ -9,6 +9,10 @@ node_modules
 /build
 .dfx
 .zed
+.cursor
+backend/dist
+.kiro
+.vscode
 
 # OS
 .DS_Store
@@ -19,18 +23,25 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.test
+.env.local
+.env-backend
 
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /data/*
 
-
-# Ignore runtime data files in backend/data
-/backend/data/*.json
-
-# Ignore uploaded files in backend/uploads
-/backend/uploads/*
+# Notes
+/z-notes
 
 # GCP credentials
-/backend/gcp-credentials.json
+
+# Ignore uploaded files in backend/uploads
+
+gcp-credentials.json
+
+firestore-migration
+
+# Firebase emulator
+.emulator-persisted-data
+*.log

@@ -1,111 +1,73 @@
 <!-- gefifi-2/src/frontend/src/routes/auth/register/+page.svelte -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { authStore, type RegisterUserData } from '$lib/stores/auth';
-	import type { AuthUser } from '$lib/types';
-	import apiClient, { ApiError } from '$lib/api';
+	import { authStore } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import { page } from '$app/stores';
 
 	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-	let currentStep = 1; // 1: Account details, 2: Profile details
+	let selectedUserType: 'customer' | 'expert' | 'supplier' | null = null;
 
-	// Step 1: Account Details
+	// Form State
 	let email = '';
 	let password = '';
 	let confirmPassword = '';
-	let userType: 'customer' | 'expert' | 'supplier' = 'customer'; // Default
-
-	// Step 2: Profile Details (common and specific)
-	let profile = {
-		fullName: '',
-		phoneNumber: '',
-		location: '', // Common location (city/area)
-		avatarUrl: '', // For simplicity, text input for URL for now
-
-		// Expert-specific
-		expertise: '',
-		experience: '', // Can be used by expert & supplier
-
-		// Supplier-specific
-		companyName: '',
-		category: '' // e.g., material category
-	};
 
 	let isLoading = false;
 	let errorMessage: string | null = null;
 	let googleIsLoading = false;
+	let isAlreadySelected = false;
 
 	const userTypes = [
-		{ value: 'customer' as const, label: 'Customer (Looking for services/materials)' },
-		{ value: 'expert' as const, label: 'Expert (Offering construction services)' },
-		{ value: 'supplier' as const, label: 'Supplier (Providing construction materials)' }
+		{
+			value: 'customer' as const,
+			label: 'Customer',
+			description: 'I need to find professionals or source materials for a project.'
+		},
+		{
+			value: 'expert' as const,
+			label: 'Expert',
+			description: 'I offer professional construction services and want to find work.'
+		},
+		{
+			value: 'supplier' as const,
+			label: 'Supplier',
+			description: 'I provide construction materials and want to connect with customers.'
+		}
 	];
 
-	function handleNextStep() {
-		errorMessage = null;
-		if (!email.includes('@') || email.trim().length < 5) {
-			errorMessage = 'Please enter a valid email address.';
-			return;
-		}
-		if (password.length < 6) {
-			errorMessage = 'Password must be at least 6 characters long.';
-			return;
-		}
-		if (password !== confirmPassword) {
-			errorMessage = 'Passwords do not match.';
-			return;
-		}
-		currentStep = 2;
+	function selectUserType(type: 'customer' | 'expert' | 'supplier') {
+		selectedUserType = type;
+		errorMessage = null; // Clear error when a selection is made
 	}
 
 	async function handleRegister() {
 		isLoading = true;
 		errorMessage = null;
 
-		const finalProfile: Partial<AuthUser['profile']> = {
-			fullName: profile.fullName?.trim() || undefined,
-			phoneNumber: profile.phoneNumber?.trim() || undefined,
-			location: profile.location?.trim() || undefined,
-			// For avatar, if we implement file upload for registration, this would be handled differently.
-			// For now, if a URL is manually entered, it's passed.
-			avatarUrl: profile.avatarUrl?.trim() || undefined
-		};
-
-		if (userType === 'expert') {
-			finalProfile.expertise = profile.expertise?.trim() || undefined;
-			finalProfile.experience = profile.experience?.trim() || undefined;
-			if (!finalProfile.fullName) {
-				// Basic validation
-				errorMessage = 'Full name is required for Experts.';
-				isLoading = false;
-				return;
-			}
-		} else if (userType === 'supplier') {
-			finalProfile.companyName = profile.companyName?.trim() || undefined;
-			finalProfile.category = profile.category?.trim() || undefined;
-			finalProfile.experience = profile.experience?.trim() || undefined;
-			if (!finalProfile.companyName) {
-				// Basic validation
-				errorMessage = 'Company name is required for Suppliers.';
-				isLoading = false;
-				return;
-			}
+		if (!selectedUserType) {
+			errorMessage = 'Please select a user type to continue.';
+			isLoading = false;
+			return;
+		}
+		if (password !== confirmPassword) {
+			errorMessage = 'Passwords do not match.';
+			isLoading = false;
+			return;
 		}
 
-		const registrationData: RegisterUserData = {
-			email,
-			password,
-			userType,
-			profile: finalProfile
-		};
-
 		try {
-			await authStore.register(registrationData);
-			goto('/dashboard');
+			await authStore.register({
+				email,
+				password,
+				userType: selectedUserType,
+				profile: {} // Profile is now collected on the complete-profile page
+			});
+			goto('/home');
 		} catch (error: any) {
 			errorMessage = error.message || 'An unexpected error occurred during registration.';
-			console.error('Registration page error:', error);
 		} finally {
 			isLoading = false;
 		}
@@ -115,29 +77,26 @@
 		googleIsLoading = true;
 		errorMessage = null;
 
-		// The userType is selected in Step 1.
-		const userTypeForNewUser = userType;
-		const profileForNewUser = currentStep === 2 ? profile : {};
+		if (!selectedUserType) {
+			errorMessage =
+				'Please select your user type (Customer, Expert, or Supplier) before using Google Sign-In.';
+			googleIsLoading = false;
+			return;
+		}
 
 		try {
-			// Call the backend with the token from Google and the selected userType
-			const result = await apiClient.googleLogin({
+			const result = await authStore.googleLogin({
 				googleTokenId: response.credential,
-				userTypeForNewUser: userTypeForNewUser,
-				profileForNewUser: profileForNewUser // Send profile data if already collected
+				userTypeForNewUser: selectedUserType
 			});
 
-			// On success, the backend returns a token for the new/existing user
-			authStore._updateAuthData(result.token, result.user);
-			goto('/dashboard', { replaceState: true });
-		} catch (error: any) {
-			console.error('Google Sign-In/Registration Error:', error);
-			if (error instanceof ApiError) {
-				errorMessage =
-					error.data?.message || 'An error occurred during Google Sign-In/Registration.';
+			if (result.isNewUser) {
+				goto('/auth/complete-profile', { replaceState: true });
 			} else {
-				errorMessage = 'An unexpected error occurred.';
+				goto('/home', { replaceState: true });
 			}
+		} catch (error: any) {
+			errorMessage = error.message || 'An unexpected error occurred.';
 		} finally {
 			googleIsLoading = false;
 		}
@@ -145,16 +104,24 @@
 
 	let unsubscribeAuth: (() => void) | null = null;
 	onMount(() => {
-		// Redirect logic
-		const initialAuthState = $authStore;
-		if (initialAuthState.isLoggedIn && !initialAuthState.isLoading) {
-			goto('/dashboard', { replaceState: true });
+		const initialAuthState = get(authStore);
+		if (initialAuthState.isAuthenticated && !initialAuthState.isLoading) {
+			goto('/home', { replaceState: true });
 		}
 		unsubscribeAuth = authStore.subscribe((state) => {
-			if (state.isLoggedIn && !state.isLoading) {
-				goto('/dashboard', { replaceState: true });
+			if (state.isAuthenticated && !state.isLoading) {
+				goto('/home', { replaceState: true });
 			}
 		});
+
+		// get user type from URL query parameter
+		selectedUserType =
+			($page.url.searchParams.get('type') as 'customer' | 'expert' | 'supplier') || null;
+
+		// if user type is already selected from the landing page and sent via URL query parameter, hide the user type selection
+		if (selectedUserType !== null) {
+			isAlreadySelected = true;
+		}
 
 		// Initialize Google Sign-In
 		if (GOOGLE_CLIENT_ID && window.google) {
@@ -169,7 +136,7 @@
 					theme: 'outline',
 					size: 'large',
 					type: 'standard',
-					text: 'continue_with', // More appropriate for registration
+					text: 'continue_with',
 					shape: 'rectangular',
 					logo_alignment: 'left'
 				});
@@ -192,14 +159,17 @@
 >
 	<div class="w-full max-w-lg">
 		<div class="mb-6 text-center sm:mb-8">
-			<a
-				href="/"
-				class="text-5xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
+			<a href="/">
+				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="mx-auto h-16 w-auto" />
 			</a>
-			<h1 class="mt-2 text-2xl text-sky-300">Create Your Account</h1>
-			<p class="text-sm text-slate-400">Join GEFIFI to connect with the best in construction.</p>
+			<h1 class="mt-4 text-2xl text-sky-300">Create Your Account</h1>
+			<p class="text-sm text-slate-400">
+				{#if !selectedUserType}
+					First, tell us who you are.
+				{:else}
+					Now, let's create your login credentials.
+				{/if}
+			</p>
 		</div>
 
 		<div class="rounded-xl bg-slate-800/70 p-6 shadow-2xl sm:p-8">
@@ -212,306 +182,102 @@
 				</div>
 			{/if}
 
-			<div class="mb-6 flex items-center justify-center space-x-2">
-				<button
-					class="flex items-center {currentStep === 1
-						? 'text-emerald-300'
-						: 'text-slate-400 hover:text-slate-200'}"
-					on:click={() => (currentStep = 1)}
-					disabled={isLoading || googleIsLoading}
-					aria-current={currentStep === 1 ? 'step' : undefined}
+			{#if !isAlreadySelected}
+				<div class="mb-6 space-y-4">
+					<h3 class="text-center font-semibold text-slate-300">I am a...</h3>
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+						{#each userTypes as type (type.value)}
+							<button
+								on:click={() => selectUserType(type.value)}
+								class="flex flex-col items-center rounded-lg border-2 p-4 text-center transition-all duration-200 ease-in-out {selectedUserType ===
+								type.value
+									? 'border-emerald-500 bg-emerald-500/20 shadow-lg'
+									: 'border-slate-600 bg-slate-700/50 hover:border-slate-500 hover:bg-slate-700'}"
+							>
+								<span class="text-lg font-bold text-slate-100">{type.label}</span>
+								<span class="mt-1 text-xs text-slate-400">{type.description}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			<!-- This div will now always exist but will be hidden until a user type is selected -->
+			<div class:hidden={!selectedUserType} class="mt-6">
+				<div id="google-register-button" class="flex justify-center" data-text="signup_with"></div>
+
+				<div
+					class="my-6 flex items-center before:flex-1 before:border-t before:border-slate-600 after:flex-1 after:border-t after:border-slate-600"
 				>
-					<span
-						class="flex h-8 w-8 items-center justify-center rounded-full border-2 {currentStep === 1
-							? 'border-emerald-400 bg-emerald-500/20'
-							: 'border-slate-600 group-hover:border-slate-400'}">1</span
-					>
-					<span class="ml-2 text-xs sm:text-sm {currentStep === 1 ? 'font-semibold' : ''}"
-						>Account</span
-					>
-				</button>
-				<div class="h-px flex-1 {currentStep > 1 ? 'bg-emerald-400' : 'bg-slate-600'} mx-1"></div>
-				<button
-					class="flex items-center {currentStep === 2
-						? 'text-emerald-300'
-						: 'text-slate-400 hover:text-slate-200'}"
-					on:click={() => {
-						if (currentStep === 1) handleNextStep();
-						else currentStep = 2;
-					}}
-					disabled={isLoading ||
-						googleIsLoading ||
-						(currentStep === 1 && (!email || !password || !confirmPassword))}
-					aria-current={currentStep === 2 ? 'step' : undefined}
-				>
-					<span
-						class="flex h-8 w-8 items-center justify-center rounded-full border-2 {currentStep === 2
-							? 'border-emerald-400 bg-emerald-500/20'
-							: 'border-slate-600 group-hover:border-slate-400'}">2</span
-					>
-					<span class="ml-2 text-xs sm:text-sm {currentStep === 2 ? 'font-semibold' : ''}"
-						>Profile</span
-					>
-				</button>
-			</div>
+					<p class="mx-4 text-center text-sm font-semibold">OR</p>
+				</div>
 
-			{#if currentStep === 1}
-				<form on:submit|preventDefault={handleNextStep} class="space-y-5">
+				<form class="space-y-6" on:submit|preventDefault={handleRegister}>
 					<div>
-						<label for="email" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Email Address <span class="text-red-400">*</span></label
+						<label for="email" class="block text-sm leading-6 font-medium text-slate-300"
+							>Email address</label
 						>
-						<input
-							type="email"
-							id="email"
-							bind:value={email}
-							required
-							disabled={isLoading || googleIsLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							placeholder="you@example.com"
-						/>
-					</div>
-					<div>
-						<label for="password" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Password <span class="text-red-400">*</span></label
-						>
-						<input
-							type="password"
-							id="password"
-							bind:value={password}
-							required
-							minlength="6"
-							disabled={isLoading || googleIsLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							placeholder="Minimum 6 characters"
-						/>
-					</div>
-					<div>
-						<label for="confirmPassword" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Confirm Password <span class="text-red-400">*</span></label
-						>
-						<input
-							type="password"
-							id="confirmPassword"
-							bind:value={confirmPassword}
-							required
-							minlength="6"
-							disabled={isLoading || googleIsLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							placeholder="Re-enter your password"
-						/>
-					</div>
-					<div>
-						<label for="userType" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>I want to register as a... <span class="text-red-400">*</span></label
-						>
-						<select
-							id="userType"
-							bind:value={userType}
-							required
-							disabled={isLoading || googleIsLoading}
-							class="w-full appearance-none rounded-lg border border-slate-600 bg-slate-700/80 bg-right bg-no-repeat px-4 py-2.5 pr-8 text-gray-100 transition-colors outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-							style={bgstyle}
-						>
-							{#each userTypes as typeOpt (typeOpt)}
-								<option value={typeOpt.value}>{typeOpt.label}</option>
-							{/each}
-						</select>
-					</div>
-					<button
-						type="submit"
-						disabled={isLoading || googleIsLoading}
-						class="flex w-full items-center justify-center rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-					>
-						Next: Profile Details &rarr;
-					</button>
-					<div class="relative flex items-center py-2">
-						<div class="flex-grow border-t border-slate-600"></div>
-						<span class="mx-4 flex-shrink text-xs text-slate-400 uppercase">Or</span>
-						<div class="flex-grow border-t border-slate-600"></div>
-					</div>
-					<div id="google-register-button" class="flex justify-center">
-						<!-- Google will render its button here. We show a placeholder. -->
-						<button
-							type="button"
-							disabled={true}
-							class="flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-slate-700 px-6 py-3 font-semibold text-slate-300 opacity-70 shadow-md"
-						>
-							Loading Google Sign-In...
-						</button>
-					</div>
-				</form>
-			{:else if currentStep === 2}
-				<form on:submit|preventDefault={handleRegister} class="space-y-5">
-					<h2 class="mb-1 text-center text-xl font-semibold text-sky-300">
-						Complete Your Profile <span class="text-amber-400 capitalize">({userType})</span>
-					</h2>
-
-					{#if userType === 'supplier'}
-						<div>
-							<label for="companyName" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Company Name <span class="text-red-400">*</span></label
-							>
+						<div class="mt-2">
 							<input
-								type="text"
-								id="companyName"
-								bind:value={profile.companyName}
-								required={userType === 'supplier'}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="Your company's official name"
+								id="email"
+								name="email"
+								type="email"
+								autocomplete="email"
+								required
+								bind:value={email}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
 							/>
 						</div>
-					{:else}
-						<div>
-							<label for="fullName" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Full Name <span class="text-red-400">*</span></label
-							>
+					</div>
+					<div>
+						<label for="password" class="block text-sm leading-6 font-medium text-slate-300"
+							>Password</label
+						>
+						<div class="mt-2">
 							<input
-								type="text"
-								id="fullName"
-								bind:value={profile.fullName}
-								required={userType !== 'supplier'}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="Your full name"
+								id="password"
+								name="password"
+								type="password"
+								autocomplete="new-password"
+								required
+								minlength="6"
+								bind:value={password}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
 							/>
 						</div>
-					{/if}
-
+					</div>
 					<div>
-						<label for="phoneNumber" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Phone Number (Optional)</label
+						<label for="confirmPassword" class="block text-sm leading-6 font-medium text-slate-300"
+							>Confirm Password</label
 						>
-						<input
-							type="tel"
-							id="phoneNumber"
-							bind:value={profile.phoneNumber}
-							disabled={isLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-							placeholder="e.g., +919876543210"
-						/>
+						<div class="mt-2">
+							<input
+								id="confirmPassword"
+								name="confirmPassword"
+								type="password"
+								autocomplete="new-password"
+								required
+								bind:value={confirmPassword}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
+							/>
+						</div>
 					</div>
 
-					<div>
-						<label for="location" class="mb-1.5 block text-sm font-medium text-sky-300"
-							>Primary Location (City/Area, Optional)</label
-						>
-						<input
-							type="text"
-							id="location"
-							bind:value={profile.location}
-							disabled={isLoading}
-							class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-							placeholder="e.g., Bangalore, Koramangala"
-						/>
-					</div>
-
-					{#if userType === 'expert'}
-						<div>
-							<label for="expertise" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Primary Expertise</label
-							>
-							<input
-								type="text"
-								id="expertise"
-								bind:value={profile.expertise}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., Plumbing, Electrical Design"
-							/>
-						</div>
-						<div>
-							<label for="experience" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Years of Experience</label
-							>
-							<input
-								type="text"
-								id="experience"
-								bind:value={profile.experience}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., 5 years, 10+ years"
-							/>
-						</div>
-					{/if}
-
-					{#if userType === 'supplier'}
-						<div>
-							<label for="category" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Main Material Category</label
-							>
-							<input
-								type="text"
-								id="category"
-								bind:value={profile.category}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., Cement & Steel, Tiles, Paints"
-							/>
-						</div>
-						<div>
-							<label for="experienceSupplier" class="mb-1.5 block text-sm font-medium text-sky-300"
-								>Years in Business</label
-							>
-							<input
-								type="text"
-								id="experienceSupplier"
-								bind:value={profile.experience}
-								disabled={isLoading}
-								class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 placeholder:text-slate-400"
-								placeholder="e.g., 15 years"
-							/>
-						</div>
-					{/if}
-
-					<!-- <div>
-            <label for="avatarUrl" class="block text-sm font-medium text-sky-300 mb-1.5">Profile Picture URL (Optional)</label>
-            <input type="url" id="avatarUrl" bind:value={profile.avatarUrl} disabled={isLoading}
-                   class="w-full bg-slate-700/80 border border-slate-600 text-gray-100 px-4 py-2.5 rounded-lg placeholder:text-slate-400" placeholder="https://example.com/avatar.jpg" />
-          </div> -->
-
-					<div class="flex flex-col gap-3 pt-3 sm:flex-row">
-						<button
-							type="button"
-							on:click={() => (currentStep = 1)}
-							disabled={isLoading}
-							class="order-2 flex w-full items-center justify-center rounded-lg bg-slate-600 px-6 py-3 font-semibold text-slate-200 shadow-md transition-colors duration-150 ease-in-out hover:bg-slate-500 sm:order-1 sm:w-auto"
-						>
-							&larr; Back to Account
-						</button>
+					<div class="pt-4">
 						<button
 							type="submit"
 							disabled={isLoading}
-							class="order-1 flex w-full items-center justify-center rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-700 hover:shadow-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:order-2"
+							class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:opacity-50"
 						>
 							{#if isLoading}
-								<svg
-									class="mr-3 -ml-1 h-5 w-5 animate-spin text-white"
-									xmlns="http://www.w3.org/2000/svg"
-									fill="none"
-									viewBox="0 0 24 24"
-									><circle
-										class="opacity-25"
-										cx="12"
-										cy="12"
-										r="10"
-										stroke="currentColor"
-										stroke-width="4"
-									></circle><path
-										class="opacity-75"
-										fill="currentColor"
-										d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-									></path></svg
-								>
-								Registering Account...
+								<span>Creating Account...</span>
 							{:else}
-								Complete Registration
+								Create Account & Continue
 							{/if}
 						</button>
 					</div>
 				</form>
-			{/if}
+			</div>
 		</div>
 
 		<div class="mt-6 text-center text-sm">

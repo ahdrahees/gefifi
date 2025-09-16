@@ -1,125 +1,257 @@
-import fs from 'fs';
-import path from 'path';
+// gefifi-2/backend/src/data.ts
+import { Firestore } from '@google-cloud/firestore';
+import type { User, WorkRequest, Chat, Contract, MaterialRequest } from './interfaces';
 
-// Define the path to the data directory relative to the src directory
-const dataDir = path.join(__dirname, '..', 'data');
+// --- Lazy Initializer for Firestore Client ---
 
-// Ensure the data directory exists
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-  console.log(`Created data directory at: ${dataDir}`);
+let firestore: Firestore | null = null;
+
+/**
+ * Gets a singleton instance of the Firestore client.
+ * Initializes the client on the first call.
+ * This "lazy initialization" is crucial for environments like Cloud Run
+ * where the application might start before environment variables are fully available.
+ * @returns The Firestore client instance.
+ */
+function getFirestoreClient(): Firestore {
+	if (!firestore) {
+		console.log('[Firestore] Client not initialized. Creating new instance...');
+
+		const options: { projectId?: string; host?: string; port?: number; ssl?: boolean } = {
+			projectId: process.env.GCP_PROJECT_ID || process.env.FIREBASE_PROJECT_ID
+		};
+
+		// If running in a development environment and the Firestore emulator host is set,
+		// connect to the emulator instead of the production database.
+		if (process.env.NODE_ENV !== 'production' && process.env.FIRESTORE_EMULATOR_HOST) {
+			const [host, portStr] = process.env.FIRESTORE_EMULATOR_HOST.split(':');
+			const port = parseInt(portStr, 10);
+
+			options.host = host;
+			options.port = port;
+			options.ssl = false; // Use http for emulator connection
+
+			console.log(`[Firestore] Connecting to Firestore Emulator at ${host}:${port}`);
+		}
+
+		firestore = new Firestore(options);
+		console.log('[Firestore] Client instance created successfully.');
+	}
+	return firestore;
 }
 
+// Define collection names for type safety and easy management.
+const COLLECTIONS = {
+	USERS: 'users',
+	WORK_REQUESTS: 'workRequests',
+	MATERIAL_REQUESTS: 'materialRequests',
+	CHATS: 'chats',
+	MESSAGES: 'messages',
+	CONTRACTS: 'contracts'
+};
+
+// Generic type for our data items, ensuring they all have an ID.
 export interface Identifiable {
-  id: string;
+	id: string;
 }
 
-export class SimpleDB<T extends Identifiable> {
-  private filePath: string;
+/**
+ * A generic class for handling CRUD operations for a specific Firestore collection.
+ * This replaces the SimpleDB class and provides a consistent API for data access.
+ */
+export class FirestoreCollection<T extends Identifiable> {
+	private collectionName: string;
 
-  constructor(fileName: string) {
-    this.filePath = path.join(dataDir, fileName);
-    this._ensureFileExists();
-  }
+	constructor(collectionName: string) {
+		this.collectionName = collectionName;
+		// No client initialization here anymore.
+	}
 
-  private _ensureFileExists(): void {
-    if (!fs.existsSync(this.filePath)) {
-      fs.writeFileSync(this.filePath, JSON.stringify([], null, 2), 'utf-8');
-      console.log(`Created data file at: ${this.filePath}`);
-    }
-  }
+	/**
+	 * Lazily gets the Firestore collection reference.
+	 */
+	private get collection() {
+		return getFirestoreClient().collection(this.collectionName);
+	}
 
-  private async _readData(): Promise<T[]> {
-    try {
-      const fileContent = await fs.promises.readFile(this.filePath, 'utf-8');
-      if (fileContent.trim() === '') {
-        return []; // Handle empty file
-      }
-      return JSON.parse(fileContent) as T[];
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        // File might have been deleted after check, re-create it empty
-        await this._writeData([]);
-        return [];
-      } else if (error instanceof SyntaxError) {
-        console.error(`SyntaxError parsing JSON from ${this.filePath}. Returning empty array. Error: ${error.message}`);
-        // Consider backing up the corrupted file before overwriting
-        // For simplicity in a demo, we might just re-initialize or throw
-        await this._writeData([]); // Re-initialize to empty array
-        return [];
-      }
-      console.error(`Error reading data from ${this.filePath}:`, error);
-      throw error; // Rethrow other errors
-    }
-  }
+	/**
+	 * Creates a new document in a subcollection.
+	 * @param parentDocId The ID of the parent document
+	 * @param subcollectionName The name of the subcollection
+	 * @param item The data to create. Must include a unique 'id' property.
+	 * @returns A promise that resolves to the created item.
+	 */
+	public async createInSubcollection<S extends Identifiable>(
+		parentDocId: string,
+		subcollectionName: string,
+		item: S
+	): Promise<S> {
+		if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
+			throw new Error('Item must have a non-empty string id to be created.');
+		}
+		const docRef = this.collection.doc(parentDocId).collection(subcollectionName).doc(item.id);
+		await docRef.set(item);
+		return item;
+	}
 
-  private async _writeData(data: T[]): Promise<void> {
-    await fs.promises.writeFile(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
-  }
+	/**
+	 * Retrieves all documents from a subcollection.
+	 * @param parentDocId The ID of the parent document
+	 * @param subcollectionName The name of the subcollection
+	 * @returns A promise that resolves to an array of all documents in the subcollection.
+	 */
+	public async getAllFromSubcollection<S extends Identifiable>(
+		parentDocId: string,
+		subcollectionName: string
+	): Promise<S[]> {
+		const snapshot = await this.collection.doc(parentDocId).collection(subcollectionName).get();
+		if (snapshot.empty) {
+			return [];
+		}
+		return snapshot.docs.map((doc) => doc.data() as S);
+	}
 
-  public async getAll(): Promise<T[]> {
-    return this._readData();
-  }
+	/**
+	 * Finds a document by its unique ID in a subcollection.
+	 * @param parentDocId The ID of the parent document
+	 * @param subcollectionName The name of the subcollection
+	 * @param id The ID of the document to find.
+	 * @returns A promise that resolves to the document data, or undefined if not found.
+	 */
+	public async findByIdInSubcollection<S extends Identifiable>(
+		parentDocId: string,
+		subcollectionName: string,
+		id: string
+	): Promise<S | undefined> {
+		const docRef = this.collection.doc(parentDocId).collection(subcollectionName).doc(id);
+		const doc = await docRef.get();
+		if (!doc.exists) {
+			return undefined;
+		}
+		return doc.data() as S;
+	}
 
-  public async findById(id: string): Promise<T | undefined> {
-    const data = await this._readData();
-    return data.find(item => item.id === id);
-  }
+	/**
+	 * Retrieves all documents from the collection.
+	 * @returns A promise that resolves to an array of all documents.
+	 */
+	public async getAll(): Promise<T[]> {
+		const snapshot = await this.collection.get();
+		if (snapshot.empty) {
+			return [];
+		}
+		return snapshot.docs.map((doc) => doc.data() as T);
+	}
 
-  public async create(item: T): Promise<T> {
-    if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
-      throw new Error('Item must have a non-empty string id');
-    }
-    const data = await this._readData();
-    if (data.some(existingItem => existingItem.id === item.id)) {
-      throw new Error(`Item with id '${item.id}' already exists in ${path.basename(this.filePath)}.`);
-    }
-    data.push(item);
-    await this._writeData(data);
-    return item;
-  }
+	/**
+	 * Finds a document by its unique ID.
+	 * @param id The ID of the document to find.
+	 * @returns A promise that resolves to the document data, or undefined if not found.
+	 */
+	public async findById(id: string): Promise<T | undefined> {
+		const docRef = this.collection.doc(id);
+		const doc = await docRef.get();
+		if (!doc.exists) {
+			return undefined;
+		}
+		return doc.data() as T;
+	}
 
-  public async update(id: string, dataToUpdate: Partial<Omit<T, 'id'>>): Promise<T | null> {
-    const data = await this._readData();
-    const itemIndex = data.findIndex(item => item.id === id);
+	/**
+	 * Fetches multiple documents by their unique IDs.
+	 * Firestore's `in` query is limited to 30 items per query. This handles larger arrays by batching.
+	 * @param ids An array of document IDs to fetch.
+	 * @returns A promise that resolves to an array of found documents.
+	 */
+	public async getByIds(ids: string[]): Promise<T[]> {
+		if (!ids || ids.length === 0) {
+			return [];
+		}
 
-    if (itemIndex === -1) {
-      return null; // Item not found
-    }
+		// Firestore 'in' query limit is 30. We chunk the requests to handle any size array.
+		const chunks: string[][] = [];
+		for (let i = 0; i < ids.length; i += 30) {
+			chunks.push(ids.slice(i, i + 30));
+		}
 
-    // Update item, ensuring id is not changed by dataToUpdate
-    const updatedItem = { ...data[itemIndex], ...dataToUpdate, id };
-    data[itemIndex] = updatedItem;
-    await this._writeData(data);
-    return updatedItem;
-  }
-  
-  public async writeAll(data: T[]): Promise<void> {
-    // Validate all items have an ID
-    if (data.some(item => !item.id || typeof item.id !== 'string' || item.id.trim() === '')) {
-        throw new Error('All items in the array must have a non-empty string id');
-    }
-    await this._writeData(data);
-  }
+		const results: T[] = [];
+		for (const chunk of chunks) {
+			if (chunk.length > 0) {
+				const snapshot = await this.collection.where('id', 'in', chunk).get();
+				if (!snapshot.empty) {
+					snapshot.docs.forEach((doc) => {
+						results.push(doc.data() as T);
+					});
+				}
+			}
+		}
 
-  public async delete(id: string): Promise<boolean> {
-    let data = await this._readData();
-    const initialLength = data.length;
-    data = data.filter(item => item.id !== id);
-    if (data.length < initialLength) {
-      await this._writeData(data);
-      return true; // Item was deleted
-    }
-    return false; // Item not found
-  }
+		return results;
+	}
+
+	/**
+	 * Creates a new document in the collection. The item's ID will be used as the document ID.
+	 * @param item The data to create. Must include a unique 'id' property.
+	 * @returns A promise that resolves to the created item.
+	 */
+	public async create(item: T): Promise<T> {
+		if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
+			throw new Error('Item must have a non-empty string id to be created.');
+		}
+		const docRef = this.collection.doc(item.id);
+		await docRef.set(item);
+		return item;
+	}
+
+	/**
+	 * Updates a document with new data.
+	 * @param id The ID of the document to update.
+	 * @param dataToUpdate A partial object containing the fields to update.
+	 * @returns A promise that resolves to the updated document data, or null if not found.
+	 */
+	public async update(id: string, dataToUpdate: Partial<Omit<T, 'id'>>): Promise<T | null> {
+		const docRef = this.collection.doc(id);
+		const doc = await docRef.get();
+
+		if (!doc.exists) {
+			return null; // Item not found
+		}
+
+		// The 'merge: true' option ensures we only update the fields provided
+		// and don't overwrite the entire document.
+		await docRef.set(dataToUpdate, { merge: true });
+
+		// Return the full, updated document
+		const updatedDoc = await docRef.get();
+		return updatedDoc.data() as T;
+	}
+
+	/**
+	 * Deletes a document from the collection by its ID.
+	 * @param id The ID of the document to delete.
+	 * @returns A promise that resolves to true if deletion was successful, false if not found.
+	 */
+	public async delete(id: string): Promise<boolean> {
+		const docRef = this.collection.doc(id);
+		const doc = await docRef.get();
+
+		if (!doc.exists) {
+			return false; // Item not found
+		}
+		await docRef.delete();
+		return true;
+	}
 }
 
-// Ensure required data files are initialized
-const requiredDataFiles = ['users.json', 'workRequests.json', 'chats.json', 'messages.json', 'contracts.json'];
-requiredDataFiles.forEach(fileName => {
-  // The constructor of SimpleDB will ensure the file exists.
-  // We don't need to store the instance here, just ensure creation.
-  new SimpleDB<Identifiable>(fileName); 
-});
+// Export pre-configured instances for each collection with their specific types.
+// This provides type safety when using these handlers throughout the application.
+export const usersDB = new FirestoreCollection<User>(COLLECTIONS.USERS);
+export const workRequestsDB = new FirestoreCollection<WorkRequest>(COLLECTIONS.WORK_REQUESTS);
+export const materialRequestsDB = new FirestoreCollection<MaterialRequest>(
+	COLLECTIONS.MATERIAL_REQUESTS
+);
+export const chatsDB = new FirestoreCollection<Chat>(COLLECTIONS.CHATS);
+// messagesDB removed - messages are now stored in subcollections under chats
+export const contractsDB = new FirestoreCollection<Contract>(COLLECTIONS.CONTRACTS);
 
-console.log('SimpleDB class loaded and required data files ensured.');
+console.log('[Firestore] Data handlers configured with lazy initialization.');

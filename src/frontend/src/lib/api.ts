@@ -1,9 +1,10 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { authStore, type AuthUser } from './stores/auth'; // Assuming AuthUser is exported from the auth store
+import { API_BASE_URL } from './config';
+import type { Chat, Message, MessagesResponse, UserInterestResponse } from './types';
 
 // Access VITE_API_URL (set in .env file at the root of the SvelteKit project, e.g., gefifi-2/frontend/.env or gefifi-2/.env)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 if (!API_BASE_URL && browser) {
 	console.warn(
@@ -66,7 +67,7 @@ async function request<T = any>( // Default T to any if not specified by caller
 		config.body = isFormData ? (body as FormData) : JSON.stringify(body);
 	}
 
-	const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+	const response = await fetch(`${API_BASE_URL}/api${endpoint}`, config);
 
 	if (!response.ok) {
 		let errorData: ApiErrorData = { message: `HTTP error! Status: ${response.status}` };
@@ -111,6 +112,9 @@ interface AuthResponse {
 	token: string;
 	message?: string;
 }
+interface GoogleAuthResponse extends AuthResponse {
+	isNewUser: boolean;
+}
 interface GoogleLoginPayload {
 	mockGoogleUser?: any;
 	googleTokenId?: string;
@@ -128,15 +132,39 @@ interface WorkRequestData {
 	materialsSuggested?: string;
 	category?: string;
 }
-interface WorkRequestResponse {
-	/* Define based on backend WorkRequest interface */ id: string;
+export interface WorkRequestResponse {
+	id: string;
+	status: string;
+	createdAt: string;
+	[key: string]: any;
+}
+
+interface MaterialRequestData {
+	title: string;
+	description: string;
+	deliveryLocation: string;
+	deliveryDate?: string;
+	linkedWorkRequestId?: string;
+	items: {
+		itemName: string;
+		quantity: string;
+		notes?: string;
+	}[];
+}
+
+export interface MaterialRequestResponse {
+	id: string;
+	status: string;
+	createdAt: string;
 	[key: string]: any;
 }
 
 interface UserInterestData {
 	targetUserId: string;
 	workRequestId?: string;
-	predefinedMessageKey: string;
+	materialRequestId?: string;
+	predefinedMessageKey?: string;
+	initialMessageContent?: string;
 }
 interface ChatData {
 	participantIds: string[];
@@ -146,15 +174,45 @@ interface ChatData {
 interface ChatMessageData {
 	content?: string;
 	images?: string[];
+	attachments?: Array<{
+		fileName: string;
+		filePath: string;
+		fileType: string;
+		size: number;
+	}>;
+	audioType?: 'voice';
+	audioUrl?: string;
+	audioDuration?: number;
+	messageId?: string;
 }
 
 interface ContractData {
-	workRequestId: string;
+	// Required fields
 	customerId: string;
 	expertSupplierId: string;
 	workDetails: string;
 	agreementSummary: string;
+
+	// One of these is required
+	workRequestId?: string;
+	materialRequestId?: string;
+
+	// Optional fields
 	contractDate?: string;
+
+	// Financial Terms
+	totalAmount?: number;
+	paymentTerms?: string;
+	advanceAmount?: number;
+
+	// Timeline
+	startDate?: string;
+	expectedCompletionDate?: string;
+
+	// Legal & Compliance
+	termsAndConditions?: string;
+	warrantyPeriod?: string;
+	cancellationPolicy?: string;
 }
 interface ContractResponse {
 	/* Define based on backend Contract interface */ id: string;
@@ -162,15 +220,31 @@ interface ContractResponse {
 }
 type ContractStatusUpdatePayload = {
 	status:
-		| 'draft'
-		| 'awaiting_signatures'
-		| 'signed'
-		| 'in_progress'
-		| 'completed'
-		| 'disputed'
-		| 'cancelled'
-		| 'terminated';
+	| 'draft'
+	| 'awaiting_signatures'
+	| 'signed'
+	| 'in_progress'
+	| 'completed'
+	| 'disputed'
+	| 'cancelled'
+	| 'terminated';
 };
+
+interface UserProfileUpdateData {
+	fullName?: string;
+	phoneNumber?: string;
+	location?: string;
+	expertise?: string;
+	experience?: string;
+	companyName?: string;
+	category?: string;
+	avatar?: File; // Optional avatar file
+}
+
+interface UpdateProfileResponse {
+	user: AuthUser;
+	message: string;
+}
 
 // API client object
 const apiClient = {
@@ -184,22 +258,56 @@ const apiClient = {
 	getMe: (): Promise<AuthUser> => {
 		return request<AuthUser>('/auth/me', 'GET', undefined, true);
 	},
-	googleLogin: (payload: GoogleLoginPayload): Promise<AuthResponse> => {
-		return request<AuthResponse>('/auth/google', 'POST', payload);
+	googleLogin: (payload: GoogleLoginPayload): Promise<GoogleAuthResponse> => {
+		return request<GoogleAuthResponse>('/auth/google', 'POST', payload);
 	},
 
 	// --- File Upload ---
 	uploadFile: (
 		formData: FormData
-	): Promise<{ filePath: string; fileName: string; message?: string; [key: string]: any }> => {
+	): Promise<{ filePath: string; fileName: string; message?: string;[key: string]: any }> => {
 		// Note: The backend /api/upload is currently NOT authenticated.
 		// If it were, requiresAuth would be true.
 		return request('/upload', 'POST', formData, false, true);
 	},
 
+	// --- Chat File Upload ---
+	uploadChatFile: (
+		chatId: string,
+		formData: FormData
+	): Promise<{ filePath: string; fileName: string; uniqueFilename: string; messageId: string; originalName: string; mimeType: string; size: number; message?: string;[key: string]: any }> => {
+		return request(`/chat/${chatId}/upload-file`, 'POST', formData, true, true);
+	},
+
+	// --- Entity Attachments ---
+	uploadEntityAttachments: (
+		entityType: 'material-requests' | 'contracts' | 'work-requests',
+		entityId: string,
+		formData: FormData
+	): Promise<{
+		message: string;
+		attachments: Array<{
+			fileName: string;
+			filePath: string;
+			fileType: string;
+			size: number;
+		}>;
+		totalAttachments: number;
+	}> => {
+		return request(`/attachments/${entityType}/${entityId}`, 'POST', formData, true, true);
+	},
+
 	// --- Work Requests ---
 	getWorkRequests: (): Promise<WorkRequestResponse[]> => {
 		return request<WorkRequestResponse[]>('/work-requests', 'GET');
+	},
+	getWorkRequestsByCustomerId: (customerId: string): Promise<WorkRequestResponse[]> => {
+		return request<WorkRequestResponse[]>(
+			`/work-requests?customerId=${customerId}`,
+			'GET',
+			undefined,
+			true
+		);
 	},
 	createWorkRequest: (data: WorkRequestData): Promise<WorkRequestResponse> => {
 		return request<WorkRequestResponse>('/work-requests', 'POST', data, true);
@@ -208,9 +316,52 @@ const apiClient = {
 		return request<WorkRequestResponse>(`/work-requests/${id}`, 'GET');
 	},
 
+	// --- Material Requests ---
+	getMaterialRequestsByCustomerId: (customerId: string): Promise<MaterialRequestResponse[]> => {
+		return request<MaterialRequestResponse[]>(
+			`/material-requests?customerId=${customerId}`,
+			'GET',
+			undefined,
+			true
+		);
+	},
+	createMaterialRequest: (data: MaterialRequestData): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>('/material-requests', 'POST', data, true);
+	},
+	getMaterialRequestById: (id: string): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>(`/material-requests/${id}`, 'GET', undefined, true);
+	},
+	getMaterialRequests: (): Promise<MaterialRequestResponse[]> => {
+		return request<MaterialRequestResponse[]>('/material-requests', 'GET', undefined, true);
+	},
+
 	// --- Users ---
 	getExperts: (): Promise<AuthUser[]> => {
 		return request<AuthUser[]>('/users/experts', 'GET');
+	},
+	updateUserProfile: (data: UserProfileUpdateData): Promise<UpdateProfileResponse> => {
+		// Check if avatar file is provided AND it's a new file (not just the existing avatar)
+		if (data.avatar && data.avatar instanceof File) {
+			// Create FormData for multipart upload
+			const formData = new FormData();
+
+			// Add all profile fields to FormData
+			Object.keys(data).forEach((key) => {
+				if (key === 'avatar') {
+					// Add the file with the correct field name
+					formData.append('avatar', data.avatar!);
+				} else if (data[key as keyof UserProfileUpdateData]) {
+					// Add other fields only if they have values
+					formData.append(key, data[key as keyof UserProfileUpdateData] as string);
+				}
+			});
+
+			return request<UpdateProfileResponse>('/users/me/profile', 'PUT', formData, true, true);
+		} else {
+			// No avatar file, send as JSON
+			const { avatar, ...profileData } = data;
+			return request<UpdateProfileResponse>('/users/me/profile', 'PUT', profileData, true);
+		}
 	},
 	getSuppliers: (): Promise<AuthUser[]> => {
 		return request<AuthUser[]>('/users/suppliers', 'GET');
@@ -219,28 +370,31 @@ const apiClient = {
 		// This should be an authenticated request as only logged-in users should be fetching profiles.
 		return request<AuthUser>(`/users/${userId}`, 'GET', undefined, true);
 	},
-	sendInterest: (
-		data: UserInterestData
-	): Promise<{ chatId: string; initialMessage: any; message?: string }> => {
+	sendInterest: (data: UserInterestData): Promise<UserInterestResponse> => {
 		return request('/users/interest', 'POST', data, true);
 	},
 
+	// --- Auth ---
+	getFirebaseToken: (): Promise<{ firebaseToken: string }> => {
+		// This endpoint requires the user's session JWT, which is sent automatically by the request helper.
+		return request('/auth/firebase-token', 'POST', undefined, true);
+	},
+
 	// --- Chat ---
-	getUserChats: (): Promise<any[]> => {
-		// Define Chat[] type
-		return request<any[]>('/chat', 'GET', undefined, true);
+	getUserChats: (): Promise<Chat[]> => {
+		return request<Chat[]>('/chat', 'GET', undefined, true);
 	},
-	createChat: (data: ChatData): Promise<any> => {
-		// Define Chat[] type
-		return request<any>('/chat', 'POST', data, true);
+	createChat: (data: ChatData): Promise<Chat> => {
+		return request<Chat>('/chat', 'POST', data, true);
 	},
-	getChatMessages: (chatId: string): Promise<any[]> => {
-		// Define Message[] type
-		return request<any[]>(`/chat/${chatId}/messages`, 'GET', undefined, true);
+	getChatById: (chatId: string): Promise<Chat> => {
+		return request<Chat>(`/chat/${chatId}`, 'GET', undefined, true);
 	},
-	sendChatMessage: (chatId: string, data: ChatMessageData): Promise<any> => {
-		// Define Message type
-		return request<any>(`/chat/${chatId}/messages`, 'POST', data, true);
+	getChatMessages: (chatId: string): Promise<MessagesResponse> => {
+		return request<MessagesResponse>(`/chat/${chatId}/messages`, 'GET', undefined, true);
+	},
+	sendChatMessage: (chatId: string, data: ChatMessageData): Promise<Message> => {
+		return request<Message>(`/chat/${chatId}/messages`, 'POST', data, true);
 	},
 
 	// --- Contracts ---
@@ -253,14 +407,124 @@ const apiClient = {
 	createContract: (data: ContractData): Promise<ContractResponse> => {
 		return request<ContractResponse>('/contracts', 'POST', data, true);
 	},
+	updateContract: (contractId: string, data: ContractData): Promise<ContractResponse> => {
+		return request<ContractResponse>(`/contracts/${contractId}`, 'PUT', data, true);
+	},
 	signContract: (contractId: string): Promise<ContractResponse> => {
 		return request<ContractResponse>(`/contracts/${contractId}/sign`, 'PUT', undefined, true);
+	},
+	addContractComment: (
+		contractId: string,
+		data: {
+			comment: string;
+			type?: 'general' | 'revision_request' | 'signature_comment';
+			files?: File[];
+		}
+	): Promise<{ message: string; comment: any; contract: ContractResponse }> => {
+		const formData = new FormData();
+		formData.append('comment', data.comment);
+		formData.append('type', data.type || 'general');
+
+		if (data.files && data.files.length > 0) {
+			data.files.forEach((file) => {
+				formData.append('files', file);
+			});
+		}
+
+		return request<{ message: string; comment: any; contract: ContractResponse }>(
+			`/contracts/${contractId}/comments`,
+			'POST',
+			formData,
+			true,
+			true
+		);
 	},
 	updateContractStatus: (
 		contractId: string,
 		payload: ContractStatusUpdatePayload
 	): Promise<ContractResponse> => {
 		return request<ContractResponse>(`/contracts/${contractId}/status`, 'PUT', payload, true);
+	},
+
+	// --- Projects ---
+	getProjects: (): Promise<any[]> => {
+		return request<any[]>('/projects', 'GET', undefined, true);
+	},
+	getProjectById: (id: string): Promise<any> => {
+		return request<any>(`/projects/${id}`, 'GET', undefined, true);
+	},
+	updateProjectStatus: (
+		id: string,
+		payload: { component: 'work' | 'material'; newStatus: string }
+	): Promise<any> => {
+		return request<any>(`/projects/${id}/status`, 'PUT', payload, true);
+	},
+
+	// --- Invitations ---
+	inviteToWorkRequest: (
+		workRequestId: string,
+		data: { userIds: string[]; userType: 'expert' | 'supplier' }
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/work-requests/${workRequestId}/invite`,
+			'POST',
+			data,
+			true
+		);
+	},
+	inviteToMaterialRequest: (
+		materialRequestId: string,
+		data: { userIds: string[] }
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/material-requests/${materialRequestId}/invite`,
+			'POST',
+			data,
+			true
+		);
+	},
+
+	// --- Request Status Updates ---
+	updateWorkRequestStatus: (
+		workRequestId: string,
+		status: string
+	): Promise<WorkRequestResponse> => {
+		return request<WorkRequestResponse>(
+			`/work-requests/${workRequestId}/status`,
+			'PUT',
+			{ status },
+			true
+		);
+	},
+	updateMaterialRequestStatus: (
+		materialRequestId: string,
+		status: string
+	): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>(
+			`/material-requests/${materialRequestId}/status`,
+			'PUT',
+			{ status },
+			true
+		);
+	},
+
+	// --- Request Updates ---
+	updateWorkRequest: (
+		workRequestId: string,
+		data: Partial<WorkRequestData>
+	): Promise<WorkRequestResponse> => {
+		return request<WorkRequestResponse>(`/work-requests/${workRequestId}`, 'PUT', data, true);
+	},
+	updateMaterialRequest: (
+		materialRequestId: string,
+		data: Partial<MaterialRequestData>
+	): Promise<MaterialRequestResponse> => {
+		return request<MaterialRequestResponse>(
+			`/material-requests/${materialRequestId}`,
+			'PUT',
+			data,
+			true
+		);
 	}
 };
 

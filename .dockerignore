@@ -1,0 +1,37 @@
+# Git and IDE files
+.git
+.gitignore
+.idea/
+.vscode/
+
+# Node dependencies
+# We will run `bun install` inside the container, so local modules are not needed.
+node_modules
+backend/node_modules
+src/frontend/node_modules
+
+# Local environment files
+# Production environment variables are provided by the hosting service (e.g., Cloud Run).
+.env
+.env.*
+!/.env.example
+backend/.env
+
+# Local development data, credentials, and uploads
+# The production container should be stateless.
+backend/data
+backend/uploads
+backend/gcp-credentials.json
+
+# Frontend source code
+# This container is only for the backend.
+src/frontend
+
+# SvelteKit and other build outputs
+.svelte-kit
+build/
+.output/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

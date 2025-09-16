@@ -9,11 +9,8 @@
 	<!-- Navigation Bar -->
 	<nav class="sticky top-0 z-50 bg-slate-900/80 shadow-lg backdrop-blur-md">
 		<div class="container mx-auto flex items-center justify-between px-6 py-4">
-			<a
-				href="/"
-				class="text-3xl font-bold text-emerald-400 transition-colors hover:text-emerald-300"
-			>
-				GEFIFI
+			<a href="/">
+				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-9 w-auto sm:h-10" />
 			</a>
 			<div class="space-x-2 sm:space-x-4">
 				<a
@@ -47,27 +44,36 @@
 				trusted experts, quality materials, and manage your projects seamlessly.
 			</p>
 			<div
-				class="flex flex-col justify-center space-y-3 sm:flex-row sm:space-y-0 sm:space-x-4 md:justify-start"
+				class="flex w-full flex-col justify-center space-y-3 sm:flex-row sm:space-y-0 sm:space-x-4 md:flex-col md:justify-start md:space-y-3 md:space-x-0 lg:flex-row lg:space-y-0 lg:space-x-4"
 			>
 				<a
 					href="/auth/register?type=customer"
-					class="w-full transform rounded-lg bg-emerald-500 px-6 py-3 text-center text-base font-semibold text-white shadow-lg transition-all duration-150 ease-in-out hover:scale-105 hover:bg-emerald-600 hover:shadow-xl sm:w-auto sm:px-8 sm:py-3 sm:text-lg"
+					class="w-full grow transform rounded-lg bg-emerald-500 px-6 py-3 text-center text-base font-semibold text-white shadow-lg transition-all duration-150 ease-in-out hover:scale-105 hover:bg-emerald-600 hover:shadow-xl sm:w-auto sm:px-8 sm:py-3 sm:text-lg"
 				>
 					Start a Project
+					<span class="block text-sm opacity-80">as a Customer</span>
 				</a>
 				<a
 					href="/auth/register?type=expert"
-					class="w-full transform rounded-lg bg-sky-500 px-6 py-3 text-center text-base font-semibold text-white shadow-lg transition-all duration-150 ease-in-out hover:scale-105 hover:bg-sky-600 hover:shadow-xl sm:w-auto sm:px-8 sm:py-3 sm:text-lg"
+					class="w-full grow transform rounded-lg bg-sky-500 px-6 py-3 text-center text-base font-semibold text-white shadow-lg transition-all duration-150 ease-in-out hover:scale-105 hover:bg-sky-600 hover:shadow-xl sm:w-auto sm:px-8 sm:py-3 sm:text-lg"
 				>
 					Offer Services
+					<span class="block text-sm opacity-80">as an Expert</span>
+				</a>
+				<a
+					href="/auth/register?type=supplier"
+					class="w-full grow transform rounded-lg bg-amber-500 px-6 py-3 text-center text-base font-semibold text-white shadow-lg transition-all duration-150 ease-in-out hover:scale-105 hover:bg-amber-600 hover:shadow-xl sm:w-auto sm:px-8 sm:py-3 sm:text-lg"
+				>
+					Provide Materials
+					<span class="block text-sm opacity-80">as a Supplier</span>
 				</a>
 			</div>
-			<p class="mt-6 text-sm text-slate-400">
+			<!-- <p class="mt-6 text-sm text-slate-400">
 				Are you a material supplier? <a
 					href="/auth/register?type=supplier"
 					class="font-semibold text-amber-400 underline hover:text-amber-300">Register here!</a
 				>
-			</p>
+			</p> -->
 		</div>
 		<div class="relative mt-8 flex items-center justify-center md:mt-0 md:w-1/2 lg:w-2/5">
 			<div
