@@ -9,6 +9,7 @@
 	import AttachmentList from '$lib/components/AttachmentList.svelte';
 	import UserProfile from '$lib/components/UserProfile.svelte';
 	import ContractComments from '$lib/components/ContractComments.svelte';
+	import ContractLinking from '$lib/components/contracts/ContractLinking.svelte';
 	import FileUpload from '$lib/components/FileUpload.svelte';
 	import type { Contract, Attachment } from '$lib/types';
 	import type { Unsubscriber } from 'svelte/store';
@@ -539,9 +540,19 @@
 			isLoading = false;
 		}
 
+		const unsubscribePage = page.subscribe((page) => {
+			if (page.params.id) {
+				contractIdFromUrl = page.params.id;
+				fetchContractDetails(contractIdFromUrl!);
+			}
+		});
+
 		return () => {
 			if (unsubscribe) {
 				unsubscribe();
+			}
+			if (unsubscribePage) {
+				unsubscribePage();
 			}
 		};
 	});
@@ -1023,6 +1034,13 @@
 						<AttachmentList attachments={contract.attachments} />
 					</section>
 				{/if}
+
+				<!-- Contract Linking -->
+				<section
+					class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+				>
+					<ContractLinking {contract} {currentUser} />
+				</section>
 
 				<!-- Comments & Feedback -->
 				<ContractComments

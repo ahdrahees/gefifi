@@ -446,6 +446,116 @@ const apiClient = {
 		return request<ContractResponse>(`/contracts/${contractId}/status`, 'PUT', payload, true);
 	},
 
+	// --- Contract Linking ---
+	linkContract: (
+		contractId: string,
+		data: {
+			linkedContractId: string;
+			visibility?: 'private' | 'shared';
+			reason?: string;
+		}
+	): Promise<{ message: string; linkedContract: ContractResponse }> => {
+		return request<{ message: string; linkedContract: ContractResponse }>(
+			`/contracts/${contractId}/link`,
+			'POST',
+			data,
+			true
+		);
+	},
+	unlinkContract: (
+		contractId: string,
+		linkedContractId: string
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/contracts/${contractId}/link/${linkedContractId}`,
+			'DELETE',
+			undefined,
+			true
+		);
+	},
+	updateContractLinkVisibility: (
+		contractId: string,
+		linkedContractId: string,
+		visibility: 'private' | 'shared'
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/contracts/${contractId}/link/${linkedContractId}/visibility`,
+			'PUT',
+			{ visibility },
+			true
+		);
+	},
+	getLinkedContracts: (
+		contractId: string
+	): Promise<{
+		contractId: string;
+		linkedContracts: Array<{
+			id: string;
+			contractType: string;
+			status: string;
+			contractDate: string;
+			workDetails: string;
+			agreementSummary: string;
+			restricted?: boolean;
+			error?: string;
+			linkMetadata: {
+				linkedBy: string;
+				linkedAt: string;
+				visibility: 'private' | 'shared';
+				reason?: string;
+			};
+		}>;
+	}> => {
+		return request<{
+			contractId: string;
+			linkedContracts: Array<{
+				id: string;
+				contractType: string;
+				status: string;
+				contractDate: string;
+				workDetails: string;
+				agreementSummary: string;
+				restricted?: boolean;
+				error?: string;
+				linkMetadata: {
+					linkedBy: string;
+					linkedAt: string;
+					visibility: 'private' | 'shared';
+					reason?: string;
+				};
+			}>;
+		}>(`/contracts/${contractId}/linked`, 'GET', undefined, true);
+	},
+	getContractStatus: (
+		contractId: string
+	): Promise<{
+		id: string;
+		contractType: string;
+		status: string;
+		workRequestId?: string;
+		materialRequestId?: string;
+		workDetails?: string;
+		agreementSummary?: string;
+		totalAmount?: number;
+		contractDate?: string;
+		createdAt: string;
+		updatedAt: string;
+	}> => {
+		return request<{
+			id: string;
+			contractType: string;
+			status: string;
+			workRequestId?: string;
+			materialRequestId?: string;
+			workDetails?: string;
+			agreementSummary?: string;
+			totalAmount?: number;
+			contractDate?: string;
+			createdAt: string;
+			updatedAt: string;
+		}>(`/contracts/${contractId}/status`, 'GET', undefined, true);
+	},
+
 	// --- Projects ---
 	getProjects: (): Promise<any[]> => {
 		return request<any[]>('/projects', 'GET', undefined, true);

@@ -10,6 +10,7 @@ import {
 	Message,
 	Contract,
 	ContractComment,
+	ContractLink,
 	Attachment
 } from './interfaces';
 import {
@@ -2972,6 +2973,464 @@ router.put(
 			console.error('Error updating contract status:', error);
 			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
 			res.status(500).json({ message: 'Failed to update contract status.', error: errorMessage });
+		}
+	}
+);
+
+// --- Contract Linking Endpoints ---
+
+// Link a contract to another contract
+router.post(
+	'/contracts/:contractId/link',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const { linkedContractId, visibility = 'private', reason } = req.body;
+
+			// Validation
+			if (!linkedContractId) {
+				return res.status(400).json({ message: 'Linked contract ID is required.' });
+			}
+
+			if (contractId === linkedContractId) {
+				return res.status(400).json({ message: 'Cannot link a contract to itself.' });
+			}
+
+			if (!['private', 'shared'].includes(visibility)) {
+				return res.status(400).json({ message: 'Visibility must be either "private" or "shared".' });
+			}
+
+			// Get source contract
+			const sourceContract = await contractsDB.findById(contractId);
+			if (!sourceContract) {
+				return res.status(404).json({ message: 'Source contract not found.' });
+			}
+
+			// Check if user is a participant of source contract
+			if (sourceContract.customerId !== user.id && sourceContract.expertSupplierId !== user.id) {
+				return res.status(403).json({ message: 'You are not authorized to link this contract.' });
+			}
+
+			// Check if source contract is in linkable status
+			const linkableStatuses = ['draft', 'awaiting_signatures', 'revision_requested'];
+			if (!linkableStatuses.includes(sourceContract.status)) {
+				return res.status(400).json({
+					message: `Cannot link contracts in status '${sourceContract.status}'. Only contracts in draft, awaiting_signatures, or revision_requested status can be linked.`
+				});
+			}
+
+			// Get target contract
+			const targetContract = await contractsDB.findById(linkedContractId);
+			if (!targetContract) {
+				return res.status(404).json({ message: 'Target contract not found.' });
+			}
+
+			// Check if user is a participant of target contract
+			if (targetContract.customerId !== user.id && targetContract.expertSupplierId !== user.id) {
+				return res.status(403).json({ message: 'You are not authorized to link to this contract.' });
+			}
+
+			// Check if link already exists
+			const existingLink = sourceContract.linkedContracts?.find(
+				link => link.contractId === linkedContractId
+			);
+			if (existingLink) {
+				return res.status(409).json({ message: 'Contract is already linked.' });
+			}
+
+			// Check link limit (max 10)
+			const currentLinkCount = sourceContract.linkedContracts?.length || 0;
+			if (currentLinkCount >= 10) {
+				return res.status(400).json({ message: 'Maximum of 10 linked contracts allowed per contract.' });
+			}
+
+			// Create link for source contract
+			const newLink: any = {
+				contractId: linkedContractId,
+				relationshipType: 'reference',
+				linkedBy: user.id,
+				linkedAt: new Date().toISOString(),
+				visibility
+			};
+
+			// Only include reason if it's not empty
+			if (reason?.trim()) {
+				newLink.reason = reason.trim();
+			}
+
+			// Update source contract with new link
+			const updatedSourceContract = await contractsDB.update(contractId, {
+				linkedContracts: [...(sourceContract.linkedContracts || []), newLink],
+				updatedAt: new Date().toISOString()
+			});
+
+			// Create reverse link for target contract (bidirectional)
+			const reverseLink: any = {
+				contractId: contractId,
+				relationshipType: 'reference',
+				linkedBy: user.id,
+				linkedAt: new Date().toISOString(),
+				visibility
+			};
+
+			// Only include reason if it's not empty
+			if (reason?.trim()) {
+				reverseLink.reason = reason.trim();
+			}
+
+			// Update target contract with reverse link
+			await contractsDB.update(linkedContractId, {
+				linkedContracts: [...(targetContract.linkedContracts || []), reverseLink],
+				updatedAt: new Date().toISOString()
+			});
+
+			// Send notification for shared links
+			if (visibility === 'shared') {
+				// Notify other participants of source contract
+				const otherSourceParticipant = sourceContract.customerId === user.id
+					? sourceContract.expertSupplierId
+					: sourceContract.customerId;
+
+				if (otherSourceParticipant) {
+					await sendSystemMessage(
+						user.id,
+						otherSourceParticipant,
+						`A contract has been linked to this contract with shared visibility.`,
+						{ contractId: contractId }
+					);
+				}
+
+				// Notify other participants of target contract
+				const otherTargetParticipant = targetContract.customerId === user.id
+					? targetContract.expertSupplierId
+					: targetContract.customerId;
+
+				if (otherTargetParticipant) {
+					await sendSystemMessage(
+						user.id,
+						otherTargetParticipant,
+						`This contract has been linked to another contract with shared visibility.`,
+						{ contractId: linkedContractId }
+					);
+				}
+			}
+
+			res.status(200).json({
+				message: 'Contract linked successfully.',
+				linkedContract: updatedSourceContract
+			});
+		} catch (error: unknown) {
+			console.error('Error linking contracts:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to link contracts.', error: errorMessage });
+		}
+	}
+);
+
+// Unlink a contract from another contract
+router.delete(
+	'/contracts/:contractId/link/:linkedContractId',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const linkedContractId = req.params.linkedContractId;
+
+			// Get source contract
+			const sourceContract = await contractsDB.findById(contractId);
+			if (!sourceContract) {
+				return res.status(404).json({ message: 'Source contract not found.' });
+			}
+
+			// Check if user is a participant of source contract
+			if (sourceContract.customerId !== user.id && sourceContract.expertSupplierId !== user.id) {
+				return res.status(403).json({ message: 'You are not authorized to unlink this contract.' });
+			}
+
+			// Check if source contract is in linkable status
+			const linkableStatuses = ['draft', 'awaiting_signatures', 'revision_requested'];
+			if (!linkableStatuses.includes(sourceContract.status)) {
+				return res.status(400).json({
+					message: `Cannot unlink contracts in status '${sourceContract.status}'. Only contracts in draft, awaiting_signatures, or revision_requested status can be unlinked.`
+				});
+			}
+
+			// Find and remove the link
+			const linkToRemove = sourceContract.linkedContracts?.find(
+				link => link.contractId === linkedContractId
+			);
+			if (!linkToRemove) {
+				return res.status(404).json({ message: 'Contract link not found.' });
+			}
+
+			// Update source contract (remove link)
+			const updatedSourceLinks = sourceContract.linkedContracts?.filter(
+				link => link.contractId !== linkedContractId
+			) || [];
+
+			await contractsDB.update(contractId, {
+				linkedContracts: updatedSourceLinks,
+				updatedAt: new Date().toISOString()
+			});
+
+			// Update target contract (remove reverse link)
+			const targetContract = await contractsDB.findById(linkedContractId);
+			if (targetContract) {
+				const updatedTargetLinks = targetContract.linkedContracts?.filter(
+					link => link.contractId !== contractId
+				) || [];
+
+				await contractsDB.update(linkedContractId, {
+					linkedContracts: updatedTargetLinks,
+					updatedAt: new Date().toISOString()
+				});
+			}
+
+			res.status(200).json({ message: 'Contract unlinked successfully.' });
+		} catch (error: unknown) {
+			console.error('Error unlinking contracts:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to unlink contracts.', error: errorMessage });
+		}
+	}
+);
+
+// Update contract link visibility
+router.put(
+	'/contracts/:contractId/link/:linkedContractId/visibility',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const linkedContractId = req.params.linkedContractId;
+			const { visibility } = req.body;
+
+			// Validation
+			if (!['private', 'shared'].includes(visibility)) {
+				return res.status(400).json({ message: 'Visibility must be either "private" or "shared".' });
+			}
+
+			// Get source contract
+			const sourceContract = await contractsDB.findById(contractId);
+			if (!sourceContract) {
+				return res.status(404).json({ message: 'Source contract not found.' });
+			}
+
+			// Check if user is a participant of source contract
+			if (sourceContract.customerId !== user.id && sourceContract.expertSupplierId !== user.id) {
+				return res.status(403).json({ message: 'You are not authorized to modify this contract link.' });
+			}
+
+			// Check if source contract is in linkable status
+			const linkableStatuses = ['draft', 'awaiting_signatures', 'revision_requested'];
+			if (!linkableStatuses.includes(sourceContract.status)) {
+				return res.status(400).json({
+					message: `Cannot modify contract links in status '${sourceContract.status}'. Only contracts in draft, awaiting_signatures, or revision_requested status can be modified.`
+				});
+			}
+
+			// Find the link to update
+			const linkToUpdate = sourceContract.linkedContracts?.find(
+				link => link.contractId === linkedContractId
+			);
+			if (!linkToUpdate) {
+				return res.status(404).json({ message: 'Contract link not found.' });
+			}
+
+			// Check if visibility is actually changing
+			if (linkToUpdate.visibility === visibility) {
+				return res.status(200).json({ message: 'Visibility is already set to this value.' });
+			}
+
+			// Update source contract link
+			const updatedSourceLinks = sourceContract.linkedContracts?.map(link =>
+				link.contractId === linkedContractId
+					? { ...link, visibility }
+					: link
+			) || [];
+
+			await contractsDB.update(contractId, {
+				linkedContracts: updatedSourceLinks,
+				updatedAt: new Date().toISOString()
+			});
+
+			// Update target contract reverse link
+			const targetContract = await contractsDB.findById(linkedContractId);
+			if (targetContract) {
+				const updatedTargetLinks = targetContract.linkedContracts?.map(link =>
+					link.contractId === contractId
+						? { ...link, visibility }
+						: link
+				) || [];
+
+				await contractsDB.update(linkedContractId, {
+					linkedContracts: updatedTargetLinks,
+					updatedAt: new Date().toISOString()
+				});
+			}
+
+			// Send notifications based on visibility change
+			const otherSourceParticipant = sourceContract.customerId === user.id
+				? sourceContract.expertSupplierId
+				: sourceContract.customerId;
+
+			if (otherSourceParticipant) {
+				if (linkToUpdate.visibility === 'private' && visibility === 'shared') {
+					// Private to shared: notify
+					await sendSystemMessage(
+						user.id,
+						otherSourceParticipant,
+						`A contract link visibility has been changed from private to shared.`,
+						{ contractId: contractId }
+					);
+				} else if (linkToUpdate.visibility === 'shared' && visibility === 'private') {
+					// Shared to private: notify
+					await sendSystemMessage(
+						user.id,
+						otherSourceParticipant,
+						`A contract link visibility has been changed from shared to private.`,
+						{ contractId: contractId }
+					);
+				}
+			}
+
+			res.status(200).json({ message: 'Contract link visibility updated successfully.' });
+		} catch (error: unknown) {
+			console.error('Error updating contract link visibility:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to update contract link visibility.', error: errorMessage });
+		}
+	}
+);
+
+// Get contract status (for participants only)
+router.get(
+	'/contracts/:contractId/status',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+
+			// Get contract
+			const contract = await contractsDB.findById(contractId);
+			if (!contract) {
+				return res.status(404).json({ message: 'Contract not found.' });
+			}
+
+			// Check if user is a participant
+			if (contract.customerId !== user.id && contract.expertSupplierId !== user.id) {
+				return res.status(403).json({ message: 'You are not authorized to view this contract.' });
+			}
+
+			// Return only basic contract info needed for display
+			res.status(200).json({
+				id: contract.id,
+				contractType: contract.contractType,
+				status: contract.status,
+				workRequestId: contract.workRequestId,
+				materialRequestId: contract.materialRequestId,
+				workDetails: contract.workDetails,
+				agreementSummary: contract.agreementSummary,
+				totalAmount: contract.totalAmount,
+				contractDate: contract.contractDate,
+				createdAt: contract.createdAt,
+				updatedAt: contract.updatedAt
+			});
+		} catch (error: unknown) {
+			console.error('Error fetching contract status:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to fetch contract status.', error: errorMessage });
+		}
+	}
+);
+
+// Get linked contracts for a contract
+router.get(
+	'/contracts/:contractId/linked',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+
+			// Get contract
+			const contract = await contractsDB.findById(contractId);
+			if (!contract) {
+				return res.status(404).json({ message: 'Contract not found.' });
+			}
+
+			// Check if user is a participant of contract
+			if (contract.customerId !== user.id && contract.expertSupplierId !== user.id) {
+				return res.status(403).json({ message: 'You are not authorized to view this contract.' });
+			}
+
+			// Get linked contracts with access control
+			const linkedContracts = [];
+			if (contract.linkedContracts) {
+				for (const link of contract.linkedContracts) {
+					try {
+						const linkedContract = await contractsDB.findById(link.contractId);
+						if (linkedContract) {
+							// Check if user can access this linked contract
+							const canAccess = linkedContract.customerId === user.id ||
+								linkedContract.expertSupplierId === user.id;
+
+							// Determine what information to show based on access and visibility
+							const contractInfo: any = {
+								id: linkedContract.id,
+								contractType: linkedContract.contractType,
+								status: linkedContract.status,
+								contractDate: linkedContract.contractDate,
+								workDetails: linkedContract.workDetails,
+								agreementSummary: linkedContract.agreementSummary,
+								// Link metadata
+								linkMetadata: {
+									linkedBy: link.linkedBy,
+									linkedAt: link.linkedAt,
+									visibility: link.visibility,
+									reason: link.reason
+								}
+							};
+
+							// If user can't access the contract or link is private, limit information
+							if (!canAccess || link.visibility === 'private') {
+								contractInfo.restricted = true;
+								contractInfo.workDetails = 'Restricted Contract';
+								contractInfo.agreementSummary = 'Access restricted';
+							}
+
+							linkedContracts.push(contractInfo);
+						}
+					} catch (error) {
+						console.error(`Error fetching linked contract ${link.contractId}:`, error);
+						// Add a placeholder for contracts that can't be fetched
+						linkedContracts.push({
+							id: link.contractId,
+							error: 'Contract not found or access denied',
+							linkMetadata: {
+								linkedBy: link.linkedBy,
+								linkedAt: link.linkedAt,
+								visibility: link.visibility,
+								reason: link.reason
+							}
+						});
+					}
+				}
+			}
+
+			res.status(200).json({
+				contractId: contractId,
+				linkedContracts: linkedContracts
+			});
+		} catch (error: unknown) {
+			console.error('Error fetching linked contracts:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to fetch linked contracts.', error: errorMessage });
 		}
 	}
 );

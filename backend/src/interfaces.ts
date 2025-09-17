@@ -160,6 +160,18 @@ export interface ContractComment extends Identifiable {
 }
 
 /**
+ * Represents a link between contracts.
+ */
+export interface ContractLink {
+	contractId: string; // ID of the linked contract
+	relationshipType: 'reference'; // Type of relationship (extensible for future)
+	linkedBy: string; // User ID who created the link
+	linkedAt: string; // ISO 8601 date string when link was created
+	visibility: 'private' | 'shared'; // Privacy level of the link
+	reason?: string; // Optional reason for linking
+}
+
+/**
  * Represents a formal agreement between a customer and a provider (expert/supplier).
  */
 export interface Contract extends Identifiable {
@@ -193,6 +205,9 @@ export interface Contract extends Identifiable {
 
 	// Comments and Feedback
 	comments?: ContractComment[]; // Comments and revision requests
+
+	// Contract Linking
+	linkedContracts?: ContractLink[]; // Array of linked contracts
 
 	// Signatures
 	customerSigned: boolean;
