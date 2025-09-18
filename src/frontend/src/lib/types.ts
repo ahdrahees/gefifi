@@ -200,6 +200,18 @@ export type ContractComment = {
 };
 
 /**
+ * Represents a link between contracts.
+ */
+export type ContractLink = {
+	contractId: string; // ID of the linked contract
+	relationshipType: 'reference'; // Type of relationship (extensible for future)
+	linkedBy: string; // User ID who created the link
+	linkedAt: string; // ISO 8601 date string when link was created
+	visibility: 'private' | 'shared'; // Privacy level of the link
+	reason?: string; // Optional reason for linking
+};
+
+/**
  * Defines the possible statuses for a contract.
  */
 export type ContractStatus =
@@ -248,6 +260,9 @@ export type Contract = {
 
 	// Comments and Feedback
 	comments?: ContractComment[]; // Comments and revision requests
+
+	// Contract Linking
+	linkedContracts?: ContractLink[]; // Array of linked contracts
 
 	// Signatures
 	customerSigned: boolean;
