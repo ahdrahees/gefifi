@@ -2,7 +2,7 @@
 <script lang="ts">
 	import { tick, createEventDispatcher } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { AuthUser, Message } from '$lib/types';
+	import type { AuthUser, Message, QuoteMessage } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 
@@ -14,6 +14,7 @@
 	import DateSeparator from '$lib/components/chat/DateSeparator.svelte';
 	import TypingIndicator from '$lib/components/chat/TypingIndicator.svelte';
 	import SystemMessage from '$lib/components/chat/SystemMessage.svelte';
+	import QuoteMessageView from '$lib/components/chat/QuoteMessageView.svelte';
 
 	// --- PROPS ---
 	export let isLoading: boolean = true;
@@ -355,6 +356,17 @@
 						<!-- System Message -->
 						{#if message.senderId === 'system'}
 							<SystemMessage {message} />
+						{:else if message.messageType === 'quote'}
+							<!-- Quote Message -->
+							<div
+								class="flex"
+								class:justify-end={message.senderId === currentUser?.id}
+								class:justify-start={message.senderId !== currentUser?.id}
+							>
+								<div class="max-w-md">
+									<QuoteMessageView message={message as QuoteMessage} {currentUser} />
+								</div>
+							</div>
 						{:else}
 							<!-- User Message -->
 							<div

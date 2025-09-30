@@ -129,6 +129,37 @@ router.post('/chat', authenticateToken, async (req: AuthenticatedRequest, res: R
     }
 });
 
+// --- GET Chat between two users ---
+router.get('/chat/find', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { user1, user2 } = req.query;
+        const currentUserId = req.user!.id;
+
+        if (!user1 || !user2) {
+            return res.status(400).json({ message: 'Both user1 and user2 parameters are required' });
+        }
+
+        // Ensure current user is one of the participants
+        if (currentUserId !== user1 && currentUserId !== user2) {
+            return res.status(403).json({ message: 'You can only find chats you are a participant in' });
+        }
+
+        // Find chat between the two users
+        const allChats = await chatsDB.getAll();
+        const existingChat = allChats.find((chat: Chat) =>
+            chat.participants.length === 2 &&
+            chat.participants.includes(user1 as string) &&
+            chat.participants.includes(user2 as string)
+        );
+
+        res.json({ chat: existingChat || null });
+    } catch (error: unknown) {
+        console.error('Error finding chat between users:', error);
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+        res.status(500).json({ message: 'Failed to find chat.', error: errorMessage });
+    }
+});
+
 // --- GET Chat by ID ---
 router.get('/chat/:chatId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {

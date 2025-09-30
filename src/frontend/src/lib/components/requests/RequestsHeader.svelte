@@ -21,18 +21,20 @@
 			<div class="flex items-center gap-3">
 				<span class="rounded-xl bg-emerald-500/20 p-2">
 					<svg
-						class="h-6 w-6 text-emerald-400"
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
 						fill="none"
 						stroke="currentColor"
-						viewBox="0 0 24 24"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="lucide lucide-clipboard-icon lucide-clipboard h-6 w-6 text-emerald-400"
+						><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path
+							d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+						/></svg
 					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-						/>
-					</svg>
 				</span>
 				<div>
 					<h1 class="text-2xl font-bold text-emerald-400 lg:text-3xl">My Requests</h1>

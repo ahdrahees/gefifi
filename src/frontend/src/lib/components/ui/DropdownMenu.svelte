@@ -8,11 +8,87 @@
 	// Props
 	export let isOpen = false;
 	export let position: 'left' | 'right' = 'right';
+	export let placement: 'top' | 'bottom' = 'bottom';
+	export let autoPosition = true; // Automatically adjust position based on viewport
+	export let debug = false; // Debug mode for positioning
+
+	// State for dynamic positioning
+	let dropdownElement: HTMLDivElement;
+	let actualPosition = position;
+	let actualPlacement = placement;
+
+	// Reactive statements
+	$: actualPosition = position;
+	$: actualPlacement = placement;
+
+	// Calculate optimal position
+	function calculatePosition() {
+		if (!autoPosition || !dropdownElement) return;
+
+		// Use a small delay to ensure the element is rendered
+		setTimeout(() => {
+			const rect = dropdownElement.getBoundingClientRect();
+			const viewportWidth = window.innerWidth;
+			const viewportHeight = window.innerHeight;
+
+			if (debug) {
+				console.log('Dropdown positioning debug:', {
+					originalPosition: position,
+					originalPlacement: placement,
+					rect,
+					viewportWidth,
+					viewportHeight
+				});
+			}
+
+			// Reset to original values
+			actualPosition = position;
+			actualPlacement = placement;
+
+			// Check if dropdown would go off-screen horizontally
+			if (position === 'right' && rect.right > viewportWidth - 10) {
+				actualPosition = 'left';
+				if (debug) console.log('Switching to left position - would go off right edge');
+			} else if (position === 'left' && rect.left < 10) {
+				actualPosition = 'right';
+				if (debug) console.log('Switching to right position - would go off left edge');
+			}
+
+			// Check if dropdown would go off-screen vertically
+			if (placement === 'bottom' && rect.bottom > viewportHeight - 10) {
+				actualPlacement = 'top';
+				if (debug) console.log('Switching to top placement');
+			} else if (placement === 'top' && rect.top < 10) {
+				actualPlacement = 'bottom';
+				if (debug) console.log('Switching to bottom placement');
+			}
+
+			if (debug) {
+				console.log('Final positioning:', {
+					actualPosition,
+					actualPlacement,
+					rect: {
+						x: rect.x,
+						y: rect.y,
+						width: rect.width,
+						height: rect.height,
+						right: rect.right,
+						bottom: rect.bottom
+					},
+					classes: dropdownElement.className
+				});
+			}
+		}, 10);
+	}
 
 	// Toggle dropdown
 	function toggleDropdown() {
 		isOpen = !isOpen;
 		if (isOpen) {
+			// Calculate position after opening
+			setTimeout(() => {
+				calculatePosition();
+			}, 0);
 			dispatch('open');
 		} else {
 			dispatch('close');
@@ -38,9 +114,16 @@
 			closeDropdown();
 		}
 	}
+
+	// Handle window resize
+	function handleResize() {
+		if (isOpen) {
+			calculatePosition();
+		}
+	}
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} on:resize={handleResize} />
 
 <div class="relative">
 	<!-- Trigger Button -->
@@ -71,11 +154,14 @@
 	<!-- Dropdown Menu -->
 	{#if isOpen}
 		<div
+			bind:this={dropdownElement}
 			use:clickOutside={handleClickOutside}
-			class="dropdown-container absolute z-50 mt-2 w-max max-w-[300px] min-w-[220px] origin-top-right {position ===
-			'left'
+			class="dropdown-container absolute z-50 w-max max-w-[300px] min-w-[220px] {actualPlacement ===
+			'top'
+				? 'bottom-full mb-2'
+				: 'top-full mt-2'} {actualPosition === 'left'
 				? 'right-full mr-2'
-				: 'right-0'}"
+				: 'left-0'} {actualPlacement === 'top' ? 'origin-bottom-left' : 'origin-top-left'}"
 			role="menu"
 			aria-orientation="vertical"
 		>
@@ -90,6 +176,17 @@
 	/* Dropdown container with beautiful styling */
 	.dropdown-container {
 		animation: dropdownFadeIn 0.2s ease-out;
+		/* Ensure dropdown is always visible */
+		max-height: 80vh;
+		overflow-y: auto;
+		/* Ensure proper stacking and positioning */
+		z-index: 9999;
+		/* Add some margin to prevent edge cases */
+		margin: 4px;
+		/* Ensure dropdown doesn't get cut off */
+		min-width: 200px;
+		/* Force positioning to work correctly */
+		position: absolute !important;
 	}
 
 	.dropdown-menu {
@@ -203,5 +300,11 @@
 			padding: 10px 14px;
 			font-size: 13px;
 		}
+	}
+
+	/* Chat input specific positioning */
+	:global(.chat-input-dropdown) {
+		/* Ensure dropdown appears above other chat elements */
+		z-index: 10000;
 	}
 </style>

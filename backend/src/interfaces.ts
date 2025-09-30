@@ -74,6 +74,7 @@ export interface WorkRequest extends Identifiable {
 	interestedSuppliers?: string[]; // Array of supplier User IDs who showed interest
 	invitedExperts?: string[]; // Array of expert User IDs directly invited by customer
 	invitedSuppliers?: string[]; // Array of supplier User IDs directly invited by customer
+	quotes?: string[]; // Array of quote IDs
 }
 
 /**
@@ -107,6 +108,7 @@ export interface MaterialRequest extends Identifiable {
 	updatedAt: string;
 	interestedSuppliers?: string[]; // List of supplier User IDs who showed interest
 	invitedSuppliers?: string[]; // List of supplier User IDs directly invited by customer
+	quotes?: string[]; // Array of quote IDs
 }
 
 // --- Communication Types ---
@@ -120,6 +122,12 @@ export interface Chat extends Identifiable {
 	materialRequestId?: string; // Link to a material request
 	createdAt: string;
 	updatedAt: string;
+	lastMessage?: {
+		id: string;
+		content: string;
+		timestamp: string;
+		senderId: string;
+	};
 }
 
 /**
@@ -144,6 +152,16 @@ export interface Message extends Identifiable {
 	contractId?: string; // Reference to contract for navigation
 	ExpertRequestId?: string; // Reference to work request for navigation (preparing for future migration)
 	MaterialRequestId?: string; // Reference to material request for navigation
+	quoteRequestId?: string; // Reference to quote request for navigation (clickable system messages)
+	// --- Quote message fields (for messageType: 'quote') ---
+	quoteId?: string; // Quote ID for quote messages
+	requestId?: string; // Request ID for quote messages
+	requestType?: 'work' | 'material'; // Request type for quote messages
+	quoteAmount?: number; // Quote amount for quote messages
+	quoteValidity?: string; // Quote validity date for quote messages
+	quoteTitle?: string; // Quote title for quote messages
+	// --- Message type for different message formats ---
+	messageType?: 'text' | 'quote' | 'file' | 'voice';
 }
 
 // --- Contract and Project Types ---
@@ -260,4 +278,52 @@ export interface Project extends Identifiable {
 	customer?: User;
 	expert?: User;
 	supplier?: User;
+}
+
+// --- Quote Management Types ---
+
+/**
+ * Represents a quote submitted by an expert or supplier for a work or material request.
+ */
+export interface Quote extends Identifiable {
+	requestId: string; // workRequestId or materialRequestId
+	requestType: 'work' | 'material';
+	expertSupplierId: string;
+	customerId: string;
+	status: 'draft' | 'submitted' | 'under_review' | 'accepted' | 'rejected' | 'expired' | 'revised';
+
+	// Quote Details
+	title: string;
+	description?: string;
+	amount?: number;
+	currency?: string;
+	validityDays?: number;
+	validityDate?: string;
+	additionalTerms?: string;
+
+	// Files
+	files: Attachment[];
+
+	// Metadata
+	submittedAt: string;
+	updatedAt: string;
+	version: number;
+	parentQuoteId?: string; // For revisions
+
+	// Chat Integration
+	chatId?: string;
+	messageId?: string;
+}
+
+/**
+ * Represents a quote message in chat
+ */
+export interface QuoteMessage extends Message {
+	messageType: 'quote';
+	quoteId: string;
+	requestId: string;
+	requestType: 'work' | 'material';
+	quoteAmount?: number;
+	quoteValidity?: string;
+	quoteTitle?: string;
 }
