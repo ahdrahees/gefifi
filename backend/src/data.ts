@@ -1,6 +1,6 @@
 // gefifi-2/backend/src/data.ts
 import { Firestore } from '@google-cloud/firestore';
-import type { User, WorkRequest, Chat, Contract, MaterialRequest } from './interfaces';
+import type { User, WorkRequest, Chat, Contract, MaterialRequest, Quote } from './interfaces';
 
 // --- Lazy Initializer for Firestore Client ---
 
@@ -47,7 +47,8 @@ const COLLECTIONS = {
 	MATERIAL_REQUESTS: 'materialRequests',
 	CHATS: 'chats',
 	MESSAGES: 'messages',
-	CONTRACTS: 'contracts'
+	CONTRACTS: 'contracts',
+	QUOTES: 'quotes'
 };
 
 // Generic type for our data items, ensuring they all have an ID.
@@ -253,5 +254,6 @@ export const materialRequestsDB = new FirestoreCollection<MaterialRequest>(
 export const chatsDB = new FirestoreCollection<Chat>(COLLECTIONS.CHATS);
 // messagesDB removed - messages are now stored in subcollections under chats
 export const contractsDB = new FirestoreCollection<Contract>(COLLECTIONS.CONTRACTS);
+export const quotesDB = new FirestoreCollection<Quote>(COLLECTIONS.QUOTES);
 
 console.log('[Firestore] Data handlers configured with lazy initialization.');

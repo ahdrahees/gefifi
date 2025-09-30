@@ -10,6 +10,8 @@
 	function handleClick() {
 		if (message.contractId) {
 			goto(`/contracts/${message.contractId}`);
+		} else if (message.quoteRequestId) {
+			goto(`/my-requests/${message.quoteRequestId}/quote`);
 		} else if (message.ExpertRequestId) {
 			goto(`/my-requests/${message.ExpertRequestId}`);
 		} else if (message.MaterialRequestId) {
@@ -38,7 +40,7 @@
 </script>
 
 <div class="flex flex-col items-center justify-center py-2">
-	{#if message.contractId || message.ExpertRequestId || message.MaterialRequestId}
+	{#if message.contractId || message.quoteRequestId || message.ExpertRequestId || message.MaterialRequestId}
 		<!-- Clickable System Message -->
 		<button
 			class="group flex cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-700/50 px-2 py-1 transition-all duration-200 hover:bg-slate-600/20 hover:text-slate-200 sm:px-4 sm:py-2"

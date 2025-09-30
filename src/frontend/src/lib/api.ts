@@ -78,9 +78,8 @@ async function request<T = any>( // Default T to any if not specified by caller
 				error: errJson.error || errJson // Store the full error object if available
 			};
 		} catch (e) {
-			// If parsing JSON fails, use the text content of the response if available
-			const textError = await response.text();
-			errorData.message = textError || errorData.message;
+			// If parsing JSON fails, don't try to read the body again
+			errorData.message = `API Error (${response.status}): ${response.statusText}`;
 		}
 		console.error('API Error:', { endpoint, status: response.status, data: errorData });
 		throw new ApiError(errorData.message, response.status, errorData);
@@ -390,6 +389,9 @@ const apiClient = {
 	getChatById: (chatId: string): Promise<Chat> => {
 		return request<Chat>(`/chat/${chatId}`, 'GET', undefined, true);
 	},
+	findChatBetweenUsers: (userId1: string, userId2: string): Promise<{ chat: Chat | null }> => {
+		return request<{ chat: Chat | null }>(`/chat/find?user1=${userId1}&user2=${userId2}`, 'GET', undefined, true);
+	},
 	getChatMessages: (chatId: string): Promise<MessagesResponse> => {
 		return request<MessagesResponse>(`/chat/${chatId}/messages`, 'GET', undefined, true);
 	},
@@ -444,6 +446,116 @@ const apiClient = {
 		payload: ContractStatusUpdatePayload
 	): Promise<ContractResponse> => {
 		return request<ContractResponse>(`/contracts/${contractId}/status`, 'PUT', payload, true);
+	},
+
+	// --- Contract Linking ---
+	linkContract: (
+		contractId: string,
+		data: {
+			linkedContractId: string;
+			visibility?: 'private' | 'shared';
+			reason?: string;
+		}
+	): Promise<{ message: string; linkedContract: ContractResponse }> => {
+		return request<{ message: string; linkedContract: ContractResponse }>(
+			`/contracts/${contractId}/link`,
+			'POST',
+			data,
+			true
+		);
+	},
+	unlinkContract: (
+		contractId: string,
+		linkedContractId: string
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/contracts/${contractId}/link/${linkedContractId}`,
+			'DELETE',
+			undefined,
+			true
+		);
+	},
+	updateContractLinkVisibility: (
+		contractId: string,
+		linkedContractId: string,
+		visibility: 'private' | 'shared'
+	): Promise<{ message: string }> => {
+		return request<{ message: string }>(
+			`/contracts/${contractId}/link/${linkedContractId}/visibility`,
+			'PUT',
+			{ visibility },
+			true
+		);
+	},
+	getLinkedContracts: (
+		contractId: string
+	): Promise<{
+		contractId: string;
+		linkedContracts: Array<{
+			id: string;
+			contractType: string;
+			status: string;
+			contractDate: string;
+			workDetails: string;
+			agreementSummary: string;
+			restricted?: boolean;
+			error?: string;
+			linkMetadata: {
+				linkedBy: string;
+				linkedAt: string;
+				visibility: 'private' | 'shared';
+				reason?: string;
+			};
+		}>;
+	}> => {
+		return request<{
+			contractId: string;
+			linkedContracts: Array<{
+				id: string;
+				contractType: string;
+				status: string;
+				contractDate: string;
+				workDetails: string;
+				agreementSummary: string;
+				restricted?: boolean;
+				error?: string;
+				linkMetadata: {
+					linkedBy: string;
+					linkedAt: string;
+					visibility: 'private' | 'shared';
+					reason?: string;
+				};
+			}>;
+		}>(`/contracts/${contractId}/linked`, 'GET', undefined, true);
+	},
+	getContractStatus: (
+		contractId: string
+	): Promise<{
+		id: string;
+		contractType: string;
+		status: string;
+		workRequestId?: string;
+		materialRequestId?: string;
+		workDetails?: string;
+		agreementSummary?: string;
+		totalAmount?: number;
+		contractDate?: string;
+		createdAt: string;
+		updatedAt: string;
+	}> => {
+		return request<{
+			id: string;
+			contractType: string;
+			status: string;
+			workRequestId?: string;
+			materialRequestId?: string;
+			workDetails?: string;
+			agreementSummary?: string;
+			totalAmount?: number;
+			contractDate?: string;
+			createdAt: string;
+			updatedAt: string;
+		}>(`/contracts/${contractId}/status`, 'GET', undefined, true);
 	},
 
 	// --- Projects ---
@@ -525,6 +637,29 @@ const apiClient = {
 			data,
 			true
 		);
+	},
+
+	// --- Quote Management ---
+	submitQuote: (formData: FormData): Promise<any> => {
+		return request('/quotes', 'POST', formData, true, true);
+	},
+	getQuotesForRequest: (requestId: string, requestType: 'work' | 'material'): Promise<{ quotes: any[] }> => {
+		return request<{ quotes: any[] }>(`/quotes/request/${requestId}?requestType=${requestType}`, 'GET', undefined, true);
+	},
+	updateQuote: (quoteId: string, data: any): Promise<any> => {
+		return request(`/quotes/${quoteId}`, 'PUT', data, true);
+	},
+	updateQuoteStatus: (quoteId: string, status: string): Promise<any> => {
+		return request(`/quotes/${quoteId}/status`, 'PUT', { status }, true);
+	},
+	reviseQuote: (quoteId: string, formData: FormData): Promise<any> => {
+		return request(`/quotes/${quoteId}/revise`, 'POST', formData, true, true);
+	},
+	deleteQuote: (quoteId: string): Promise<{ message: string }> => {
+		return request<{ message: string }>(`/quotes/${quoteId}`, 'DELETE', undefined, true);
+	},
+	submitQuoteThroughChat: (chatId: string, formData: FormData): Promise<any> => {
+		return request(`/quotes/chat/${chatId}`, 'POST', formData, true, true);
 	}
 };
 

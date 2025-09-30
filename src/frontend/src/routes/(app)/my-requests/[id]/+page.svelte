@@ -9,6 +9,8 @@
 	import RequestDetailHeader from '$lib/components/requests/RequestDetailHeader.svelte';
 	import RequestDetailContent from '$lib/components/requests/RequestDetailContent.svelte';
 	import RequestDetailActions from '$lib/components/requests/RequestDetailActions.svelte';
+	import RequestDetailTabs from '$lib/components/requests/RequestDetailTabs.svelte';
+	import RequestQuotationsTab from '$lib/components/requests/RequestQuotationsTab.svelte';
 
 	let currentUser: AuthUser | null = null;
 	let request: (WorkRequest | MaterialRequest) | null = null;
@@ -20,6 +22,8 @@
 	let contractInfo: any = null;
 	let chatId: string | null = null;
 	let interestedUsers: any[] = [];
+	let activeTab: 'details' | 'quotations' = 'details';
+	let quotesCount: number = 0;
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
@@ -47,18 +51,23 @@
 			// Try to fetch as work request first
 			try {
 				const workRequest = await apiClient.getWorkRequestById(requestId);
-				request = workRequest;
+				request = workRequest as any;
 				requestType = 'work';
 			} catch {
 				// If work request fails, try material request
 				const materialRequest = await apiClient.getMaterialRequestById(requestId);
-				request = materialRequest;
+				request = materialRequest as any;
 				requestType = 'material';
 			}
 
 			if (request) {
 				// Fetch additional data
-				await Promise.all([fetchContractInfo(), fetchChatInfo(), fetchInterestedUsers()]);
+				await Promise.all([
+					fetchContractInfo(),
+					fetchChatInfo(),
+					fetchInterestedUsers(),
+					fetchQuotesCount()
+				]);
 			}
 		} catch (error: any) {
 			console.error('Failed to fetch request details:', error);
@@ -102,7 +111,7 @@
 
 				const relatedChat = chats.find(
 					(chat: any) =>
-						chat.participants.includes(otherPartyId) && chat.participants.includes(currentUser.id)
+						chat.participants.includes(otherPartyId) && chat.participants.includes(currentUser!.id)
 				);
 				chatId = relatedChat?.id || null;
 			} else if (currentUser.userType === 'customer') {
@@ -121,7 +130,7 @@
 				for (const userId of interestedUsers) {
 					const relatedChat = chats.find(
 						(chat: any) =>
-							chat.participants.includes(userId) && chat.participants.includes(currentUser.id)
+							chat.participants.includes(userId) && chat.participants.includes(currentUser!.id)
 					);
 					if (relatedChat) {
 						chatId = relatedChat.id;
@@ -132,8 +141,8 @@
 				// For experts/suppliers, find chat with customer
 				const relatedChat = chats.find(
 					(chat: any) =>
-						chat.participants.includes(request.customerId) &&
-						chat.participants.includes(currentUser.id)
+						chat.participants.includes(request!.customerId) &&
+						chat.participants.includes(currentUser!.id)
 				);
 				chatId = relatedChat?.id || null;
 			}
@@ -157,6 +166,18 @@
 			}
 		} catch (error) {
 			console.error('Failed to fetch interested users:', error);
+		}
+	}
+
+	async function fetchQuotesCount() {
+		if (!request || !requestType) return;
+
+		try {
+			const response = await apiClient.getQuotesForRequest(request.id, requestType);
+			quotesCount = response.quotes?.length || 0;
+		} catch (error) {
+			console.error('Failed to fetch quotes count:', error);
+			quotesCount = 0;
 		}
 	}
 
@@ -187,6 +208,10 @@
 
 	function handleBackToList() {
 		goto('/my-requests');
+	}
+
+	function handleTabChange(event: CustomEvent) {
+		activeTab = event.detail.tab;
 	}
 </script>
 
@@ -253,28 +278,43 @@
 		</button>
 
 		<!-- Header -->
-		<RequestDetailHeader {request} {requestType} {contractInfo} {canEdit} on:edit={handleEdit} />
+		<RequestDetailHeader
+			{request}
+			{requestType}
+			{contractInfo}
+			canEdit={canEdit || false}
+			on:edit={handleEdit}
+		/>
 
-		<!-- Main Content Grid -->
-		<div class="grid gap-6 lg:grid-cols-3">
-			<!-- Left Column: Main Content -->
-			<div class="lg:col-span-2">
-				<RequestDetailContent {request} {requestType} {currentUser} {interestedUsers} />
-			</div>
+		<!-- Tabs -->
+		<RequestDetailTabs {activeTab} {quotesCount} on:tabChange={handleTabChange} />
 
-			<!-- Right Column: Actions and Info -->
-			<div class="lg:col-span-1">
-				<RequestDetailActions
-					{request}
-					{requestType}
-					{currentUser}
-					{contractInfo}
-					{chatId}
-					{canEdit}
-					on:statusUpdate={(e) => handleStatusUpdate(e.detail)}
-					on:edit={handleEdit}
-				/>
+		<!-- Tab Content -->
+		{#if activeTab === 'details'}
+			<!-- Main Content Grid -->
+			<div class="grid gap-6 lg:grid-cols-3">
+				<!-- Left Column: Main Content -->
+				<div class="lg:col-span-2">
+					<RequestDetailContent {request} {requestType} {currentUser} {interestedUsers} />
+				</div>
+
+				<!-- Right Column: Actions and Info -->
+				<div class="lg:col-span-1">
+					<RequestDetailActions
+						{request}
+						{requestType}
+						{currentUser}
+						{contractInfo}
+						{chatId}
+						canEdit={canEdit || false}
+						on:statusUpdate={(e) => handleStatusUpdate(e.detail)}
+						on:edit={handleEdit}
+					/>
+				</div>
 			</div>
-		</div>
+		{:else if activeTab === 'quotations'}
+			<!-- Quotations Tab -->
+			<RequestQuotationsTab {request} {requestType} {currentUser} />
+		{/if}
 	{/if}
 </div>

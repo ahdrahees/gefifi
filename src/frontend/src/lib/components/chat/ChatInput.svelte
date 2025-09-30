@@ -2,6 +2,11 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { realtimeChatService } from '$lib/services/realtimeChat';
+	import DropdownMenu from '$lib/components/ui/DropdownMenu.svelte';
+	import QuoteSubmissionForm from '$lib/components/quotes/QuoteSubmissionForm.svelte';
+	import GeneralModal from '$lib/components/ui/GeneralModal.svelte';
+	import apiClient from '$lib/api';
+	import { authStore } from '$lib/stores/auth';
 
 	// --- PROPS ---
 	export let isSending: boolean = false;
@@ -10,14 +15,28 @@
 	export let value: string = ''; // For two-way binding of textarea content
 	export let chatId: string = '';
 	export let currentUserId: string = '';
+	export let currentUser: any = null; // Add currentUser prop for user type validation
+	export let chatDetails: any = null; // Chat object with workRequestId/materialRequestId
 
 	// --- INTERNAL STATE & BINDINGS ---
 	let fileInput: HTMLInputElement;
+	let imageInput: HTMLInputElement;
+	let quoteInput: HTMLInputElement;
 	let typingTimeout: NodeJS.Timeout | null = null;
+	let showDropdown = false;
+	let showQuoteModal = false;
+	let availableRequests: any[] = [];
 
 	// --- CONSTANTS ---
 	const MAX_FILES = 10;
 	const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB
+
+	// --- COMPUTED PROPERTIES ---
+	$: canSubmitQuote =
+		($authStore.user && $authStore.user.userType !== 'customer') ||
+		(currentUser && currentUser.userType !== 'customer');
+	// Debug modal state changes
+	// $: console.log('Modal state changed:', { showQuoteModal, availableRequests: availableRequests.length });
 
 	// --- EVENTS ---
 	const dispatch = createEventDispatcher<{
@@ -26,6 +45,7 @@
 		selectFiles: { files: File[] };
 		removeFile: { index: number };
 		clearFiles: void;
+		submitQuote: void;
 	}>();
 
 	// --- FILE TYPE UTILITIES ---
@@ -93,6 +113,8 @@
 
 	// --- EVENT HANDLERS ---
 	const triggerFileInput = () => fileInput?.click();
+	const triggerImageInput = () => imageInput?.click();
+	const triggerQuoteInput = () => quoteInput?.click();
 
 	const handleFileSelected = (event: Event) => {
 		const target = event.target as HTMLInputElement;
@@ -162,9 +184,87 @@
 			realtimeChatService.clearTyping(chatId, currentUserId);
 		}
 	};
+
+	const handleQuoteSubmit = async () => {
+		console.log('Quote button clicked!', { currentUser, canSubmitQuote, chatDetails });
+		const user = $authStore.user || currentUser;
+		if (user && canSubmitQuote && chatDetails) {
+			console.log('User type:', user.userType);
+			try {
+				let requests: any[] = [];
+				let preselectedRequestId: string | null = null;
+
+				// Get the customer ID from chat participants
+				const otherParticipantId = chatDetails.participants.find((p: string) => p !== user.id);
+				console.log('Other participant (customer):', otherParticipantId);
+
+				// Fetch requests based on user type
+				if (user.userType === 'expert') {
+					console.log('Fetching work requests for expert...');
+					const workRequests = await apiClient.getWorkRequests();
+					requests = workRequests.filter((req: any) => {
+						return (
+							req.customerId === otherParticipantId &&
+							(req.interestedExperts?.includes(user.id) ||
+								req.invitedExperts?.includes(user.id) ||
+								req.status === 'contracted')
+						);
+					});
+
+					// Optionally preselect if workRequestId exists in chat
+					if (chatDetails.workRequestId) {
+						preselectedRequestId = chatDetails.workRequestId;
+						console.log('Preselecting work request:', preselectedRequestId);
+					}
+				} else if (user.userType === 'supplier') {
+					console.log('Fetching material requests for supplier...');
+					const materialRequests = await apiClient.getMaterialRequests();
+					requests = materialRequests.filter((req: any) => {
+						return (
+							req.customerId === otherParticipantId &&
+							(req.interestedSuppliers?.includes(user.id) ||
+								req.invitedSuppliers?.includes(user.id) ||
+								req.status === 'contracted')
+						);
+					});
+
+					// Optionally preselect if materialRequestId exists in chat
+					if (chatDetails.materialRequestId) {
+						preselectedRequestId = chatDetails.materialRequestId;
+						console.log('Preselecting material request:', preselectedRequestId);
+					}
+				} else {
+					console.log('Invalid user type for quote submission:', user.userType);
+					return;
+				}
+
+				availableRequests = requests;
+				console.log('Available requests:', requests.length, 'Preselected:', preselectedRequestId);
+				showQuoteModal = true;
+			} catch (error) {
+				console.error('Error fetching available requests:', error);
+				showQuoteModal = true;
+			}
+		} else {
+			console.log('Cannot submit quote:', { currentUser, canSubmitQuote, chatDetails });
+		}
+	};
+
+	const handleQuoteSubmitted = () => {
+		showQuoteModal = false;
+		dispatch('submitQuote');
+	};
+
+	const toggleDropdown = () => {
+		showDropdown = !showDropdown;
+	};
+
+	const closeDropdown = () => {
+		showDropdown = false;
+	};
 </script>
 
-<div class="border-t border-slate-700/50 bg-slate-800 p-3">
+<div class="border-t border-slate-700/50 bg-slate-800 p-3" role="region" tabindex="-1">
 	<!-- File Preview / Upload Progress -->
 	{#if isUploadingFiles}
 		<div class="mb-2 flex animate-pulse items-center gap-3 rounded-lg bg-slate-700 p-3">
@@ -271,6 +371,7 @@
 
 	<!-- Main Input Form -->
 	<div class="flex items-center gap-3">
+		<!-- Hidden file inputs -->
 		<input
 			type="file"
 			bind:this={fileInput}
@@ -279,21 +380,125 @@
 			accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf"
 			class="hidden"
 		/>
+		<input
+			type="file"
+			bind:this={imageInput}
+			on:change={handleFileSelected}
+			multiple
+			accept="image/*"
+			class="hidden"
+		/>
+		<input
+			type="file"
+			bind:this={quoteInput}
+			on:change={handleFileSelected}
+			multiple
+			accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf"
+			class="hidden"
+		/>
+
 		{#if selectedFiles.length < MAX_FILES}
-			<button
-				on:click={triggerFileInput}
-				class="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
-				aria-label="Attach files"
+			<!-- File Upload Dropdown -->
+			<DropdownMenu
+				bind:isOpen={showDropdown}
+				position="right"
+				placement="top"
+				autoPosition={true}
+				debug={false}
 			>
-				<svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-					<path
+				<button
+					slot="trigger"
+					class="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
+					aria-label="Attach files"
+				>
+					<svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+						/>
+					</svg>
+				</button>
+
+				<button
+					on:click={() => {
+						triggerFileInput();
+						closeDropdown();
+					}}
+					class="dropdown-menu-item"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
 						stroke-linecap="round"
 						stroke-linejoin="round"
+					>
+						<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+						<path d="M14 2v4a2 2 0 0 0 2 2h4" />
+						<path d="M12 12v6" />
+						<path d="m15 15-3-3-3 3" />
+					</svg>
+					<span>Document</span>
+				</button>
+				<button
+					on:click={() => {
+						triggerImageInput();
+						closeDropdown();
+					}}
+					class="dropdown-menu-item"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
 						stroke-width="2"
-						d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-					/>
-				</svg>
-			</button>
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16" />
+						<path d="M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2" />
+						<circle cx="13" cy="7" r="1" fill="currentColor" />
+						<rect x="8" y="2" width="14" height="14" rx="2" />
+					</svg>
+					<span>Photos</span>
+				</button>
+				{#if canSubmitQuote}
+					<button
+						on:click={() => {
+							handleQuoteSubmit();
+							closeDropdown();
+						}}
+						class="dropdown-menu-item"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+							<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+							<path d="M9 14h6" />
+							<path d="M12 17v-6" />
+						</svg>
+						<span>Quote</span>
+					</button>
+				{/if}
+			</DropdownMenu>
 		{/if}
 		<textarea
 			bind:value
@@ -330,6 +535,26 @@
 			</button>
 		{/if}
 	</div>
+
+	<!-- Quote Submission Modal -->
+	<GeneralModal
+		bind:show={showQuoteModal}
+		on:close={() => (showQuoteModal = false)}
+		title="Submit Quote"
+		maxWidthClass="max-w-4xl"
+	>
+		<QuoteSubmissionForm
+			requestId={chatDetails?.workRequestId || chatDetails?.materialRequestId || ''}
+			requestType={($authStore.user || currentUser)?.userType === 'supplier' ? 'material' : 'work'}
+			request={availableRequests.find(
+				(req) => req.id === (chatDetails?.workRequestId || chatDetails?.materialRequestId)
+			) || null}
+			{availableRequests}
+			{chatId}
+			on:quoteSubmitted={handleQuoteSubmitted}
+			on:close={() => (showQuoteModal = false)}
+		/>
+	</GeneralModal>
 </div>
 
 <style>

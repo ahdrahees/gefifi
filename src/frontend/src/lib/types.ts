@@ -79,6 +79,7 @@ export type WorkRequest = {
 	interestedSuppliers?: string[]; // Users who showed interest
 	invitedExperts?: string[]; // Users directly invited by customer
 	invitedSuppliers?: string[]; // Users directly invited by customer
+	quotes?: string[]; // Array of quote IDs
 };
 
 /**
@@ -114,6 +115,7 @@ export type MaterialRequest = {
 	updatedAt: string;
 	interestedSuppliers?: string[]; // Users who showed interest
 	invitedSuppliers?: string[]; // Users directly invited by customer
+	quotes?: string[]; // Array of quote IDs
 };
 
 /**
@@ -165,6 +167,16 @@ export type Message = {
 	contractId?: string; // Reference to contract for navigation
 	ExpertRequestId?: string; // Reference to work request for navigation (preparing for future migration)
 	MaterialRequestId?: string; // Reference to material request for navigation
+	quoteRequestId?: string; // Reference to quote request for navigation (clickable system messages)
+	// Quote message fields (for messageType: 'quote')
+	quoteId?: string; // Quote ID for quote messages
+	requestId?: string; // Request ID for quote messages
+	requestType?: 'work' | 'material'; // Request type for quote messages
+	quoteAmount?: number; // Quote amount for quote messages
+	quoteValidity?: string; // Quote validity date for quote messages
+	quoteTitle?: string; // Quote title for quote messages
+	// Message type for different message formats
+	messageType?: 'text' | 'quote' | 'file' | 'voice';
 };
 
 /**
@@ -197,6 +209,18 @@ export type ContractComment = {
 	timestamp: string; // ISO 8601 date string
 	type: 'revision_request' | 'signature_comment' | 'general'; // Type of comment
 	attachments?: Attachment[]; // Optional file attachments
+};
+
+/**
+ * Represents a link between contracts.
+ */
+export type ContractLink = {
+	contractId: string; // ID of the linked contract
+	relationshipType: 'reference'; // Type of relationship (extensible for future)
+	linkedBy: string; // User ID who created the link
+	linkedAt: string; // ISO 8601 date string when link was created
+	visibility: 'private' | 'shared'; // Privacy level of the link
+	reason?: string; // Optional reason for linking
 };
 
 /**
@@ -249,6 +273,9 @@ export type Contract = {
 	// Comments and Feedback
 	comments?: ContractComment[]; // Comments and revision requests
 
+	// Contract Linking
+	linkedContracts?: ContractLink[]; // Array of linked contracts
+
 	// Signatures
 	customerSigned: boolean;
 	customerSignatureTimestamp?: string;
@@ -274,6 +301,65 @@ export type ProjectSummary = {
 	status: ContractStatus;
 	contractDate: string;
 	workRequestId?: string;
+};
+
+// --- Quote Management Types ---
+
+/**
+ * Represents a quote submitted by an expert or supplier for a work or material request.
+ */
+export type Quote = {
+	id: string;
+	requestId: string; // workRequestId or materialRequestId
+	requestType: 'work' | 'material';
+	expertSupplierId: string;
+	customerId: string;
+	status: 'draft' | 'submitted' | 'under_review' | 'accepted' | 'rejected' | 'expired' | 'revised';
+
+	// Quote Details
+	title: string;
+	description?: string;
+	amount?: number;
+	currency?: string;
+	validityDays?: number;
+	validityDate?: string;
+	additionalTerms?: string;
+
+	// Files
+	files: Array<{
+		fileName: string;
+		filePath: string;
+		fileType: string;
+		size: number;
+	}>;
+
+	// Metadata
+	submittedAt: string;
+	updatedAt: string;
+	version: number;
+	parentQuoteId?: string; // For revisions
+
+	// Chat Integration
+	chatId?: string;
+	messageId?: string;
+
+	// Frontend-enriched properties
+	expertSupplier?: AuthUser;
+	customer?: AuthUser;
+	request?: WorkRequest | MaterialRequest;
+};
+
+/**
+ * Represents a quote message in chat
+ */
+export type QuoteMessage = Message & {
+	messageType: 'quote';
+	quoteId: string;
+	requestId: string;
+	requestType: 'work' | 'material';
+	quoteAmount?: number;
+	quoteValidity?: string;
+	quoteTitle?: string;
 };
 
 /**

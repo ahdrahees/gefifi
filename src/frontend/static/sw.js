@@ -46,17 +46,19 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache when offline
 self.addEventListener('fetch', (event) => {
-	// Skip non-GET requests
-	if (event.request.method !== 'GET') {
+	// Skip non-GET requests and API requests
+	if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
 		return;
 	}
 
-	// Skip Firebase and external API requests
+	// Skip Firebase, external API requests, and localhost API requests
 	if (
 		event.request.url.includes('firebaseapp.com') ||
 		event.request.url.includes('googleapis.com') ||
 		event.request.url.includes('gstatic.com') ||
-		event.request.url.includes('cloudfunctions.net')
+		event.request.url.includes('cloudfunctions.net') ||
+		event.request.url.includes('localhost:3000/api') ||
+		event.request.url.includes('127.0.0.1:3000/api')
 	) {
 		return;
 	}
