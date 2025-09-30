@@ -74,7 +74,59 @@ const app: Express = express();
 const PORT = process.env.PORT || 3000;
 
 // Middlewares
-app.use(cors()); // Enable CORS for all routes
+// CORS configuration that works for both development and production
+const corsOptions = {
+	origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+		// Allow requests with no origin (mobile apps, curl, etc.)
+		if (!origin) return callback(null, true);
+
+		// Development origins
+		const developmentOrigins = [
+			'http://localhost:5173',
+			'http://localhost:3000',
+			'http://127.0.0.1:5173',
+			'http://127.0.0.1:3000'
+		];
+
+		// Production origins - from environment variables or hardcoded
+		const productionOrigins = [
+			// Add your production frontend URL here, e.g.:
+			'https://gefifi.at0.app',
+			// 'https://your-app-name.web.app', // If using Firebase Hosting
+		];
+
+		// Add origins from environment variable (comma-separated)
+		if (process.env.ALLOWED_ORIGINS) {
+			const envOrigins = process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim());
+			productionOrigins.push(...envOrigins);
+		}
+
+		const allowedOrigins = [...developmentOrigins, ...productionOrigins];
+
+		// Check if origin is allowed
+		if (allowedOrigins.includes(origin)) {
+			return callback(null, true);
+		}
+
+		// For production, also allow origins that match your Cloud Run service pattern
+		if (process.env.NODE_ENV === 'production') {
+			// Allow Cloud Run service URLs (they follow a specific pattern)
+			const cloudRunPattern = /^https:\/\/.*-[a-z0-9]+-[a-z]{2}\.a\.run\.app$/;
+			if (cloudRunPattern.test(origin)) {
+				return callback(null, true);
+			}
+		}
+
+		console.warn(`CORS: Blocked origin ${origin}`);
+		callback(new Error('Not allowed by CORS'));
+	},
+	credentials: true, // Allow credentials (cookies, authorization headers)
+	methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Allow all HTTP methods
+	allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+	optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+};
+
+app.use(cors(corsOptions));
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 

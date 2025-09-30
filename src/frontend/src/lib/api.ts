@@ -78,9 +78,8 @@ async function request<T = any>( // Default T to any if not specified by caller
 				error: errJson.error || errJson // Store the full error object if available
 			};
 		} catch (e) {
-			// If parsing JSON fails, use the text content of the response if available
-			const textError = await response.text();
-			errorData.message = textError || errorData.message;
+			// If parsing JSON fails, don't try to read the body again
+			errorData.message = `API Error (${response.status}): ${response.statusText}`;
 		}
 		console.error('API Error:', { endpoint, status: response.status, data: errorData });
 		throw new ApiError(errorData.message, response.status, errorData);
@@ -390,6 +389,9 @@ const apiClient = {
 	getChatById: (chatId: string): Promise<Chat> => {
 		return request<Chat>(`/chat/${chatId}`, 'GET', undefined, true);
 	},
+	findChatBetweenUsers: (userId1: string, userId2: string): Promise<{ chat: Chat | null }> => {
+		return request<{ chat: Chat | null }>(`/chat/find?user1=${userId1}&user2=${userId2}`, 'GET', undefined, true);
+	},
 	getChatMessages: (chatId: string): Promise<MessagesResponse> => {
 		return request<MessagesResponse>(`/chat/${chatId}/messages`, 'GET', undefined, true);
 	},
@@ -635,6 +637,29 @@ const apiClient = {
 			data,
 			true
 		);
+	},
+
+	// --- Quote Management ---
+	submitQuote: (formData: FormData): Promise<any> => {
+		return request('/quotes', 'POST', formData, true, true);
+	},
+	getQuotesForRequest: (requestId: string, requestType: 'work' | 'material'): Promise<{ quotes: any[] }> => {
+		return request<{ quotes: any[] }>(`/quotes/request/${requestId}?requestType=${requestType}`, 'GET', undefined, true);
+	},
+	updateQuote: (quoteId: string, data: any): Promise<any> => {
+		return request(`/quotes/${quoteId}`, 'PUT', data, true);
+	},
+	updateQuoteStatus: (quoteId: string, status: string): Promise<any> => {
+		return request(`/quotes/${quoteId}/status`, 'PUT', { status }, true);
+	},
+	reviseQuote: (quoteId: string, formData: FormData): Promise<any> => {
+		return request(`/quotes/${quoteId}/revise`, 'POST', formData, true, true);
+	},
+	deleteQuote: (quoteId: string): Promise<{ message: string }> => {
+		return request<{ message: string }>(`/quotes/${quoteId}`, 'DELETE', undefined, true);
+	},
+	submitQuoteThroughChat: (chatId: string, formData: FormData): Promise<any> => {
+		return request(`/quotes/chat/${chatId}`, 'POST', formData, true, true);
 	}
 };
 

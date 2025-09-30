@@ -465,6 +465,8 @@
 				bind:selectedFiles
 				{chatId}
 				currentUserId={currentUser?.id || ''}
+				{currentUser}
+				chatDetails={currentChatDetails}
 				on:sendMessage={handleSendMessage}
 				on:startRecording={handleStartRecording}
 				on:selectFiles={handleSelectFiles}
