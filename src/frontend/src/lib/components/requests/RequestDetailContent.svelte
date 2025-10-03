@@ -7,11 +7,26 @@
 	export let request: WorkRequest | MaterialRequest;
 	export let requestType: 'work' | 'material';
 	export let currentUser: AuthUser | null;
-	export let interestedUsers: any[] = [];
+	export let chatMap: Map<string, string> = new Map();
 
 	$: isWorkRequest = requestType === 'work';
 	$: isMaterialRequest = requestType === 'material';
 	$: isCustomer = currentUser && currentUser.id === request.customerId;
+
+	// Get interested and invited user IDs directly from request
+	$: interestedUserIds = isWorkRequest
+		? [
+				...((request as WorkRequest).interestedExperts || []),
+				...((request as WorkRequest).interestedSuppliers || [])
+			]
+		: (request as MaterialRequest).interestedSuppliers || [];
+
+	$: invitedUserIds = isWorkRequest
+		? [
+				...((request as WorkRequest).invitedExperts || []),
+				...((request as WorkRequest).invitedSuppliers || [])
+			]
+		: (request as MaterialRequest).invitedSuppliers || [];
 
 	function formatDate(dateString: string | undefined) {
 		if (!dateString) return 'Not specified';
@@ -290,7 +305,7 @@
 	{/if}
 
 	<!-- Interested Users Section (for customers) -->
-	{#if isCustomer && interestedUsers.length > 0}
+	{#if isCustomer && interestedUserIds.length > 0}
 		<section
 			class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
 		>
@@ -306,35 +321,37 @@
 					</svg>
 				</div>
 				<h2 class="text-lg font-bold text-green-300">
-					Interested {isWorkRequest ? 'Experts' : 'Suppliers'} ({interestedUsers.length})
+					Interested {isWorkRequest ? 'Experts' : 'Suppliers'} ({interestedUserIds.length})
 				</h2>
 			</div>
 
 			<div class="grid gap-4 sm:grid-cols-2">
-				{#each interestedUsers as user}
+				{#each interestedUserIds as userId}
 					<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-4">
-						<UserProfile userId={user.id} />
+						<UserProfile {userId} />
 						<div class="mt-3 flex gap-2">
-							<a
-								href="/chat"
-								class="flex flex-1 items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/20 px-3 py-2 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-500/30"
-							>
-								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										stroke-width="2"
-										d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-									/>
-								</svg>
-								Chat
-							</a>
+							{#if chatMap.has(userId)}
+								<a
+									href="/chat/{chatMap.get(userId)}"
+									class="flex flex-1 items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/20 px-3 py-2 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-500/30"
+								>
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+										/>
+									</svg>
+									Chat
+								</a>
+							{/if}
 							<a
 								href="/contracts/create?{isWorkRequest
 									? 'workRequestId'
 									: 'materialRequestId'}={request.id}&{isWorkRequest
 									? 'expertId'
-									: 'supplierId'}={user.id}&customerId={request.customerId}"
+									: 'supplierId'}={userId}&customerId={request.customerId}"
 								class="flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
 							>
 								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -350,6 +367,116 @@
 						</div>
 					</div>
 				{/each}
+			</div>
+		</section>
+	{/if}
+
+	<!-- Invited Users Section (for customers) -->
+	{#if isCustomer && invitedUserIds.length > 0}
+		<section
+			class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+		>
+			<div class="mb-4 flex items-center gap-3">
+				<div class="rounded-lg bg-amber-500/20 p-2">
+					<svg class="h-5 w-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+						/>
+					</svg>
+				</div>
+				<h2 class="text-lg font-bold text-amber-300">
+					Invited {isWorkRequest ? 'Experts' : 'Suppliers'} ({invitedUserIds.length})
+				</h2>
+			</div>
+
+			<div class="grid gap-4 sm:grid-cols-2">
+				{#each invitedUserIds as userId}
+					<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-4">
+						<UserProfile {userId} />
+						<div class="mt-3 flex gap-2">
+							{#if chatMap.has(userId)}
+								<a
+									href="/chat/{chatMap.get(userId)}"
+									class="flex flex-1 items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/20 px-3 py-2 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-500/30"
+								>
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+										/>
+									</svg>
+									Chat
+								</a>
+							{/if}
+							<a
+								href="/contracts/create?{isWorkRequest
+									? 'workRequestId'
+									: 'materialRequestId'}={request.id}&{isWorkRequest
+									? 'expertId'
+									: 'supplierId'}={userId}&customerId={request.customerId}"
+								class="flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
+							>
+								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+									/>
+								</svg>
+								Contract
+							</a>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
+
+	<!-- Find & Invite More Section (for customers when request is open) -->
+	{#if isCustomer && request.status === 'open'}
+		<section
+			class="rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/20 to-sky-600/20 p-6 shadow-xl backdrop-blur-sm"
+		>
+			<div class="text-center">
+				<div
+					class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-sky-500/20"
+				>
+					<svg class="h-6 w-6 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+						/>
+					</svg>
+				</div>
+				<h3 class="mb-2 text-xl font-bold text-sky-300">Need More Options?</h3>
+				<p class="mb-4 text-sm text-slate-300">
+					Invite more {isWorkRequest ? 'experts' : 'suppliers'} to get additional quotes and options
+					for your project.
+				</p>
+				<a
+					href="/find-professionals?type={isWorkRequest
+						? 'expert'
+						: 'supplier'}&request-id={request.id}"
+					class="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-sky-600 hover:shadow-xl"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+						/>
+					</svg>
+					Find & Invite {isWorkRequest ? 'Experts' : 'Suppliers'}
+				</a>
 			</div>
 		</section>
 	{/if}
