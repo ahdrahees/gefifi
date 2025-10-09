@@ -21,7 +21,7 @@
 	// Additional data
 	let contractInfo: any = null;
 	let chatId: string | null = null;
-	let interestedUsers: any[] = [];
+	let chatMap = new Map<string, string>();
 	let activeTab: 'details' | 'quotations' = 'details';
 	let quotesCount: number = 0;
 
@@ -65,7 +65,7 @@
 				await Promise.all([
 					fetchContractInfo(),
 					fetchChatInfo(),
-					fetchInterestedUsers(),
+					fetchChatMappings(),
 					fetchQuotesCount()
 				]);
 			}
@@ -151,21 +151,23 @@
 		}
 	}
 
-	async function fetchInterestedUsers() {
+	async function fetchChatMappings() {
 		if (!request || !isCustomer) return;
 
 		try {
-			const userIds =
-				requestType === 'work'
-					? (request as WorkRequest).interestedExperts || []
-					: (request as MaterialRequest).interestedSuppliers || [];
+			const chats = await apiClient.getUserChats();
+			const newChatMap = new Map<string, string>();
 
-			if (userIds.length > 0) {
-				const userPromises = userIds.map((id) => apiClient.getUserById(id));
-				interestedUsers = await Promise.all(userPromises);
-			}
+			chats.forEach((chat: any) => {
+				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
+				if (otherParticipant) {
+					newChatMap.set(otherParticipant, chat.id);
+				}
+			});
+
+			chatMap = newChatMap;
 		} catch (error) {
-			console.error('Failed to fetch interested users:', error);
+			console.error('Failed to fetch chat mappings:', error);
 		}
 	}
 
@@ -295,7 +297,7 @@
 			<div class="grid gap-6 lg:grid-cols-3">
 				<!-- Left Column: Main Content -->
 				<div class="lg:col-span-2">
-					<RequestDetailContent {request} {requestType} {currentUser} {interestedUsers} />
+					<RequestDetailContent {request} {requestType} {currentUser} {chatMap} />
 				</div>
 
 				<!-- Right Column: Actions and Info -->
