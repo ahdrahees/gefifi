@@ -13,6 +13,7 @@ node_modules
 backend/dist
 .kiro
 .vscode
+__pycache__
 
 # OS
 .DS_Store
