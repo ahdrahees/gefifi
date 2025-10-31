@@ -1023,7 +1023,7 @@ async def update_expert_request_image(
         }
 
 
-async def update_expert_request_status_guardrail(
+async def update_expert_request_status_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """Guardrail for updating expert request status of a customer"""

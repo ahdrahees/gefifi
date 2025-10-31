@@ -21,6 +21,8 @@ from . import config
 from .tools import (
     create_expert_request,
     create_expert_request_tool_guardrail,
+    update_expert_request_status_tool_guardrail,
+    update_expert_request_tool_guardrail,
     #     upload_material_request_attachments,
     #     upload_work_request_attachments,
     #     upload_contract_attachments,
@@ -261,10 +263,10 @@ async def before_tool_callback(
 
     print(f"CALLBACK[before_tool_callback]: available files: {available_files}")
 
-    return run_tool_specific_guardrail(tool, args, tool_context)
+    return await run_tool_specific_guardrail(tool, args, tool_context)
 
 
-def run_tool_specific_guardrail(
+async def run_tool_specific_guardrail(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """
@@ -275,6 +277,12 @@ def run_tool_specific_guardrail(
     )
     if tool.name == "create_expert_request":
         return create_expert_request_tool_guardrail(tool, args, tool_context)
+    elif tool.name == "update_expert_request":
+        return update_expert_request_tool_guardrail(tool, args, tool_context)
+    elif tool.name == "update_expert_request_status":
+        return await update_expert_request_status_tool_guardrail(
+            tool, args, tool_context
+        )
 
     print(
         f"HELPER[run_tool_specific_guardrail]: no specific guardrail found for tool: {tool.name}"
