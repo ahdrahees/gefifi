@@ -10,23 +10,17 @@ from google.genai import types
 import jwt
 from google.adk.agents import Agent
 from google.adk.tools import load_artifacts
-from typing import Any, TypedDict
-
-from requests import auth
-
+from typing import Any
+from .auth_types import AuthData
 
 # Load environment variables from .env file
 from . import config
 
-from .tools import (
+from .tools.expert_request import (
     create_expert_request,
     create_expert_request_tool_guardrail,
     update_expert_request_status_tool_guardrail,
     update_expert_request_tool_guardrail,
-    #     upload_material_request_attachments,
-    #     upload_work_request_attachments,
-    #     upload_contract_attachments,
-    #     analyze_uploaded_file,
 )
 
 MODEL_GEMINI_2_0_FLASH: str = "gemini-2.0-flash"
@@ -46,14 +40,6 @@ if JWT_SECRET is None:
         "FATAL ERROR: JWT_SECRET is not defined in .env. Authentication will not work."
     )
     raise ValueError("FATAL ERROR: JWT_SECRET is not defined. Halting application.")
-
-
-class AuthData(TypedDict):
-    """AuthData represents the data extracted from a JWT token."""
-
-    user_id: str
-    # email: str
-    user_type: str
 
 
 def verify_auth_token(auth_token: str) -> AuthData | None:

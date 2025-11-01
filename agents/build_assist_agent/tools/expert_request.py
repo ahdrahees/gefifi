@@ -1,5 +1,5 @@
 """
-Tools for handling file uploads and backend integration.
+Tools for handling expert requests.
 """
 
 import os
@@ -10,7 +10,7 @@ import httpx
 import asyncio
 from typing import Dict, Any, Literal, Optional, TypedDict
 
-from build_assist_agent.agent import AuthData
+from ..auth_types import AuthData
 # from google.adk.agents import Artifact
 
 
