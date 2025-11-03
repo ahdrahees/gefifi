@@ -146,7 +146,7 @@ async def create_expert_request(
     Returns:
         dict: A dictionary containing the following:
             Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'created_expert_request' key with the work request data and 'message' key with the success message and what to do next.
+            If 'status' is 'success', includes 'created_expert_request' key with the expert request data and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
     print(
@@ -588,6 +588,9 @@ async def get_a_expert_request_of_user_with_request_id(
             If 'status' is 'success', includes 'expert_request' key this will contain a expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
+    print(
+        f"TOOL[get_a_expert_request_of_user_with_request_id]: called with request_id: {request_id}"
+    )
     try:
         token: str = tool_context.state.get("auth_token")
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -653,6 +656,9 @@ def update_expert_request_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """Guardrail for update_expert_request_tool. Validate the arguments and return an error message if the arguments are not valid."""
+    print(
+        f"GUARDRAIL[update_expert_request_tool_guardrail]: running for tool: {tool.name} with args: {args}"
+    )
     title: str | None = args.get("title")
     description: str | None = args.get("description")
     location: str | None = args.get("location")
@@ -705,6 +711,9 @@ def update_expert_request_tool_guardrail(
         )
 
     if error_message:
+        print(
+            f"GUARDRAIL[update_expert_request_tool_guardrail]: error: {error_message}"
+        )
         return {
             "status": "error",
             "error_message": error_message,
@@ -717,6 +726,9 @@ def update_expert_request_tool_guardrail(
         args["category"] = category
         args["timeline"] = timeline
         args["materials_suggested"] = materials_suggested
+        print(
+            "GUARDRAIL[update_expert_request_tool_guardrail]: arguments are valid, proceeding with tool execution"
+        )
         return None
 
 
@@ -756,6 +768,7 @@ async def update_expert_request(
             If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
+    print(f"TOOL[update_expert_request]: called with request_id: {request_id}")
     try:
         token: str = tool_context.state.get("auth_token")
 
@@ -859,6 +872,9 @@ async def update_expert_request_image(
             If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
+    print(
+        f"TOOL[update_expert_request_image]: called with request_id: {request_id}, url_of_images_to_remove: {url_of_images_to_remove}, filenames_of_images_to_add: {filenames_of_images_to_add}"
+    )
     try:
         token: str = tool_context.state.get("auth_token")
 
@@ -1027,17 +1043,26 @@ async def update_expert_request_status_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """Guardrail for updating expert request status of a customer"""
+    print(
+        f"GUARDRAIL[update_expert_request_status_tool_guardrail]: running for tool: {tool.name} with args: {args}"
+    )
 
     request_id: str | None = args.get("request_id")
     status: str | None = args.get("status")
 
     if not request_id:
+        print(
+            "ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Request ID is empty"
+        )
         return {
             "status": "error",
             "message": "Request ID is empty. Please provide a valid request ID.",
         }
 
     if not status:
+        print(
+            "ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Status is empty"
+        )
         return {
             "status": "error",
             "message": "Status is empty. Please provide a valid status.",
@@ -1068,6 +1093,9 @@ async def update_expert_request_status_tool_guardrail(
             # This implicitly handles terminal states (completed, cancelled, closed) and states
             # requiring expert action (contracted).
             if current_status not in valid_transitions:
+                print(
+                    f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Invalid status transition from {current_status}"
+                )
                 return {
                     "status": "error",
                     "message": f"The request's status cannot be updated from its current state of '{current_status}'. It may be in a final state or require action from an expert.",
@@ -1076,6 +1104,9 @@ async def update_expert_request_status_tool_guardrail(
             # Check if the requested new status is a valid transition from the current status.
             allowed_next_statuses: set[str] = valid_transitions[current_status]
             if status not in allowed_next_statuses:
+                print(
+                    f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Invalid status transition from '{current_status}' to '{status}'"
+                )
                 return {
                     "status": "error",
                     "message": f"Invalid status transition from '{current_status}' to '{status}'. Allowed next statuses are: {', '.join(allowed_next_statuses)}.",
@@ -1083,12 +1114,18 @@ async def update_expert_request_status_tool_guardrail(
 
             return None
         else:
+            print(
+                f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Failed to fetch expert request for checking current status. {message}"
+            )
             return {
                 "status": "error",
                 "message": f"Failed to update the status of expert request. Because failed to fetch expert request for checking current status. {message}",
             }
 
     except Exception as e:
+        print(
+            f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Unexpected error - {str(e)}"
+        )
         return {
             "status": "error",
             "message": f"Failed to update the status of expert request. {e}",
@@ -1134,6 +1171,9 @@ async def update_expert_request_status(
             If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
+    print(
+        f"TOOL[update_expert_request_status]: called with request_id: {request_id}, status: {status}"
+    )
     try:
         token: str = tool_context.state.get("auth_token")
         async with httpx.AsyncClient(timeout=30.0) as client:
