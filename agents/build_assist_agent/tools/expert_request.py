@@ -10,6 +10,8 @@ import httpx
 import asyncio
 from typing import Dict, Any, Literal, Optional, TypedDict
 
+from build_assist_agent.tool_types import HTTPStatusErrorResponse, UploadResponse
+
 from ..auth_types import AuthData
 # from google.adk.agents import Artifact
 
@@ -164,6 +166,7 @@ async def create_expert_request(
                 tool_context.load_artifact(filename=filename)
                 for filename in image_filenames
             ]
+            # Promise all
             image_file_artifacts: list[Part | None] = await asyncio.gather(
                 *loading_image_file_artifacts
             )
@@ -194,7 +197,7 @@ async def create_expert_request(
 
             images_urls = [response["filePath"] for response in upload_file_responses]
 
-        final_work_request: dict[str, str | list[str] | float] = {
+        final_expert_request: dict[str, str | list[str] | float] = {
             "title": title,
             "description": description,
             "location": location_or_address,
@@ -203,11 +206,11 @@ async def create_expert_request(
         }
 
         if opt_expected_cost is not None:
-            final_work_request["expectedCost"] = opt_expected_cost
+            final_expert_request["expectedCost"] = opt_expected_cost
         if opt_timeline is not None:
-            final_work_request["timeline"] = opt_timeline
+            final_expert_request["timeline"] = opt_timeline
         if opt_materials_suggested is not None:
-            final_work_request["materialsSuggested"] = opt_materials_suggested
+            final_expert_request["materialsSuggested"] = opt_materials_suggested
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
@@ -217,7 +220,7 @@ async def create_expert_request(
 
             response = await client.post(
                 f"{API_BASE_URL}/api/work-requests",
-                json=final_work_request,
+                json=final_expert_request,
                 headers=headers,
             )
 
@@ -295,23 +298,6 @@ async def create_expert_request(
             "status": "error",
             "error_message": f"Failed to create expert request. Reason error: {str(e)}",
         }
-
-
-class HTTPStatusErrorResponse(TypedDict):
-    """Expected response from backend when status of HTTP response is 4xx or 5xx.."""
-
-    message: str
-
-
-class UploadResponse(TypedDict):
-    """Expected response from upload endpoint."""
-
-    message: str
-    filePath: str
-    fileName: str
-    originalName: str
-    mimeType: str
-    size: int
 
 
 async def upload_file(
