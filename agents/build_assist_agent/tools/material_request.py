@@ -4,6 +4,7 @@ from typing import Any, Literal, Optional, TypedDict
 from google.adk.tools.tool_context import ToolContext
 import httpx
 
+from build_assist_agent.auth_types import AuthData
 from build_assist_agent.config import API_BASE_URL
 from build_assist_agent.tool_types import HTTPStatusErrorResponse
 
@@ -83,6 +84,8 @@ async def create_material_request(
     """
     Create a material request post for a customer
 
+    Use this tool when customer wants to create a new material request post or when customer uploads files that probably related to materials you can suggest the customer to create a new material request post.
+
     Args:
         title (str): The title of the material request.
         description (str): The description of the material request.
@@ -90,7 +93,7 @@ async def create_material_request(
         material_items (list[MaterialItem]): The list of material items in the request. Example: [{"item_name": "Wood", "quantity_of_item_with_unit": "10Nos of 2x4 feet"},{"item_name": "Portland Cement", "quantity_of_item_with_unit": "50 bags", "notes": "Grade 43"}, {"item_name": "Nails", "quantity_of_item_with_unit": "50 Nos of 1 inch", "notes": "Please provide high-quality nails"}]
         delivery_date (Optional[str]): The delivery date of the material request. Defaults to None.
         attachment_list (Optional[list[str]]): The list of filenames of attachments for the material request. Supported file types are pdf, doc, docx, xls, xlsx, dwg, dxf, png, jpeg, jpg, webp, and gif. Defaults to None.
-        expert_request_id_to_link (Optional[str]): The ID of the expert request to link with this material request. Defaults to None.
+        expert_request_id_to_link (Optional[str]): The ID of the expert request to link with this material request. The expert/work request must be in `open` or `contracted` status. Defaults to None.
 
     Returns:
         dict: A dictionary containing the following:
@@ -277,12 +280,10 @@ async def create_material_request(
         result["error_message"] = error_message
         return result
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[update_images_of_expert_request]: Unexpected error - {str(e)}"
-        )
+        print(f"ERROR@ TOOL[create_material_request]: Unexpected error - {str(e)}")
         return {
             "status": "error",
-            "error_message": f"Failed to update images of expert request. Reason error: {str(e)}",
+            "error_message": f"Failed to create material request. Reason error: {str(e)}",
         }
 
 
@@ -304,7 +305,7 @@ async def upload_entity_attachments(
     Uploads attachments to the specified entity.
 
     Args:
-        entity_type (Literal["material_request", "expert_request", "contracts"]): The type of entity to upload attachments to.
+        entity_type (Literal["material-requests", "work-requests", "contracts"]): The type of entity to upload attachments to.
         entity_id (str): The ID of the entity to upload attachments to.
         attachments (list[tuple[str, bytes, str]]): A list of tuples containing the attachment name, content, and content type (The MIME type of the file).
         token (str): The authentication token.
@@ -326,3 +327,628 @@ async def upload_entity_attachments(
         response = response.raise_for_status()
 
     return response.json()
+
+
+# Tool
+async def get_user_material_requests(tool_context: ToolContext) -> dict[str, Any]:
+    """
+    Get a customer's all material request posts and its details.
+
+    Use this tool when customer wants to view their all existing material request posts.
+
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'material_requests_list' key this will contain a list of material request posts and 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    print("TOOL[get_user_material_requests]: fetching user's material requests")
+    try:
+        token: str = tool_context.state.get("auth_token")
+        auth_data: AuthData = tool_context.state.get("auth_data")
+        user_id = auth_data["user_id"]
+
+        print(f"TOOL[get_user_material_requests]: requesting for user_id: {user_id}")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Authorization": f"Bearer {token}",
+            }
+
+            response = await client.get(
+                f"{API_BASE_URL}/api/material-requests?customerId={user_id}",
+                headers=headers,
+            )
+
+            # Raise the HTTPStatusError if one occurred.
+            # response = response.raise_for_status()
+            result = response.raise_for_status().json()
+
+        print(
+            f"TOOL[get_user_material_requests]: retrieved {len(result)} material requests"
+        )
+        return {
+            "status": "success",
+            "material_requests_list": result,
+            "message": "Material requests retrieved successfully",
+        }
+
+    except httpx.HTTPError as e:
+        error_message = "Failed to retrieve material requests. "
+        print_message = "ERROR@ TOOL[get_user_material_requests]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            print_message = print_message + f"HTTP timeout error - {e}"
+            error_message = (
+                error_message
+                + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+            )
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+            url = e.request.url
+            print_message = (
+                print_message
+                + error_message
+                + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+            )
+            error_message = (
+                error_message
+                + f"Gefifi Backend responded with message: {response_json['message']}"
+            )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+        return {
+            "status": "error",
+            "error_message": error_message,
+        }
+    except Exception as e:
+        print(f"ERROR@ TOOL[get_user_material_requests]: Unexpected error - {str(e)}")
+        return {
+            "status": "error",
+            "error_message": f"Failed to retrieve material requests. Reason error: {str(e)}",
+        }
+
+
+async def get_a_material_request_of_user_with_request_id(
+    request_id: str, tool_context: ToolContext
+) -> dict[str, Any]:
+    """
+    Get a material request posts of customer.
+
+    Use this tool when you have a material request ID and you want to retrieve or display the details of a specific request.
+
+    Args:
+        request_id (str): ID of the material request to retrieve.
+
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'material_request' key this will contain a material request post and 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    print(
+        f"TOOL[get_a_material_request_of_user_with_request_id]: called with request_id: {request_id}"
+    )
+    try:
+        token: str = tool_context.state.get("auth_token")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Authorization": f"Bearer {token}",
+            }
+
+            response = await client.get(
+                f"{API_BASE_URL}/api/material-requests/{request_id}",
+                headers=headers,
+            )
+
+            return {
+                "status": "success",
+                "material_request": response.raise_for_status().json(),
+                "message": "Material request retrieved successfully",
+            }
+    except httpx.HTTPError as e:
+        error_message = "Failed to retrieve material request. "
+        print_message = "ERROR@ TOOL[get_a_material_request_of_user_with_request_id]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            print_message = print_message + f"HTTP timeout error - {e}"
+            error_message = (
+                error_message
+                + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+            )
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+            url = e.request.url
+            print_message = (
+                print_message
+                + error_message
+                + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+            )
+            error_message = (
+                error_message
+                + f"Gefifi Backend responded with message: {response_json['message']}"
+            )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+        return {
+            "status": "error",
+            "error_message": error_message,
+        }
+    except Exception as e:
+        print(
+            f"ERROR@ TOOL[get_a_material_request_of_user_with_request_id]: Unexpected error - {str(e)}"
+        )
+        return {
+            "status": "error",
+            "error_message": f"Failed to retrieve material request. Reason error: {str(e)}",
+        }
+
+
+# Tool update an exsisting material request
+async def update_material_request(
+    request_id: str,
+    tool_context: ToolContext,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    delivery_location: Optional[str] = None,
+    material_items: Optional[list[MaterialItem]] = None,
+    delivery_date: Optional[str] = None,
+    expert_request_id_to_link: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Update an exsisting open status material request post of a customer.
+
+    Use this tool only for updating an existing material request that is open.
+
+    Remember passed argument will replace the already existing values
+
+    Args:
+        request_id (str): The ID of the material request to update.
+        Pass the following optional args to update the request. Default is None (This will not be update field):
+            title (Optional[str]): Pass updated title of the request to update
+            description (Optional[str]): Pass updated description of the request to update
+            delivery_location (Optional[str]): Pass updated delivery location of the request to update
+            material_items (Optional[List[dict]]): Pass updated material items of the request to update. Note this will replace all the existing material items with the new ones.
+            delivery_date (Optional[str]): Pass updated delivery_date of the request to update
+            expert_request_id_to_link (Optional[str]): To update linked expert/work request post. Pass the ID of the expert/work request to link. The expert/work request must be in `open` or `contracted` status.
+
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    print(f"TOOL[update_material_request]: called with request_id: {request_id}")
+    try:
+        token: str = tool_context.state.get("auth_token")
+
+        updated_material_request: dict[str, str | list[dict[str, str]]] = {}
+
+        if title:
+            updated_material_request["title"] = title
+        if description:
+            updated_material_request["description"] = description
+        if delivery_location:
+            updated_material_request["deliveryLocation"] = delivery_location
+        if delivery_date:
+            updated_material_request["deliveryDate"] = delivery_date
+        if expert_request_id_to_link:
+            updated_material_request["linkedWorkRequestId"] = expert_request_id_to_link
+        if material_items:
+            items: list[dict[str, str]] = [
+                {
+                    "itemName": item["item_name"],
+                    "quantity": item["quantity_of_item_with_unit"],
+                    **({"notes": item["notes"]} if (item["notes"] is not None) else {}),
+                }
+                for item in material_items
+            ]
+            updated_material_request["items"] = items
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            }
+
+            response = await client.put(
+                f"{API_BASE_URL}/api/material-requests/{request_id}",
+                json=updated_material_request,
+                headers=headers,
+            )
+            # Raise the HTTPStatusError if one occurred.
+            response = response.raise_for_status()
+
+            return {
+                "status": "success",
+                "updated_material_request": response.json(),
+                "message": "Material request updated successfully.",
+            }
+
+    except httpx.HTTPError as e:
+        error_message = "Failed to update material request. "
+        print_message = "ERROR@ TOOL[update_material_request]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            print_message = print_message + f"HTTP timeout error - {e}"
+            error_message = (
+                error_message
+                + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+            )
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+            url = e.request.url
+            print_message = (
+                print_message
+                + error_message
+                + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+            )
+            error_message = (
+                error_message
+                + f"Gefifi Backend responded with message: {response_json['message']}"
+            )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+        return {
+            "status": "error",
+            "error_message": error_message,
+        }
+    except Exception as e:
+        print(f"ERROR@ TOOL[update_material_request]: Unexpected error - {str(e)}")
+        return {
+            "status": "error",
+            "error_message": f"Failed to update material request. Reason error: {str(e)}",
+        }
+
+
+# Tool to update attachments of an existing material request
+async def update_material_request_attachments(
+    request_id: str,
+    tool_context: ToolContext,
+    url_or_path_of_attachments_to_remove: list[str] | None,
+    filenames_of_attachments_to_add: list[str] | None,
+) -> dict[str, Any]:
+    """
+    Update the attachments of an existing open status material request post of a customer.
+    Use this tool only when updating attachments of an existing material request that is open
+
+    Args:
+        url_or_path_of_attachments_to_remove (list[str] | None): Pass list of strings contains url or path (`filePath` field of attachment object) of attachments file to remove from the request. Pass None for not removing existing file attachments.
+        filenames_of_attachments_to_add (list[str] | None): Pass list of strings contains filenames of attachments to add to request. Pass None for not adding
+
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key. may include `updated_material_request` if attachments removed successfully but failed to add new attachments.
+            If 'status' is 'no changes', includes a 'message' key with the message that no changes were made and `existing_material_request` key contains the existing material request.
+    """
+    print(
+        f"TOOL[update_material_request_attachments]: called with request_id: {request_id}, url_of_attachments_to_remove: {url_or_path_of_attachments_to_remove}, filenames_of_attachments_to_add: {filenames_of_attachments_to_add}"
+    )
+
+    updated_material_request: MaterialRequest | None = None
+    try:
+        token: str = tool_context.state.get("auth_token")
+
+        if (
+            url_or_path_of_attachments_to_remove is None
+            and filenames_of_attachments_to_add is None
+        ):
+            return {
+                "status": "error",
+                "error_message": "Can not update the attachments of material request. Both arg for adding and removing is not passed or None",
+            }
+
+        if (
+            url_or_path_of_attachments_to_remove
+            and filenames_of_attachments_to_add
+            and len(url_or_path_of_attachments_to_remove) == 0
+            and len(filenames_of_attachments_to_add) == 0
+        ):
+            return {
+                "status": "error",
+                "error_message": "Can not update the attachments of material request. Both arg for adding and removing is empty list",
+            }
+
+        if url_or_path_of_attachments_to_remove:
+            # Fetch the Material request to get existing attachments
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{API_BASE_URL}/api/material-requests/{request_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                existing_material_request: MaterialRequest = (
+                    response.raise_for_status().json()
+                )
+            existing_attachments = existing_material_request["attachments"]
+
+            if existing_attachments:  # existing_attachments is not None and empty
+                updated_attachments: list[Attachment] = [
+                    attachment
+                    for attachment in existing_attachments
+                    if attachment["filePath"]
+                    not in set(
+                        url_or_path_of_attachments_to_remove
+                    )  # Faster: 'in' on a set is O(1) - an instant lookup
+                ]
+                if updated_attachments != existing_attachments:  # if both are different
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        headers = {
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {token}",
+                        }
+
+                        response = await client.put(
+                            f"{API_BASE_URL}/api/material-requests/{request_id}",
+                            json={"attachments": updated_attachments},
+                            headers=headers,
+                        )
+                        # Raise the HTTPStatusError if one occurred.
+                        updated_material_request = response.raise_for_status().json()
+                else:
+                    # No changes to attachments, no need to update the request
+                    if filenames_of_attachments_to_add is None:
+                        return {
+                            "status": "no changes",
+                            "existing_material_request": existing_material_request,
+                            "message": "No changes to attachments",
+                        }
+
+        # Adding new attachments
+        if filenames_of_attachments_to_add and len(filenames_of_attachments_to_add) > 0:
+            loading_file_artifacts = [
+                tool_context.load_artifact(filename=filename)
+                for filename in filenames_of_attachments_to_add
+            ]
+            # Promise all to get all the files concurrently
+            file_artifacts = await asyncio.gather(*loading_file_artifacts)
+
+            attachments: list[tuple[str, bytes, str]] = [
+                (
+                    file.inline_data.display_name,
+                    file.inline_data.data,
+                    file.inline_data.mime_type,
+                )
+                for file in file_artifacts
+                if file
+                and file.inline_data
+                and file.inline_data.display_name
+                and file.inline_data.data
+                and file.inline_data.mime_type
+            ]
+            # Upload attachments
+            _ = await upload_entity_attachments(
+                "material-requests", request_id, attachments, token
+            )
+            # get the material request
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{API_BASE_URL}/api/material-requests/{request_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                updated_material_request = response.raise_for_status().json()
+
+        return {
+            "status": "success",
+            "updated_material_request": updated_material_request,
+            "message": "Attachments of Material request updated successfully.",
+        }
+
+    # Error handling
+    except httpx.HTTPError as e:
+        url = e.request.url
+        method = e.request.method  # GET
+
+        error_message = "Failed to update attachments of material request. "
+        print_message = "ERROR@ TOOL[update_material_request_attachments]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            # Fetch Existing Material Request api fails
+            if (
+                method == "GET"
+                and url == f"{API_BASE_URL}/api/material-requests/{request_id}"
+                and url_or_path_of_attachments_to_remove
+            ):
+                print_message = (
+                    print_message
+                    + f"Failed to get Existing Material Request HTTP timeout error - {e}"
+                )
+                error_message = (
+                    error_message
+                    + "Failed to get Existing Material Request to remove attachments. "
+                    + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+                )
+            # Update Material Request api fails
+            elif (
+                method == "PUT"
+                and url == f"{API_BASE_URL}/api/material-requests/{request_id}"
+            ):
+                print_message = (
+                    print_message
+                    + f"Failed to remove attachments from Material Request HTTP timeout error - {e}"
+                )
+                error_message = (
+                    error_message
+                    + f"Failed to remove attachments {url_or_path_of_attachments_to_remove} from Material Request. "
+                    + f"Failed to add attachments {filenames_of_attachments_to_add} to Material Request. Tool broke because of "
+                    + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+                )
+            # Uploading attachments failed. but may be removal of existing attachments is successful if it passed as argument
+            elif (
+                url == f"{API_BASE_URL}/api/attachments/material-requests/{request_id}"
+            ):
+                print_message = (
+                    print_message
+                    + f"Failed to upload attachments HTTP timeout error - {e}"
+                )
+                error_message = (
+                    error_message
+                    + (
+                        # If there is attachment to remove and it is successful
+                        "Successfully removed attachments from Material Request. but "
+                        if url_or_path_of_attachments_to_remove
+                        and updated_material_request
+                        else ""
+                    )
+                    + "Failed to upload new attachments to Material Request. "
+                    + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+                )
+            # Successfully uploaded attachments but failed to get updated request
+            elif (
+                filenames_of_attachments_to_add
+                and url == f"{API_BASE_URL}/api/material-requests/{request_id}"
+            ):
+                print_message = (
+                    print_message
+                    + f"Failed to get updated Material Request after uploading attachments. HTTP timeout error - {e}"
+                )
+                error_message = (
+                    (
+                        # If there is attachment to remove and it is successful
+                        "Successfully removed attachments from Material Request."
+                        if url_or_path_of_attachments_to_remove
+                        and updated_material_request
+                        else ""
+                    )
+                    + " Successfully uploaded new attachments to material request but failed to get the new updated material request."
+                    + " You can call the `get_a_material_request_of_user_with_request_id` tool to get the updated material request."
+                    + f" HTTP Gefifi backend api call Timeout error occurred: {e}"
+                )
+            else:
+                print_message = print_message + f"HTTP timeout error - {e}"
+                error_message = (
+                    error_message
+                    + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+                )
+
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+
+            # Fetch Existing Material Request api fails
+            if (
+                method == "GET"
+                and url == f"{API_BASE_URL}/api/material-requests/{request_id}"
+                and url_or_path_of_attachments_to_remove
+            ):
+                print_message = (
+                    print_message
+                    + "Failed to get Existing Material Request. "
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    error_message
+                    + "Failed to get Existing Material Request to remove attachments. "
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+            # Update Material Request api fails . Removing attachments fails
+            elif (
+                method == "PUT"
+                and url == f"{API_BASE_URL}/api/material-requests/{request_id}"
+            ):
+                print_message = (
+                    print_message
+                    + "Failed to remove attachments from Material Request. "
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    error_message
+                    + f"Failed to remove attachments {url_or_path_of_attachments_to_remove} from Material Request. "
+                    + f"Failed to add attachments {filenames_of_attachments_to_add} to Material Request. Tool broke because of "
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+            # Uploading attachments failed. but may be removal of existing attachments is successful if it passed as argument
+            elif (
+                url == f"{API_BASE_URL}/api/attachments/material-requests/{request_id}"
+            ):
+                print_message = (
+                    print_message
+                    + "Failed to upload attachments. "
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    error_message
+                    + (
+                        # If there is attachment to remove and it is successful
+                        "Successfully removed attachments from Material Request. but "
+                        if url_or_path_of_attachments_to_remove
+                        and updated_material_request
+                        else ""
+                    )
+                    + "Failed to upload new attachments to Material Request. "
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+            # Successfully uploaded attachments but failed to get updated request
+            elif (
+                filenames_of_attachments_to_add
+                and url == f"{API_BASE_URL}/api/material-requests/{request_id}"
+            ):
+                print_message = (
+                    print_message
+                    + "Failed to get updated Material Request after uploading attachments. "
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    (
+                        # If there is attachment to remove and it is successful
+                        "Successfully removed attachments from Material Request."
+                        if url_or_path_of_attachments_to_remove
+                        and updated_material_request
+                        else ""
+                    )
+                    + " Successfully uploaded new attachments to material request but failed to get the new updated material request."
+                    + " You can call the `get_a_material_request_of_user_with_request_id` tool to get the updated material request."
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+            else:
+                print_message = (
+                    print_message
+                    + error_message
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    error_message
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+
+        result: dict[str, Any] = {
+            "status": "error",
+            "error_message": error_message,
+        }
+        if updated_material_request:
+            result["updated_material_request"] = updated_material_request
+        return result
+    except Exception as e:
+        print(
+            f"ERROR@ TOOL[update_material_request_attachments]: Unexpected error - {str(e)}"
+        )
+        return {
+            "status": "error",
+            "error_message": f"Failed to update attachments of material request. Reason error: {str(e)}",
+        }

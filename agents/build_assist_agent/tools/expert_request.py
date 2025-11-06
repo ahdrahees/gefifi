@@ -378,8 +378,6 @@ async def get_user_expert_requests(tool_context: ToolContext) -> dict[str, Any]:
             "message": "Expert requests retrieved successfully",
         }
 
-        return result
-
     except httpx.HTTPError as e:
         error_message = "Failed to retrieve expert requests. "
         print_message = "ERROR@ TOOL[get_user_expert_requests]: "

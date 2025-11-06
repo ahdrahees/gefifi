@@ -306,7 +306,7 @@ root_agent = Agent(
 # build_assist_agent
 
 app = App(
-    name="build_assist_agent",
+    name="build_assist_agent",  # name should be the agent directory name
     root_agent=root_agent,
     plugins=[SaveFilesAsArtifactsPlugin()],
 )
