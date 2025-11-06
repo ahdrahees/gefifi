@@ -1,8 +1,9 @@
 import asyncio
 from typing import Any, Literal, Optional, TypedDict
 
-from google.adk.tools.tool_context import ToolContext
 import httpx
+from google.adk.tools import BaseTool
+from google.adk.tools.tool_context import ToolContext
 
 from build_assist_agent.auth_types import AuthData
 from build_assist_agent.config import API_BASE_URL
@@ -951,4 +952,199 @@ async def update_material_request_attachments(
         return {
             "status": "error",
             "error_message": f"Failed to update attachments of material request. Reason error: {str(e)}",
+        }
+
+
+async def update_material_request_status_tool_guardrail(
+    tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
+) -> dict[str, Any] | None:
+    """Guardrail for updating material request status of a customer"""
+    print(
+        f"GUARDRAIL[update_material_request_status_tool_guardrail]: running for tool: {tool.name} with args: {args}"
+    )
+
+    request_id: str | None = args.get("request_id")
+    status: str | None = args.get("status")
+
+    if not request_id:
+        print(
+            "ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Request ID is empty"
+        )
+        return {
+            "status": "error",
+            "message": "Request ID is empty. Please provide a valid request ID.",
+        }
+
+    if not status:
+        print(
+            "ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Status is empty"
+        )
+        return {
+            "status": "error",
+            "message": "Status is empty. Please provide a valid status.",
+        }
+
+    try:
+        response: dict[str, Any] = await get_a_material_request_of_user_with_request_id(
+            request_id, tool_context
+        )
+
+        # function status
+        response_status: str | None = response.get("status")
+        material_request: MaterialRequest | None = response.get("material_request")
+        message: str | None = response.get("message")
+
+        if material_request:
+            current_status: str = material_request["status"]
+
+            # Define valid status transitions that a customer can make.
+            valid_transitions: dict[str, set[str]] = {
+                "open": {"quoting", "cancelled"},
+                "quoting": {"ordered", "cancelled"},
+                "ordered": {"contracted"},
+                "contracted": {"completed", "cancelled"},
+            }
+
+            # Check if the current status is one that the customer is allowed to change.
+            # This implicitly handles terminal states (completed, cancelled) and states
+            if current_status not in valid_transitions:
+                print(
+                    f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Invalid status transition from {current_status}"
+                )
+                return {
+                    "status": "error",
+                    "message": f"The request's status cannot be updated from its current state of '{current_status}'. It may be in a final state or require action from supplier.",
+                }
+
+            # Check if the requested new status is a valid transition from the current status.
+            allowed_next_statuses: set[str] = valid_transitions[current_status]
+            if status not in allowed_next_statuses:
+                print(
+                    f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Invalid status transition from '{current_status}' to '{status}'"
+                )
+                return {
+                    "status": "error",
+                    "message": f"Invalid status transition from '{current_status}' to '{status}'. Allowed next statuses are: {', '.join(allowed_next_statuses)}.",
+                }
+
+            return None
+        else:
+            print(
+                f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Failed to fetch material request for checking current status. {message}"
+            )
+            return {
+                "status": "error",
+                "message": f"Failed to update the status of material request. Because failed to fetch material request for checking current status. {message}",
+            }
+
+    except Exception as e:
+        print(
+            f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Unexpected error - {str(e)}"
+        )
+        return {
+            "status": "error",
+            "message": f"Failed to update the status of material request. {e}",
+        }
+
+
+# Tool to update the status of a material request of customer
+async def update_material_request_status(
+    request_id: str, status: str, tool_context: ToolContext
+):
+    """Update the status of a material request of customer.
+
+    Use this function tool to update the status of a material request of customer. You are updating the status on behalf of the customer, so customers are allowed to update certain status (which are mentioned under the Args docstring) of a request.
+    Use this tool when current status of a request is one of the following: `open`, `quoting`, `ordered`, and `contracted`
+
+    If a request has the status of `completed` or `cancelled`, it cannot be updated further through this tool. Those are considered final or "terminal" statuses.
+
+    Material Request status:
+        - open: This is the initial status. The customer has created the request and is now waiting for suppliers to show interest or for the customer to invite them.
+        - quoting: The customer is actively seeking price quotes from one or more interested or invited suppliers. This stage involves communication and negotiation between the customer and potential suppliers.
+        - ordered: The customer has officially selected a supplier and placed an order based on the agreed-upon quote. This is a commitment from the customer's side.
+        - contracted:  A formal agreement has been established. The supplier has accepted the order, and the customer has confirmed the contract. This is the stage where the actual fulfillment of the order begins.
+        - completed: This is a final status indicating that the transaction is finished.
+            *   From the **Supplier's** perspective, it means the materials have been delivered.
+            *   From the **Customer's** perspective, it means the materials have been received.
+        - cancelled: The request has been terminated by either the customer or the supplier. This can happen at any stage before completion.
+
+    Args:
+        request_id (str): The ID of the material request to update.
+        status (str): The new status for the material request. The value must be a valid next step from the current status.
+            - If current is `open`, next can be `quoting` or `cancelled`.
+            - If current is `quoting`, next can be `ordered` or `cancelled`.
+            - If current is `ordered`, next can be `contracted`.
+            - If current is `contracted`, next can be `completed` or `cancelled`.
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    print(
+        f"TOOL[update_material_request_status]: called with request_id: {request_id}, status: {status}"
+    )
+    try:
+        token: str = tool_context.state.get("auth_token")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            }
+
+            response = await client.put(
+                f"{API_BASE_URL}/api/material-requests/{request_id}/status",
+                json={"status": status},
+                headers=headers,
+            )
+            # Raise the HTTPStatusError if one occurred.
+            response = response.raise_for_status()
+
+            return {
+                "status": "success",
+                "updated_material_request": response.json(),
+                "message": "Material request status updated successfully.",
+            }
+
+    except httpx.HTTPError as e:
+        error_message = "Failed to update status of material request. "
+        print_message = "ERROR@ TOOL[update_material_request_status]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            print_message = print_message + f"HTTP timeout error - {e}"
+            error_message = (
+                error_message
+                + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+            )
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+            url = e.request.url
+            print_message = (
+                print_message
+                + error_message
+                + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+            )
+            error_message = (
+                error_message
+                + f"Gefifi Backend responded with message: {response_json['message']}"
+            )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+        return {
+            "status": "error",
+            "error_message": error_message,
+        }
+    except Exception as e:
+        print(
+            f"ERROR@ TOOL[update_material_request_status]: Unexpected error - {str(e)}"
+        )
+        return {
+            "status": "error",
+            "error_message": f"Failed to update status of material request. Reason error: {str(e)}",
         }
