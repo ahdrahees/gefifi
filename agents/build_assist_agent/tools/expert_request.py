@@ -2,17 +2,19 @@
 Tools for handling expert requests.
 """
 
+import asyncio
 import os
+from typing import Any, Dict, Literal, Optional, TypedDict
+
+import httpx
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 from google.genai.types import Part
-import httpx
-import asyncio
-from typing import Dict, Any, Literal, Optional, TypedDict
 
 from build_assist_agent.tool_types import HTTPStatusErrorResponse, UploadResponse
 
 from ..auth_types import AuthData
+
 # from google.adk.agents import Artifact
 
 
@@ -674,29 +676,29 @@ def update_expert_request_tool_guardrail(
         }
 
     error_message: str = ""
-    if not title:
-        error_message = attach_string(error_message, "Title can not be empty.")
-    if not description:
-        error_message = attach_string(error_message, "Description can not be empty.")
-    if not location:
-        error_message = attach_string(error_message, "Location can not be empty.")
-    if not category:
+    if title is not None and not title:
+        error_message = attach_string(error_message, "Title can not be empty")
+    if description is not None and not description:
+        error_message = attach_string(error_message, "Description can not be empty")
+    if location is not None and not location:
+        error_message = attach_string(error_message, "Location can not be empty")
+    if category is not None and not category:
         error_message = attach_string(error_message, "Category can not be empty.")
-    if not expected_cost or expected_cost <= 0:
+    if expected_cost is not None and expected_cost <= 0:
         error_message = attach_string(
             error_message,
             "Expected cost can not be empty or less than or equal to zero.",
         )
-    if not timeline:
-        error_message = attach_string(error_message, "Timeline can not be empty.")
-    if not materials_suggested:
+    if timeline is not None and not timeline:
+        error_message = attach_string(error_message, "Timeline can not be empty")
+    if materials_suggested is not None and not materials_suggested:
         error_message = attach_string(
-            error_message, "Materials suggested can not be empty."
+            error_message, "Materials suggested can not be empty"
         )
 
     if error_message:
         print(
-            f"GUARDRAIL[update_expert_request_tool_guardrail]: error: {error_message}"
+            f"ERROR@ GUARDRAIL[update_expert_request_tool_guardrail]: error: {error_message}"
         )
         return {
             "status": "error",
@@ -767,11 +769,11 @@ async def update_expert_request(
         if category:
             updated_expert_request["category"] = category
         if expected_cost:
-            updated_expert_request["expected_cost"] = expected_cost
+            updated_expert_request["expectedCost"] = expected_cost
         if timeline:
             updated_expert_request["timeline"] = timeline
         if materials_suggested:
-            updated_expert_request["materials_suggested"] = materials_suggested
+            updated_expert_request["materialsSuggested"] = materials_suggested
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
@@ -839,16 +841,16 @@ async def update_expert_request(
 async def update_expert_request_image(
     request_id: str,
     tool_context: ToolContext,
-    url_of_images_to_remove: list[str] | None,
-    filenames_of_images_to_add: list[str] | None,
+    url_of_images_to_remove: Optional[list[str]],
+    filenames_of_images_to_add: Optional[list[str]],
 ) -> dict[str, Any]:
     """
     Update the images of an existing open status expert request post of a customer.
     Use this tool only when updating images of an existing expert request that is open
 
     Args:
-        url_of_images_to_remove (list[str] | None): Pass list of strings contains url of images to remove from the request. Pass None for not removing existing images.
-        filenames_of_images_to_add (list[str] | None): Pass list of strings contains filenames of images to add to request. Pass None for not adding
+        url_of_images_to_remove (Optional[list[str]]): Pass list of strings contains url of images to remove from the request. Pass None for not removing existing images.
+        filenames_of_images_to_add (Optional[list[str]]): Pass list of strings contains filenames of images to add to request. Pass None for not adding
 
     Returns:
         dict: A dictionary containing the following:

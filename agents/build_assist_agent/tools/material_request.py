@@ -76,7 +76,7 @@ async def create_material_request(
     title: str,
     description: str,
     delivery_location: str,
-    material_items: list[MaterialItem],
+    material_items: list[dict[str, str]],
     tool_context: ToolContext,
     delivery_date: Optional[str] = None,
     attachment_list: Optional[list[str]] = None,
@@ -91,7 +91,7 @@ async def create_material_request(
         title (str): The title of the material request.
         description (str): The description of the material request.
         delivery_location (str): The delivery location of the material request.
-        material_items (list[MaterialItem]): The list of material items in the request. Example: [{"item_name": "Wood", "quantity_of_item_with_unit": "10Nos of 2x4 feet"},{"item_name": "Portland Cement", "quantity_of_item_with_unit": "50 bags", "notes": "Grade 43"}, {"item_name": "Nails", "quantity_of_item_with_unit": "50 Nos of 1 inch", "notes": "Please provide high-quality nails"}]
+        material_items (list[dict[str, str]]): The list of material items in the request. Each Material Item should be a dictionary with keys 'item_name', 'quantity_of_item_with_unit', and optionally 'notes'. Example: [{"item_name": "Wood", "quantity_of_item_with_unit": "10Nos of 2x4 feet"},{"item_name": "Portland Cement", "quantity_of_item_with_unit": "50 bags", "notes": "Grade 43"}, {"item_name": "Nails", "quantity_of_item_with_unit": "50 Nos of 1 inch", "notes": "Please provide high-quality nails"}]
         delivery_date (Optional[str]): The delivery date of the material request. Defaults to None.
         attachment_list (Optional[list[str]]): The list of filenames of attachments for the material request. Supported file types are pdf, doc, docx, xls, xlsx, dwg, dxf, png, jpeg, jpg, webp, and gif. Defaults to None.
         expert_request_id_to_link (Optional[str]): The ID of the expert request to link with this material request. The expert/work request must be in `open` or `contracted` status. Defaults to None.
@@ -504,7 +504,7 @@ async def update_material_request(
     title: Optional[str] = None,
     description: Optional[str] = None,
     delivery_location: Optional[str] = None,
-    material_items: Optional[list[MaterialItem]] = None,
+    material_items: Optional[list[dict[str, str]]] = None,
     delivery_date: Optional[str] = None,
     expert_request_id_to_link: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -521,7 +521,7 @@ async def update_material_request(
             title (Optional[str]): Pass updated title of the request to update
             description (Optional[str]): Pass updated description of the request to update
             delivery_location (Optional[str]): Pass updated delivery location of the request to update
-            material_items (Optional[List[dict]]): Pass updated material items of the request to update. Note this will replace all the existing material items with the new ones.
+            material_items (Optional[List[dict[str, str]]]): Pass updated material items of the request to update. Note this will replace all the existing material items with the new ones. Each Material Item should be a dictionary with keys 'item_name', 'quantity_of_item_with_unit', and optionally 'notes'.
             delivery_date (Optional[str]): Pass updated delivery_date of the request to update
             expert_request_id_to_link (Optional[str]): To update linked expert/work request post. Pass the ID of the expert/work request to link. The expert/work request must be in `open` or `contracted` status.
 
@@ -624,16 +624,16 @@ async def update_material_request(
 async def update_material_request_attachments(
     request_id: str,
     tool_context: ToolContext,
-    url_or_path_of_attachments_to_remove: list[str] | None,
-    filenames_of_attachments_to_add: list[str] | None,
+    url_or_path_of_attachments_to_remove: Optional[list[str]],
+    filenames_of_attachments_to_add: Optional[list[str]],
 ) -> dict[str, Any]:
     """
     Update the attachments of an existing open status material request post of a customer.
     Use this tool only when updating attachments of an existing material request that is open
 
     Args:
-        url_or_path_of_attachments_to_remove (list[str] | None): Pass list of strings contains url or path (`filePath` field of attachment object) of attachments file to remove from the request. Pass None for not removing existing file attachments.
-        filenames_of_attachments_to_add (list[str] | None): Pass list of strings contains filenames of attachments to add to request. Pass None for not adding
+        url_or_path_of_attachments_to_remove (Optional[list[str]]): Pass list of strings contains url or path (`filePath` field of attachment object) of attachments file to remove from the request. Pass None for not removing existing file attachments.
+        filenames_of_attachments_to_add (Optional[list[str]]): Pass list of strings contains filenames of attachments to add to request. Pass None for not adding
 
     Returns:
         dict: A dictionary containing the following:

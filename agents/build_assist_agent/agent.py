@@ -1,24 +1,41 @@
 import os
+from typing import Any
+
+import jwt
+from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.apps import App
+from google.adk.models.lite_llm import LiteLlm
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.save_files_as_artifacts_plugin import SaveFilesAsArtifactsPlugin
+from google.adk.tools import load_artifacts
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
-import jwt
-from google.adk.agents import Agent
-from google.adk.tools import load_artifacts
-from typing import Any
-from .auth_types import AuthData
+
+from build_assist_agent.tools.material_request import (
+    create_material_request,
+    get_a_material_request_of_user_with_request_id,
+    get_user_material_requests,
+    update_material_request,
+    update_material_request_attachments,
+    update_material_request_status,
+    update_material_request_status_tool_guardrail,
+)
 
 # Load environment variables from .env file
 from . import config
-
+from .auth_types import AuthData
 from .tools.expert_request import (
     create_expert_request,
     create_expert_request_tool_guardrail,
+    get_a_expert_request_of_user_with_request_id,
+    get_active_user_expert_requests,
+    get_user_expert_requests,
+    update_expert_request,
+    update_expert_request_image,
+    update_expert_request_status,
     update_expert_request_status_tool_guardrail,
     update_expert_request_tool_guardrail,
 )
@@ -27,6 +44,8 @@ MODEL_GEMINI_2_0_FLASH: str = "gemini-2.0-flash"
 MODEL_GEMINI_2_5_FLASH: str = "gemini-2.5-flash"
 MODEL_GEMINI_2_5_PRO: str = "gemini-2.5-pro"
 OPENROUTER_MODEL_DEEPSEEK: str = "openrouter/deepseek/deepseek-chat-v3.1:free"
+
+OPENROUTER_MODEL_POLARIS_ALPHA: str = "openrouter/z-ai/glm-4.5-air:free"
 
 AGENT_ENV: str = os.getenv("AGENT_ENV", "development")
 DEV_MODE: bool = AGENT_ENV == "development"
@@ -63,10 +82,22 @@ def verify_auth_token(auth_token: str) -> AuthData | None:
         decoded = jwt.decode(auth_token, jwt_secret, algorithms=["HS256"])
 
         user_id = decoded.get("id")
+        # email = decoded.get("email")
+        user_type = decoded.get("userType")
+
+        if user_id is None:
+            print("ERROR@ HELPER[verify_auth_token]: user_id not found in token")
+            return None
+        elif user_type is None:
+            print("ERROR@ HELPER[verify_auth_token]: user_type not found in token")
+            return None
+
+        auth_data = AuthData(user_id=user_id, user_type=user_type)
+
         print(
             f"HELPER[verify_auth_token]: token verified successfully for user_id: {user_id}"
         )
-        return decoded  # or "uid" depending on your token structure
+        return auth_data
     except jwt.ExpiredSignatureError as e:
         print(f"ERROR@ HELPER[verify_auth_token]: token expired - {e}")
         return None
@@ -269,6 +300,10 @@ async def run_tool_specific_guardrail(
         return await update_expert_request_status_tool_guardrail(
             tool, args, tool_context
         )
+    elif tool.name == "update_material_request_status":
+        return await update_material_request_status_tool_guardrail(
+            tool, args, tool_context
+        )
 
     print(
         f"HELPER[run_tool_specific_guardrail]: no specific guardrail found for tool: {tool.name}"
@@ -283,21 +318,37 @@ root_agent = Agent(
     # - OpenAI: "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"
     # - Claude: "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"
     # - Local: "ollama/llama3", "ollama/mistral"
-    model=MODEL_GEMINI_2_5_FLASH,
+    model=LiteLlm(model=OPENROUTER_MODEL_POLARIS_ALPHA),
     description=(
         "help customer to create and edit expert/work request, material request, contract. "
         "Specialized assistant for CUSTOMERS on the GEFIFI construction platform. "
-        "Helps customers create and manage work requests (expert requests) for construction projects, "
+        "Helps customers create and manage expert requests (AKA work requests) for construction projects, "
         "Handles all customer-facing construction project needs from initial request creation to project completion."
     ),
     instruction=(
         "You are a helpful customer assistant for GEFIFI construction platform. "
-        ""
         "Use `create_expert_request` tool in two specific scenarios:"
         "1. When a user wants to create a new expert request."
         "2. When a user wants to edit an existing expert request."
     ),
-    tools=[load_artifacts, create_expert_request],
+    tools=[
+        load_artifacts,
+        # Expert Request Tools
+        create_expert_request,
+        get_user_expert_requests,
+        get_active_user_expert_requests,
+        get_a_expert_request_of_user_with_request_id,
+        update_expert_request,
+        update_expert_request_image,
+        update_expert_request_status,
+        # Material Request Tools
+        create_material_request,
+        get_user_material_requests,
+        get_a_material_request_of_user_with_request_id,
+        update_material_request,
+        update_material_request_attachments,
+        update_material_request_status,
+    ],
     # Register authentication callbacks
     before_agent_callback=auth_before_agent_callback,
     before_tool_callback=before_tool_callback,
