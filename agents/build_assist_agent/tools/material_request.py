@@ -416,6 +416,111 @@ async def get_user_material_requests(tool_context: ToolContext) -> dict[str, Any
         }
 
 
+# Tool
+async def get_active_material_requests_of_user(
+    tool_context: ToolContext,
+) -> dict[str, Any]:
+    """
+    Get a customer's active material request posts and its details.
+    active material request have these status: 'open', 'quoting', 'ordered', 'contracted'
+
+    Use this tool when customer wants to view their active material request posts.
+
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'active_material_requests_list' key this will contain a list of active material request posts and 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    print(
+        "TOOL[get_active_material_requests_of_user]: fetching user's material requests"
+    )
+    try:
+        token: str = tool_context.state.get("auth_token")
+        auth_data: AuthData = tool_context.state.get("auth_data")
+        user_id = auth_data["user_id"]
+
+        print(
+            f"TOOL[get_active_material_requests_of_user]: requesting for user_id: {user_id}"
+        )
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Authorization": f"Bearer {token}",
+            }
+
+            response = await client.get(
+                f"{API_BASE_URL}/api/material-requests?customerId={user_id}",
+                headers=headers,
+            )
+
+            # Raise the HTTPStatusError if one occurred.
+            # response = response.raise_for_status()
+            material_requests_list: list[MaterialRequest] = (
+                response.raise_for_status().json()
+            )
+
+            ACTIVE_STATUSES = {"open", "quoting", "ordered", "contracted"}
+
+            active_material_requests_list = [
+                material_request
+                for material_request in material_requests_list
+                if material_request["status"] in ACTIVE_STATUSES
+            ]
+
+        print(
+            f"TOOL[get_active_material_requests_of_user]: retrieved {len(active_material_requests_list)} material requests"
+        )
+        return {
+            "status": "success",
+            "active_material_requests_list": active_material_requests_list,
+            "message": "Active material requests retrieved successfully",
+        }
+
+    except httpx.HTTPError as e:
+        error_message = "Failed to retrieve active material requests. "
+        print_message = "ERROR@ TOOL[get_active_material_requests_of_user]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            print_message = print_message + f"HTTP timeout error - {e}"
+            error_message = (
+                error_message
+                + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+            )
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+            url = e.request.url
+            print_message = (
+                print_message
+                + error_message
+                + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+            )
+            error_message = (
+                error_message
+                + f"Gefifi Backend responded with message: {response_json['message']}"
+            )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+        return {
+            "status": "error",
+            "error_message": error_message,
+        }
+    except Exception as e:
+        print(
+            f"ERROR@ TOOL[get_active_material_requests_of_user]: Unexpected error - {str(e)}"
+        )
+        return {
+            "status": "error",
+            "error_message": f"Failed to retrieve active material requests. Reason error: {str(e)}",
+        }
+
+
 async def get_a_material_request_of_user_with_request_id(
     request_id: str, tool_context: ToolContext
 ) -> dict[str, Any]:
