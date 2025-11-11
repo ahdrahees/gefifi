@@ -801,5 +801,21 @@
 				{/if}
 			</div>
 		</div>
+		<div class="mt-8 text-center">
+			<button
+				on:click={() => goto('/home')}
+				class="inline-flex items-center gap-2 rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
+			>
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M10 19l-7-7m0 0l7-7m-7 7h18"
+					/>
+				</svg>
+				Back to Home
+			</button>
+		</div>
 	{/if}
 </div>
