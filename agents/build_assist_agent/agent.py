@@ -14,6 +14,14 @@ from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
+from build_assist_agent.tools.find_professionals import (
+    find_a_user_by_id,
+    find_experts,
+    find_suppliers,
+    find_users_by_ids,
+    invite_expert_to_expert_request,
+    invite_supplier_to_material_request,
+)
 from build_assist_agent.tools.material_request import (
     create_material_request,
     get_a_material_request_of_user_with_request_id,
@@ -348,6 +356,13 @@ root_agent = Agent(
         update_material_request,
         update_material_request_attachments,
         update_material_request_status,
+        # User interaction tools
+        find_experts,
+        find_suppliers,
+        find_a_user_by_id,
+        find_users_by_ids,
+        invite_expert_to_expert_request,
+        invite_supplier_to_material_request,
     ],
     # Register authentication callbacks
     before_agent_callback=auth_before_agent_callback,
