@@ -463,7 +463,6 @@ async def find_users_by_ids(
                             "error": f"Failed to retrieve User details. Gefifi Backend responded with message: {response_json['message']}",
                         }
                     )
-
         # return
         if successful_users and not failed_users_ids_and_reasons:
             # All requests were successful.
@@ -496,4 +495,248 @@ async def find_users_by_ids(
 
 
 # Tool to invite expert to a expert request
+async def invite_expert_to_expert_request(
+    expert_id: str,
+    expert_request_id: str,
+    invitation_message: str,
+    tool_context: ToolContext,
+) -> dict[str, Any]:
+    """Invites an expert to a expert request.
+    Use this tool to invite an expert to a expert request.
+    Before using this tool, make sure the expert is available, expert request is valid and the expert is not invited or interested before in this request.
+
+    Args:
+        expert_id: The ID of the expert to invite.
+        expert_request_id: The ID of the expert request to invite the expert to.
+        invitation_message: The message to send to the expert. Examples:
+            - "You've been invited to our expert request "Full Smart Home System Install". Hi there, we saw you specialize in smart home setups and were very impressed. We are looking to install a complete system including lighting, security, and climate control."
+            - "Hi [expert_name], I need your help with [expert_request_title]. Can you please help me?"
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    try:
+        token: str = tool_context.state.get("auth_token")
+
+        if not invitation_message:
+            return {
+                "status": "error",
+                "error_message": "Invitation message is required",
+            }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            }
+            body = {"userIds": [expert_id], "userType": "expert"}
+
+            # adding expert_id into invtedExperts list
+            response = await client.post(
+                f"{API_BASE_URL}/api/work-requests/${expert_request_id}/invite",
+                json=body,
+                headers=headers,
+            )
+            result = response.raise_for_status().json()
+            invited_users = result.get("invitedUsers")
+
+            body = {
+                "targetUserId": expert_id,
+                "initialMessageContent": invitation_message,
+                "workRequestId": expert_request_id,
+            }
+            # sending invitation message to expert
+            response = await client.post(
+                f"{API_BASE_URL}/api/users/interest", json=body, headers=headers
+            )
+
+            result_of_invitation_message = response.raise_for_status().json()
+
+            return {
+                "status": "success",
+                "message": "Expert invited successfully",
+                # "invited_users": invited_users,
+                # "invitation_message": result_of_invitation_message,
+            }
+    except httpx.HTTPError as e:
+        error_message = "Failed to send invitation message. "
+        print_message = "ERROR@ TOOL[invite_expert_to_expert_request]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            print_message = print_message + f"HTTP timeout error - {e}"
+            error_message = (
+                error_message
+                + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+            )
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+            url = e.request.url  # error happened url
+            # failed at sending invitation message to expert. but expert is already invited
+            if url == f"{API_BASE_URL}/api/users/interest":
+                print_message = (
+                    print_message
+                    + "Invited expert successfully. but"
+                    + error_message
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    "Invited expert successfully. but"
+                    + error_message
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+            else:
+                print_message = (
+                    print_message
+                    + error_message
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    error_message
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+        return {
+            "status": "error",
+            "error_message": error_message,
+        }
+    except Exception as e:
+        print(
+            f"ERROR@ TOOL[invite_expert_to_expert_request]: Unexpected error - {str(e)}"
+        )
+        return {
+            "status": "error",
+            "error_message": f"Failed to invite expert. Reason error: {str(e)}",
+        }
+
+
 # Tool to invite supplier to a material request
+async def invite_supplier_to_material_request(
+    supplier_id: str,
+    material_request_id: str,
+    invitation_message: str,
+    tool_context: ToolContext,
+) -> dict[str, Any]:
+    """Invites a supplier to a material request.
+    Use this tool to invite a supplier to a material request.
+    Before using this tool, make sure the supplier is available, material request is valid and the supplier is not invited or interested before in this request.
+
+    Args:
+        supplier_id: The ID of the supplier to invite.
+        material_request_id: The ID of the material request to invite the supplier to.
+        invitation_message: The message to send to the supplier. Examples:
+            - "You've been invited to our material request "Framing Lumber for Residential Build". We are framing a new two-story house and have attached the full list of required lumber. We'd like to get your best price for the complete package, including delivery to the job site."
+            - "Hi [supplier_name], I need your help with [material_request_title]. Can you please help me?"
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'message' key with the success message and what to do next.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    try:
+        token: str = tool_context.state.get("auth_token")
+
+        if not invitation_message:
+            return {
+                "status": "error",
+                "error_message": "Invitation message is required",
+            }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            }
+            body = {"userIds": [supplier_id]}
+
+            # adding supplier_id into invitedSuppliers list
+            response = await client.post(
+                f"{API_BASE_URL}/api/material-requests/${material_request_id}/invite",
+                json=body,
+                headers=headers,
+            )
+            result = response.raise_for_status().json()
+            invited_users = result.get("invitedUsers")
+
+            body = {
+                "targetUserId": supplier_id,
+                "initialMessageContent": invitation_message,
+                "materialRequestId": material_request_id,
+            }
+            # sending invitation message to supplier
+            response = await client.post(
+                f"{API_BASE_URL}/api/users/interest", json=body, headers=headers
+            )
+
+            result_of_invitation_message = response.raise_for_status().json()
+
+            return {
+                "status": "success",
+                "message": "Supplier invited successfully",
+                # "invited_users": invited_users,
+                # "invitation_message": result_of_invitation_message,
+            }
+    except httpx.HTTPError as e:
+        error_message = "Failed to send invitation message. "
+        print_message = "ERROR@ TOOL[invite_supplier_to_material_request]: "
+
+        if isinstance(e, httpx.TimeoutException):
+            print_message = print_message + f"HTTP timeout error - {e}"
+            error_message = (
+                error_message
+                + f"HTTP Gefifi backend api call Timeout error occurred: {e}"
+            )
+        elif isinstance(e, httpx.HTTPStatusError):
+            status_code = e.response.status_code  # 404, 500, etc.
+            response_json: HTTPStatusErrorResponse = (
+                e.response.json()
+            )  # Response body as JSON (if valid)
+            url = e.request.url  # error happened url
+            # failed at sending invitation message to supplier. but supplier is already invited
+            if url == f"{API_BASE_URL}/api/users/interest":
+                print_message = (
+                    print_message
+                    + "Invited supplier successfully. but"
+                    + error_message
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    "Invited supplier successfully. but"
+                    + error_message
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+            else:
+                print_message = (
+                    print_message
+                    + error_message
+                    + f"status_code: {status_code}, url: {url}, response_json: {response_json}"
+                )
+                error_message = (
+                    error_message
+                    + f"Gefifi Backend responded with message: {response_json['message']}"
+                )
+        else:
+            print_message = print_message + f"HTTP error - {e}"
+            error_message = error_message + f"HTTP error: {e}"
+
+        print(print_message)
+        return {
+            "status": "error",
+            "error_message": error_message,
+        }
+    except Exception as e:
+        print(
+            f"ERROR@ TOOL[invite_supplier_to_material_request]: Unexpected error - {str(e)}"
+        )
+        return {
+            "status": "error",
+            "error_message": f"Failed to invite supplier. Reason error: {str(e)}",
+        }
