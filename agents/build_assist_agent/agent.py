@@ -363,6 +363,7 @@ root_agent = Agent(
         find_users_by_ids,
         invite_expert_to_expert_request,
         invite_supplier_to_material_request,
+        # TODO: Contract creation and management tools
     ],
     # Register authentication callbacks
     before_agent_callback=auth_before_agent_callback,
