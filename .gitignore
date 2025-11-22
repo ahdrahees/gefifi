@@ -33,7 +33,7 @@ vite.config.ts.timestamp-*
 /data/*
 
 # Notes
-/z-notes
+**/z-notes
 
 # GCP credentials
 
