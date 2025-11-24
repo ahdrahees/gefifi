@@ -64,14 +64,15 @@ export type WorkRequest = {
 	timeline?: string;
 	materialsSuggested?: string;
 	status:
-	| 'open'
-	| 'in_discussion'
-	| 'awaiting_quotes'
-	| 'contracted'
-	| 'in_progress'
-	| 'completed'
-	| 'cancelled'
-	| 'closed';
+		| 'open'
+		| 'in_discussion'
+		| 'awaiting_quotes'
+		| 'contracted'
+		| 'in_progress'
+		| 'completed'
+		| 'cancelled'
+		| 'closed'
+		| 'disputed';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;

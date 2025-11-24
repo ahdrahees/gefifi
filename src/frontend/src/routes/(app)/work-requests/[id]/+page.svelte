@@ -218,7 +218,8 @@
 			in_progress: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50',
 			completed: 'bg-emerald-600/30 text-emerald-300 border-emerald-600/60',
 			cancelled: 'bg-red-500/20 text-red-300 border-red-500/50',
-			closed: 'bg-slate-600/30 text-slate-400 border-slate-500/50'
+			closed: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
+			disputed: 'bg-orange-500/20 text-orange-300 border-orange-500/50'
 		};
 		return classes[status] || 'bg-gray-500/20 text-gray-300 border-gray-500/50';
 	}
@@ -927,7 +928,7 @@
 		<!-- Back Button -->
 		<div class="text-center">
 			<button
-				on:click={() => goto('/work-requests')}
+				on:click={() => goto('/home')}
 				class="inline-flex items-center gap-2 rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -938,7 +939,7 @@
 						d="M10 19l-7-7m0 0l7-7m-7 7h18"
 					/>
 				</svg>
-				Back to All Work Requests
+				Back to Home
 			</button>
 		</div>
 	{:else}
@@ -968,10 +969,10 @@
 				exist.
 			</p>
 			<button
-				on:click={() => goto('/work-requests')}
+				on:click={() => goto('/home')}
 				class="rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white hover:bg-emerald-600"
 			>
-				← Back to Work Requests
+				← Back to Home
 			</button>
 		</div>
 	{/if}

@@ -42,6 +42,8 @@ async function request<T = any>( // Default T to any if not specified by caller
 ): Promise<T> {
 	const headers: HeadersInit = {};
 
+	// Set Content-Type header to application/json for POST and PUT requests that have a body
+	// but exclude FormData requests since they set their own Content-Type with boundary
 	if (!isFormData && body && (method === 'POST' || method === 'PUT')) {
 		headers['Content-Type'] = 'application/json';
 	}
@@ -219,14 +221,14 @@ interface ContractResponse {
 }
 type ContractStatusUpdatePayload = {
 	status:
-	| 'draft'
-	| 'awaiting_signatures'
-	| 'signed'
-	| 'in_progress'
-	| 'completed'
-	| 'disputed'
-	| 'cancelled'
-	| 'terminated';
+		| 'draft'
+		| 'awaiting_signatures'
+		| 'signed'
+		| 'in_progress'
+		| 'completed'
+		| 'disputed'
+		| 'cancelled'
+		| 'terminated';
 };
 
 interface UserProfileUpdateData {
@@ -264,7 +266,7 @@ const apiClient = {
 	// --- File Upload ---
 	uploadFile: (
 		formData: FormData
-	): Promise<{ filePath: string; fileName: string; message?: string;[key: string]: any }> => {
+	): Promise<{ filePath: string; fileName: string; message?: string; [key: string]: any }> => {
 		// Note: The backend /api/upload is currently NOT authenticated.
 		// If it were, requiresAuth would be true.
 		return request('/upload', 'POST', formData, false, true);
@@ -274,7 +276,17 @@ const apiClient = {
 	uploadChatFile: (
 		chatId: string,
 		formData: FormData
-	): Promise<{ filePath: string; fileName: string; uniqueFilename: string; messageId: string; originalName: string; mimeType: string; size: number; message?: string;[key: string]: any }> => {
+	): Promise<{
+		filePath: string;
+		fileName: string;
+		uniqueFilename: string;
+		messageId: string;
+		originalName: string;
+		mimeType: string;
+		size: number;
+		message?: string;
+		[key: string]: any;
+	}> => {
 		return request(`/chat/${chatId}/upload-file`, 'POST', formData, true, true);
 	},
 
@@ -390,7 +402,12 @@ const apiClient = {
 		return request<Chat>(`/chat/${chatId}`, 'GET', undefined, true);
 	},
 	findChatBetweenUsers: (userId1: string, userId2: string): Promise<{ chat: Chat | null }> => {
-		return request<{ chat: Chat | null }>(`/chat/find?user1=${userId1}&user2=${userId2}`, 'GET', undefined, true);
+		return request<{ chat: Chat | null }>(
+			`/chat/find?user1=${userId1}&user2=${userId2}`,
+			'GET',
+			undefined,
+			true
+		);
 	},
 	getChatMessages: (chatId: string): Promise<MessagesResponse> => {
 		return request<MessagesResponse>(`/chat/${chatId}/messages`, 'GET', undefined, true);
@@ -464,10 +481,7 @@ const apiClient = {
 			true
 		);
 	},
-	unlinkContract: (
-		contractId: string,
-		linkedContractId: string
-	): Promise<{ message: string }> => {
+	unlinkContract: (contractId: string, linkedContractId: string): Promise<{ message: string }> => {
 		return request<{ message: string }>(
 			`/contracts/${contractId}/link/${linkedContractId}`,
 			'DELETE',
@@ -643,8 +657,16 @@ const apiClient = {
 	submitQuote: (formData: FormData): Promise<any> => {
 		return request('/quotes', 'POST', formData, true, true);
 	},
-	getQuotesForRequest: (requestId: string, requestType: 'work' | 'material'): Promise<{ quotes: any[] }> => {
-		return request<{ quotes: any[] }>(`/quotes/request/${requestId}?requestType=${requestType}`, 'GET', undefined, true);
+	getQuotesForRequest: (
+		requestId: string,
+		requestType: 'work' | 'material'
+	): Promise<{ quotes: any[] }> => {
+		return request<{ quotes: any[] }>(
+			`/quotes/request/${requestId}?requestType=${requestType}`,
+			'GET',
+			undefined,
+			true
+		);
 	},
 	updateQuote: (quoteId: string, data: any): Promise<any> => {
 		return request(`/quotes/${quoteId}`, 'PUT', data, true);

@@ -152,7 +152,8 @@
 			awaiting_signatures: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50',
 			revision_requested: 'bg-orange-500/20 text-orange-300 border-orange-500/50',
 			cancelled: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
-			terminated: 'bg-slate-600/30 text-slate-400 border-slate-500/50'
+			terminated: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
+			closed: 'bg-slate-600/30 text-slate-400 border-slate-500/50'
 		};
 		return classes[status] || 'bg-slate-500/20 text-slate-300 border-slate-500/50';
 	}

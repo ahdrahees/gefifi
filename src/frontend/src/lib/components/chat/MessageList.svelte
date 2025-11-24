@@ -376,23 +376,23 @@
 							>
 								{#if message.ExpertRequestId || message.MaterialRequestId}
 									<!-- User Message with Clickable Action -->
-									<div
+								<div
 										class="max-w-xs rounded-xl px-3 py-2 shadow-md sm:max-w-md"
-										class:rounded-br-none={message.senderId === currentUser?.id}
-										class:bg-emerald-600={message.senderId === currentUser?.id}
-										class:text-white={message.senderId === currentUser?.id}
-										class:rounded-bl-none={message.senderId !== currentUser?.id}
-										class:bg-slate-700={message.senderId !== currentUser?.id}
-										class:text-slate-100={message.senderId !== currentUser?.id}
-									>
+									class:rounded-br-none={message.senderId === currentUser?.id}
+									class:bg-emerald-600={message.senderId === currentUser?.id}
+									class:text-white={message.senderId === currentUser?.id}
+									class:rounded-bl-none={message.senderId !== currentUser?.id}
+									class:bg-slate-700={message.senderId !== currentUser?.id}
+									class:text-slate-100={message.senderId !== currentUser?.id}
+								>
 										<!-- Message Content -->
-										{#if message.audioType === 'voice'}
-											<AudioMessageView {message} />
-										{:else}
+									{#if message.audioType === 'voice'}
+										<AudioMessageView {message} />
+									{:else}
 											<!-- Images -->
-											{#if message.images && message.images.length > 0}
-												<div class="mb-2 space-y-2">
-													{#each message.images as imageSrc (imageSrc)}
+										{#if message.images && message.images.length > 0}
+											<div class="mb-2 space-y-2">
+												{#each message.images as imageSrc (imageSrc)}
 														<button
 															on:click={() => openImageModal(imageSrc)}
 															class="block max-w-xs overflow-hidden rounded-lg border border-slate-600 transition-opacity hover:opacity-90 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -658,29 +658,29 @@
 																{/if}
 															</div>
 														</div>
-													{/each}
-												</div>
-											{/if}
+												{/each}
+											</div>
+										{/if}
 
-											{#if message.content && message.content.trim()}
+										{#if message.content && message.content.trim()}
 												<div
 													class="prose prose-sm prose-p:my-1 overflow-wrap-anywhere max-w-none break-words text-inherit"
 												>
-													{@html parseAndSanitize(message.content)}
-												</div>
-											{/if}
+												{@html parseAndSanitize(message.content)}
+											</div>
 										{/if}
+									{/if}
 
-										<div
-											class="mt-1 text-xs"
-											class:text-right={message.senderId === currentUser?.id}
-											class:text-emerald-200={message.senderId === currentUser?.id}
-											class:text-left={message.senderId !== currentUser?.id}
-											class:text-slate-400={message.senderId !== currentUser?.id}
-										>
-											{formatTimestamp(message.timestamp)}
-										</div>
+									<div
+										class="mt-1 text-xs"
+										class:text-right={message.senderId === currentUser?.id}
+										class:text-emerald-200={message.senderId === currentUser?.id}
+										class:text-left={message.senderId !== currentUser?.id}
+										class:text-slate-400={message.senderId !== currentUser?.id}
+									>
+										{formatTimestamp(message.timestamp)}
 									</div>
+								</div>
 								{/if}
 							</div>
 						{/if}

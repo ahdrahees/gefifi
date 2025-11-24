@@ -107,7 +107,7 @@
 		const uploadPromises: Promise<void>[] = [];
 
 		for (let i = 0; i < imageFiles.length; i++) {
-			const file = imageFiles[i];
+			const file: File = imageFiles[i];
 			const formData = new FormData();
 			formData.append('file', file);
 
@@ -227,7 +227,7 @@
 
 			setTimeout(() => {
 				goto('/home');
-			}, 2000); // 2 seconds delay to show message
+			}, 1000); // 1 seconds delay to show message
 		} catch (error: any) {
 			console.error('Failed to create work request:', error);
 			formMessage = {

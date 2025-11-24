@@ -297,7 +297,7 @@
 			<div class="space-y-4 rounded-lg bg-slate-700/50 p-4 shadow">
 				<h3 class="text-md font-semibold text-sky-300">{discussLabel}</h3>
 
-				{#if isInvitation}
+				{#if isInvitation || isPreselected}
 					<!-- Show invitation-specific message for preselected requests -->
 					<div class="rounded-md border border-emerald-600/30 bg-emerald-500/10 p-3">
 						<p class="text-sm text-emerald-300">
@@ -322,7 +322,7 @@
 				{#if currentUser?.userType === 'customer'}
 					<div class="form-group">
 						<label for="request-select" class="mb-1 block text-sm font-medium text-slate-300">
-							{isInvitation
+							{isInvitation || isPreselected
 								? 'Selected Request:'
 								: `Select an existing ${requestTypeLabel.toLowerCase()} (Optional):`}
 						</label>
@@ -353,7 +353,9 @@
 
 				<div>
 					<label for="custom-message" class="mb-1 block text-sm font-medium text-slate-300">
-						{isInvitation ? 'Invitation message (Optional):' : 'Add a brief note (Optional):'}
+						{isInvitation || isPreselected
+							? 'Invitation message (Optional):'
+							: 'Add a brief note (Optional):'}
 					</label>
 					<textarea
 						id="custom-message"
@@ -367,13 +369,13 @@
 				<button
 					on:click={handleSendDetailedInterest}
 					disabled={isLoading}
-					class="w-full rounded-md {isInvitation
+					class="w-full rounded-md {isInvitation || isPreselected
 						? 'bg-emerald-600 hover:bg-emerald-700'
 						: 'bg-sky-500 hover:bg-sky-600'} px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{#if isLoading && (customMessage || selectedRequestId)}
 						Processing...
-					{:else if isInvitation}
+					{:else if isInvitation || isPreselected}
 						Send Invitation
 					{:else}
 						Send Detailed Interest
