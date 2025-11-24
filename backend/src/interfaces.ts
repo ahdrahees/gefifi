@@ -59,21 +59,22 @@ export interface WorkRequest extends Identifiable {
 	timeline?: string;
 	materialsSuggested?: string;
 	status:
-	| 'open'
-	| 'in_discussion'
-	| 'awaiting_quotes'
-	| 'contracted'
-	| 'in_progress'
-	| 'completed'
-	| 'cancelled'
-	| 'closed';
+		| 'open'
+		| 'in_discussion'
+		| 'awaiting_quotes'
+		| 'contracted'
+		| 'in_progress'
+		| 'completed'
+		| 'cancelled'
+		| 'closed'
+		| 'disputed';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
 	interestedExperts?: string[]; // Array of expert User IDs who showed interest
-	interestedSuppliers?: string[]; // Array of supplier User IDs who showed interest
+	// interestedSuppliers?: string[]; // Array of supplier User IDs who showed interest
 	invitedExperts?: string[]; // Array of expert User IDs directly invited by customer
-	invitedSuppliers?: string[]; // Array of supplier User IDs directly invited by customer
+	// invitedSuppliers?: string[]; // Array of supplier User IDs directly invited by customer
 	quotes?: string[]; // Array of quote IDs
 }
 
@@ -235,15 +236,15 @@ export interface Contract extends Identifiable {
 
 	// Status & Tracking
 	status:
-	| 'draft'
-	| 'revision_requested'
-	| 'awaiting_signatures'
-	| 'signed'
-	| 'in_progress'
-	| 'completed'
-	| 'disputed'
-	| 'cancelled'
-	| 'terminated';
+		| 'draft'
+		| 'revision_requested'
+		| 'awaiting_signatures'
+		| 'signed'
+		| 'in_progress'
+		| 'completed'
+		| 'disputed'
+		| 'cancelled'
+		| 'terminated';
 	createdAt: string;
 	updatedAt: string;
 }
