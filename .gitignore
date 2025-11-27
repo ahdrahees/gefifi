@@ -47,3 +47,6 @@ firestore-migration
 .emulator-persisted-data
 /firebase-export-*
 *.log
+
+# Adk web sessions
+agents/.local-state
