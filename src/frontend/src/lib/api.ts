@@ -13,7 +13,7 @@ if (!API_BASE_URL && browser) {
 }
 
 // Custom Error class for API errors
-interface ApiErrorData {
+export interface ApiErrorData {
 	message: string;
 	error?: any; // Can be more specific if backend provides consistent error shapes
 	// For example, if backend sends { message: "...", errors: { field: "message" } }
