@@ -57,6 +57,13 @@ export interface AgentSession {
 	lastUpdateTime?: number;
 }
 
+/**
+ * Response for `GET /apps/{app_name}/users/{user_id}/sessions`
+ * Returns an array of all sessions for a specific user within an application.
+ * Each session contains the session ID, app name, user ID, state, events, and last update time.
+ */
+export type ListSessionsResponse = AgentSession[];
+
 // --- Event & Content Types ---
 
 /**

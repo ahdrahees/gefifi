@@ -2,7 +2,12 @@ import { get } from 'svelte/store';
 import { authStore } from './stores/auth';
 import { ApiError, type ApiErrorData } from './api';
 import { AGENT_API_URL } from './config';
-import type { AgentEvent, AgentSession, RunAgentRequest } from './types/agent-api';
+import type {
+	AgentEvent,
+	AgentSession,
+	ListSessionsResponse,
+	RunAgentRequest
+} from './types/agent-api';
 
 type AgentName = 'build_assist_agent' | 'expert_assist_agent' | 'supplier_assist_agent';
 
@@ -75,14 +80,20 @@ const agentApiClient = {
 	createSessionWithId: (
 		agentName: AgentName,
 		sessionId: string,
+		userId: string,
 		state?: JsonObject
 	): Promise<AgentSession> => {
 		return request<AgentSession>(
-			`/apps/${agentName}/users/{user_id}/sessions/${sessionId}`,
+			`/apps/${agentName}/users/${userId}/sessions/${sessionId}`,
 			'POST',
-			state,
-			false
+			state
 		);
+	},
+	listSessions: (agentName: AgentName, userId: string): Promise<ListSessionsResponse> => {
+		return request<ListSessionsResponse>(`/apps/${agentName}/users/${userId}/sessions`, 'GET');
+	},
+	getSession: (agentName: AgentName, userId: string, sessionId: string): Promise<AgentSession> => {
+		return request<AgentSession>(`/apps/${agentName}/users/${userId}/sessions/${sessionId}`, 'GET');
 	},
 	run: (args: RunAgentRequest): Promise<AgentEvent> => {
 		return request<AgentEvent>(`/run`, 'POST', args);
