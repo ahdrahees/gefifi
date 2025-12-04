@@ -81,7 +81,7 @@ router.post(
 				description,
 				images: images || [],
 				location,
-				expectedCost: expectedCost,
+				expectedCost: expectedCost ?? 0,
 				timeline: timeline || 'Not specified',
 				materialsSuggested: materialsSuggested || '',
 				status: 'open',
