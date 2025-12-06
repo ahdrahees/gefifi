@@ -100,6 +100,32 @@
 		imageScale = scale;
 		imagePosition = { x: 0, y: 0 };
 	}
+
+	async function downloadImage() {
+		if (!imageSrc) return;
+
+		try {
+			const response = await fetch(imageSrc);
+			const blob = await response.blob();
+			const url = URL.createObjectURL(blob);
+
+			const link = document.createElement('a');
+			link.href = url;
+
+			// Generate filename from URL or use default
+			const urlPath = new URL(imageSrc, window.location.origin).pathname;
+			const fileName = urlPath.split('/').pop() || `image-${Date.now()}.png`;
+			link.download = fileName;
+
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			console.error('Failed to download image:', error);
+		}
+	}
 </script>
 
 {#if show}
@@ -188,6 +214,34 @@
 						d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
 						clip-rule="evenodd"
 					/>
+				</svg>
+			</button>
+
+			<!-- Download Button -->
+			<button
+				on:click={(e) => {
+					e.stopPropagation();
+					downloadImage();
+				}}
+				class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+				aria-label="Download image"
+				title="Download image"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					class="lucide lucide-download"
+				>
+					<path d="M12 15V3" />
+					<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+					<path d="m7 10 5 5 5-5" />
 				</svg>
 			</button>
 
