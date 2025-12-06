@@ -64,6 +64,84 @@ export interface AgentSession {
  */
 export type ListSessionsResponse = AgentSession[];
 
+// --- Artifact API Types ---
+
+/**
+ * Path parameters for listing artifact names.
+ * Used for route: `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts`
+ */
+export interface ListArtifactNamesPathParams {
+	appName: string;
+	userId: string;
+	sessionId: string;
+}
+
+/**
+ * Path parameters for artifact endpoints.
+ * Used for routes: `/apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/...`
+ */
+export interface ArtifactPathParams extends ListArtifactNamesPathParams {
+	appName: string;
+	userId: string;
+	sessionId: string;
+	artifactName: string;
+}
+
+/**
+ * Path parameters for artifact version endpoints.
+ * Used for routes: `.../artifacts/{artifact_name}/versions/{version_id}`
+ */
+export interface ArtifactVersionPathParams extends ArtifactPathParams {
+	versionId: number;
+}
+
+/**
+ * Response for `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/{artifact_name}`
+ * Returns the latest version of the artifact as a Part, or null if not found.
+ */
+export type LoadArtifactResponse = ArtifactPart | null;
+
+/**
+ * Response for `DELETE /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/{artifact_name}`
+ * Returns an empty object on successful deletion.
+ */
+export type DeleteArtifactResponse = Record<string, never>;
+
+/**
+ * Response for `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/{artifact_name}/versions/{version_id}`
+ * Returns a specific version of the artifact as a Part, or null if not found.
+ */
+export type LoadArtifactVersionResponse = ArtifactPart | null;
+
+/**
+ * Response for `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts`
+ * Returns an array of artifact names for the session.
+ */
+export type ListArtifactNamesResponse = string[];
+
+/**
+ * Response for `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/{artifact_name}/versions`
+ * Returns an array of version IDs (integers) for the specified artifact.
+ */
+export type ListArtifactVersionsResponse = number[];
+
+/**
+ * Part type for artifact content (output format).
+ * Represents the content of an artifact, which can be text, inline data, file data, etc.
+ */
+export interface ArtifactPart {
+	videoMetadata?: VideoMetadata | null;
+	thought?: boolean | null;
+	inlineData?: Blob | null;
+	fileData?: FileData | null;
+	thoughtSignature?: string | null;
+	functionCall?: FunctionCall | null;
+	codeExecutionResult?: CodeExecutionResult | null;
+	executableCode?: ExecutableCode | null;
+	functionResponse?: FunctionResponse | null;
+	text?: string | null;
+}
+
 // --- Event & Content Types ---
 
 /**
