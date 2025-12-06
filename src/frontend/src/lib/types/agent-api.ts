@@ -98,6 +98,24 @@ export interface AgentEvent {
 	timestamp?: number;
 }
 
+export interface AgentContent {
+	parts?: AgentContentPart[] | null;
+	role?: string | null;
+}
+
+export interface AgentContentPart {
+	videoMetadata?: VideoMetadata | null;
+	thought?: boolean | null;
+	inlineData?: Blob | null;
+	fileData?: FileData | null;
+	thoughtSignature?: string | null;
+	functionCall?: FunctionCall | null;
+	codeExecutionResult?: CodeExecutionResult | null;
+	executableCode?: ExecutableCode | null;
+	functionResponse?: FunctionResponse | null;
+	text?: string | null;
+}
+
 export interface AgentContentInput {
 	parts?: AgentContentPartInput[] | null;
 	role?: string | null;
@@ -105,11 +123,6 @@ export interface AgentContentInput {
 
 export interface ContentInput {
 	parts?: AgentContentPartInput[] | null;
-	role?: string | null;
-}
-
-export interface AgentContent {
-	parts?: AgentContentPart[] | null;
 	role?: string | null;
 }
 
@@ -123,19 +136,6 @@ export interface AgentContentPartInput {
 	codeExecutionResult?: CodeExecutionResult | null;
 	executableCode?: ExecutableCode | null;
 	functionResponse?: FunctionResponseInput | null;
-	text?: string | null;
-}
-
-export interface AgentContentPart {
-	videoMetadata?: VideoMetadata | null;
-	thought?: boolean | null;
-	inlineData?: Blob | null;
-	fileData?: FileData | null;
-	thoughtSignature?: string | null;
-	functionCall?: FunctionCall | null;
-	codeExecutionResult?: CodeExecutionResult | null;
-	executableCode?: ExecutableCode | null;
-	functionResponse?: FunctionResponse | null;
 	text?: string | null;
 }
 
