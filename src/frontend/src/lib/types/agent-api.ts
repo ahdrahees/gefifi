@@ -12,7 +12,7 @@
  * - appName: string
  * - userId: string
  * - sessionId: string
- * - newMessage: ContentInput
+ * - newMessage: AgentContentInput
  *
  * Optional fields:
  * - streaming: boolean
@@ -23,7 +23,7 @@ export interface RunAgentRequest {
 	appName: string;
 	userId: string;
 	sessionId: string;
-	newMessage: ContentInput;
+	newMessage: AgentContentInput;
 	streaming?: boolean;
 	stateDelta?: Record<string, unknown> | null;
 	invocationId?: string | null;
@@ -195,11 +195,6 @@ export interface AgentContentPart {
 }
 
 export interface AgentContentInput {
-	parts?: AgentContentPartInput[] | null;
-	role?: string | null;
-}
-
-export interface ContentInput {
 	parts?: AgentContentPartInput[] | null;
 	role?: string | null;
 }
