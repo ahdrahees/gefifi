@@ -1,8 +1,12 @@
 <script lang="ts">
 	import type { ListSessionsResponse } from '$lib/types/agent-api';
+	import { createEventDispatcher } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	export let sessions: ListSessionsResponse = [];
 	export let currentSessionId: string = '';
+
+	const dispatch = createEventDispatcher<{ newChat: void }>();
 
 	// Sort sessions by lastUpdateTime descending (latest first)
 	$: sortedSessions = [...sessions].sort((a, b) => {
@@ -18,12 +22,39 @@
 		// keeping it minimal as per request "session name style with small bold font"
 		return '';
 	}
+
+	function handleNewChat() {
+		// Dispatch event for parent to do cleanup
+		dispatch('newChat');
+		// Navigate to the agent home
+		goto('/agent');
+	}
 </script>
 
 <div class="flex h-full w-64 flex-col border-l border-slate-700/50 bg-slate-900">
 	<!-- Header -->
-	<div class="flex items-center justify-between border-b border-slate-700/50 px-4 py-4">
+	<div class="flex items-center justify-between border-b border-slate-700/50 px-4 py-3">
 		<h2 class="text-sm font-semibold text-slate-200">Chats</h2>
+		<!-- New Chat Button -->
+		<button
+			on:click={handleNewChat}
+			class="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-emerald-500"
+			title="Start a new chat"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				class="h-3.5 w-3.5"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			>
+				<path d="M12 5v14M5 12h14" />
+			</svg>
+			New
+		</button>
 	</div>
 
 	<!-- Sessions List -->
