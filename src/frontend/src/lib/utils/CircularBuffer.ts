@@ -30,61 +30,59 @@
  * // Event 2
  * ```
  */
-class CircularBuffer<T> implements Iterable<T> {
-    private data: T[];
-    private head: number = 0; // Index of the oldest element
-    private tail: number = 0; // Index where the next element will be placed
-    private capacity: number;
-    private currentSize: number = 0;
+export class CircularBuffer<T> implements Iterable<T> {
+	private data: T[];
+	private head: number = 0; // Index of the oldest element
+	private tail: number = 0; // Index where the next element will be placed
+	private capacity: number;
+	private currentSize: number = 0;
 
-    constructor(capacity: number) {
-        if (capacity < 1) throw new Error("Capacity must be at least 1.");
-        this.capacity = capacity;
-        this.data = new Array(capacity);
-    }
+	constructor(capacity: number) {
+		if (capacity < 1) throw new Error('Capacity must be at least 1.');
+		this.capacity = capacity;
+		this.data = new Array(capacity);
+	}
 
-    /**
-     * Adds an item to the history. Overwrites the oldest item if full.
-     * Time Complexity: O(1)
-     */
-    add(item: T): void {
-        this.data[this.tail] = item;
-        this.tail = (this.tail + 1) % this.capacity;
+	/**
+	 * Adds an item to the history. Overwrites the oldest item if full.
+	 * Time Complexity: O(1)
+	 */
+	add(item: T): void {
+		this.data[this.tail] = item;
+		this.tail = (this.tail + 1) % this.capacity;
 
-        if (this.currentSize < this.capacity) {
-            this.currentSize++;
-        } else {
-            // When full, the tail advancement means the head must also advance,
-            // effectively throwing away the oldest element.
-            this.head = this.tail;
-        }
-    }
+		if (this.currentSize < this.capacity) {
+			this.currentSize++;
+		} else {
+			// When full, the tail advancement means the head must also advance,
+			// effectively throwing away the oldest element.
+			this.head = this.tail;
+		}
+	}
 
-    /**
-     * Creates an iterator to display items from NEWEST to OLDEST.
-     * Time Complexity: O(N) for iteration (visiting N items), but no memory copy.
-     */
-    *[Symbol.iterator](): Generator<T> {
-        if (this.currentSize === 0) {
-            return;
-        }
+	/**
+	 * Creates an iterator to display items from NEWEST to OLDEST.
+	 * Time Complexity: O(N) for iteration (visiting N items), but no memory copy.
+	 */
+	*[Symbol.iterator](): Generator<T> {
+		if (this.currentSize === 0) {
+			return;
+		}
 
-        // Start from the index just before the tail (the newest item)
-        let i = (this.tail - 1 + this.capacity) % this.capacity;
-        let count = 0;
+		// Start from the index just before the tail (the newest item)
+		let i = (this.tail - 1 + this.capacity) % this.capacity;
+		let count = 0;
 
-        while (count < this.currentSize) {
-            yield this.data[i];
+		while (count < this.currentSize) {
+			yield this.data[i];
 
-            // Move backwards, wrapping around if necessary
-            i = (i - 1 + this.capacity) % this.capacity;
-            count++;
-        }
-    }
+			// Move backwards, wrapping around if necessary
+			i = (i - 1 + this.capacity) % this.capacity;
+			count++;
+		}
+	}
 
-    get size(): number {
-        return this.currentSize;
-    }
+	get size(): number {
+		return this.currentSize;
+	}
 }
-
-
