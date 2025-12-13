@@ -56,17 +56,17 @@ class User(TypedDict):
 # Tool to get experts
 async def find_experts(
     tool_context: ToolContext,
-    expertise: Optional[str],
-    location: Optional[str],
-    experience: Optional[str],
+    expertise: Optional[str] = None,
+    location: Optional[str] = None,
+    experience: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    This tool is used to find experts based on the given criteria.
+    This tool is used to find experts based on the given filter criteria.
     Use this tool when you need to find experts based on their expertise, experience, and location.
-    Args:
-        expertise (Optional[str]): The expertise of the expert. Optional parameter used to filter experts by their area of expertise.
-        location (Optional[str]): The general location or area of the expert e.g., "Bangalore", "Kochi". Optional parameter used to filter experts by their location.
-        experience (Optional[str]): The number of years of experience of the expert. Optional parameter used to filter experts by their years of experience.
+    Args (All arguments are optional):
+        expertise (Optional[str]): The area of expertise of the expert.
+        location (Optional[str]): The general location or area of the expert e.g., "Bangalore", "Kochi".
+        experience (Optional[str]): The number of years of experience of the expert e.g., "5", "10".
     Returns:
         dict: A dictionary containing the following:
             Includes a 'status' key ('success' or 'error').
@@ -174,17 +174,17 @@ async def find_experts(
 # Tool to get suppliers
 async def find_suppliers(
     tool_context: ToolContext,
-    material_category: Optional[str],
-    location: Optional[str],
-    experience: Optional[str],
+    material_category: Optional[str] = None,
+    location: Optional[str] = None,
+    experience: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    This tool is used to find suppliers based on the given criteria.
+    This tool is used to find suppliers based on the given filter criteria.
     Use this tool when you need to find suppliers based on their material category they are selling(supplies), experience, and location.
-    Args:
-        material_category (Optional[str]): The material category of the supplier e.g., "Cement & Steel", "Paints & Finishes". Optional parameter used to filter suppliers by the category of materials they sell.
-        location (Optional[str]): The general location or area of the supplier shop e.g., "Bangalore", "Kochi". Optional parameter used to filter suppliers by their location.
-        experience (Optional[str]): The number of years of experience of the supplier. Optional parameter used to filter suppliers by their years of experience.
+    Args (All arguments are optional):
+        material_category (Optional[str]): The material category of the supplier sells e.g., "Cement & Steel", "Paints & Finishes".
+        location (Optional[str]): The general location or area of the supplier shop e.g., "Bangalore", "Kochi".
+        experience (Optional[str]): The number of years of experience of the supplier e.g., "5", "10".
     Returns:
         dict: A dictionary containing the following:
             Includes a 'status' key ('success' or 'error').

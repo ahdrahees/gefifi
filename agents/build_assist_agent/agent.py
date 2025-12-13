@@ -9,8 +9,8 @@ from google.adk.models.lite_llm import LiteLlm
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.save_files_as_artifacts_plugin import SaveFilesAsArtifactsPlugin
-from google.adk.tools import load_artifacts
 from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.load_artifacts_tool import load_artifacts_tool
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
@@ -52,6 +52,7 @@ MODEL_GEMINI_2_0_FLASH: str = "gemini-2.0-flash"
 MODEL_GEMINI_2_5_FLASH: str = "gemini-2.5-flash"
 MODEL_GEMINI_2_5_PRO: str = "gemini-2.5-pro"
 OPENROUTER_MODEL_DEEPSEEK: str = "openrouter/deepseek/deepseek-chat-v3.1:free"
+OPENROUTER_MODEL_Nova_2_Lite: str = "openrouter/amazon/nova-2-lite-v1:free"
 
 OPENROUTER_MODEL_POLARIS_ALPHA: str = "openrouter/z-ai/glm-4.5-air:free"
 
@@ -326,7 +327,7 @@ root_agent = Agent(
     # - OpenAI: "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"
     # - Claude: "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"
     # - Local: "ollama/llama3", "ollama/mistral"
-    model=LiteLlm(model=OPENROUTER_MODEL_POLARIS_ALPHA),
+    model=LiteLlm(model=OPENROUTER_MODEL_Nova_2_Lite),
     description=(
         "help customer to create and edit expert/work request, material request, contract. "
         "Specialized assistant for CUSTOMERS on the GEFIFI construction platform. "
@@ -340,7 +341,7 @@ root_agent = Agent(
         "2. When a user wants to edit an existing expert request."
     ),
     tools=[
-        load_artifacts,
+        load_artifacts_tool,
         # Expert Request Tools
         create_expert_request,
         get_user_expert_requests,
