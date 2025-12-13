@@ -3,9 +3,10 @@
 	const withBg = '/agent/logo/agent-logo-with-bg.png';
 	const withoutBg = '/agent/logo/agent-logo-no-bg.png';
 
-	let isWithBg = true;
-	let klass = 'size-12';
-	export { klass as class };
+	let { class: klass = 'size-12' } = $props();
+
+	let isWithBg = $state(true);
+
 	let clickBlinkTimeout: NodeJS.Timeout;
 
 	onMount(() => {
@@ -45,7 +46,7 @@
 	class="{klass} mix-blend-lighten transition-opacity"
 	src={isWithBg ? withBg : withoutBg}
 	alt="Agent Logo 1"
-	onclick={() => {
+	onmouseenter={() => {
 		clearTimeout(clickBlinkTimeout);
 
 		isWithBg = !isWithBg;

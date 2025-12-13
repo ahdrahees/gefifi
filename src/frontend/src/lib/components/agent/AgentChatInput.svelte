@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
-	import { fade, slide } from 'svelte/transition';
+	import { slide } from 'svelte/transition';
 
 	// --- PROPS ---
-	export let isSending: boolean = false;
+	let { isSending = false } = $props();
 
 	// --- CONSTANTS ---
 	const MAX_FILES = 10;
@@ -25,10 +25,10 @@
 	];
 
 	// --- INTERNAL STATE ---
-	let value = '';
+	let value = $state('');
 	let textarea: HTMLTextAreaElement;
 	let fileInput: HTMLInputElement;
-	let selectedFiles: File[] = [];
+	let selectedFiles: File[] = $state([]);
 
 	const dispatch = createEventDispatcher<{
 		submit: { message: string; files: File[] };
@@ -53,13 +53,13 @@
 		return URL.createObjectURL(file);
 	}
 
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 Bytes';
-		const k = 1024;
-		const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-	}
+	// function formatBytes(bytes: number): string {
+	// 	if (bytes === 0) return '0 Bytes';
+	// 	const k = 1024;
+	// 	const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+	// 	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	// 	return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+	// }
 
 	function validateFile(file: File): boolean {
 		const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -145,7 +145,8 @@
 
 						<!-- Remove Button -->
 						<button
-							on:click={() => removeFile(i)}
+							onclick={() => removeFile(i)}
+							aria-label="Remove file"
 							class="absolute -top-1 -right-1 z-50 box-border flex h-5 w-5 items-center justify-center rounded-full bg-slate-500 p-1 text-xs text-white shadow-md sm:hidden sm:group-hover:flex"
 						>
 							<svg
@@ -171,8 +172,8 @@
 		<textarea
 			bind:this={textarea}
 			bind:value
-			on:input={autoResize}
-			on:keydown={handleKeydown}
+			oninput={autoResize}
+			onkeydown={handleKeydown}
 			disabled={isSending}
 			rows="1"
 			class="scrollable-content w-full resize-none border-0 bg-transparent px-2 py-2 text-sm text-slate-200 placeholder-slate-400 focus:border-0 focus:ring-0 focus:outline-0 focus:outline-none"
@@ -189,11 +190,11 @@
 					multiple
 					class="hidden"
 					bind:this={fileInput}
-					on:change={handleFilesSelected}
+					onchange={handleFilesSelected}
 					accept={ALLOWED_EXTENSIONS.map((e) => '.' + e).join(',')}
 				/>
 				<button
-					on:click={() => fileInput.click()}
+					onclick={() => fileInput.click()}
 					disabled={isSending}
 					class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-700 hover:text-slate-200"
 					aria-label="Add files"
@@ -225,7 +226,7 @@
 			<!-- Send Button -->
 			<div class="group relative">
 				<button
-					on:click={handleSubmit}
+					onclick={handleSubmit}
 					disabled={(!value.trim() && selectedFiles.length === 0) || isSending}
 					class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500"
 					aria-label="Send message"

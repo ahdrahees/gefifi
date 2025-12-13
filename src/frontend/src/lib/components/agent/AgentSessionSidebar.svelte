@@ -1,19 +1,21 @@
 <script lang="ts">
 	import type { ListSessionsResponse } from '$lib/types/agent-api';
-	import { createEventDispatcher } from 'svelte';
 	import { goto } from '$app/navigation';
 
-	export let sessions: ListSessionsResponse = [];
-	export let currentSessionId: string = '';
+	interface Props {
+		sessions: ListSessionsResponse;
+		currentSessionId: string;
+		newChat?: () => void;
+	}
 
-	const dispatch = createEventDispatcher<{ newChat: void }>();
+	let { sessions, currentSessionId = '', newChat }: Props = $props();
 
 	// Sort sessions by lastUpdateTime descending (latest first)
-	$: sortedSessions = [...sessions].sort((a, b) => {
-		const timeA = a.lastUpdateTime || 0;
-		const timeB = b.lastUpdateTime || 0;
-		return timeB - timeA;
-	});
+	// $: sortedSessions = [...sessions].sort((a, b) => {
+	// 	const timeA = a.lastUpdateTime || 0;
+	// 	const timeB = b.lastUpdateTime || 0;
+	// 	return timeB - timeA;
+	// });
 
 	function formatTime(timestamp?: number): string {
 		if (!timestamp) return '';
@@ -25,7 +27,9 @@
 
 	function handleNewChat() {
 		// Dispatch event for parent to do cleanup
-		dispatch('newChat');
+		if (newChat) {
+			newChat();
+		}
 		// Navigate to the agent home
 		goto('/agent');
 	}
@@ -59,7 +63,7 @@
 
 	<!-- Sessions List -->
 	<div class="scrollable-sidebar flex-1 space-y-1 overflow-y-auto px-2 py-2">
-		{#each sortedSessions as session (session.id)}
+		{#each sessions as session (session.id)}
 			<a
 				href="/agent/{session.id}"
 				class="group flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-slate-800"

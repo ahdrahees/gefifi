@@ -1,19 +1,23 @@
 <script lang="ts">
-	import type { AgentContent, ArtifactPart } from '$lib/types/agent-api';
+	import type { AgentEvent, AgentContent, ArtifactPart } from '$lib/types/agent-api';
 	import ImageModal from '$lib/components/chat/ImageModal.svelte';
 	import FileAttachment from '$lib/components/chat/FileAttachment.svelte';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 
-	export let content: AgentContent[] = [];
-	export let artifacts: Record<string, ArtifactPart> = {};
+	interface Props {
+		events: AgentEvent[];
+		artifacts: Record<string, ArtifactPart>;
+	}
+
+	let { events, artifacts }: Props = $props();
 
 	// Configure marked
 	marked.use({ breaks: true, gfm: true });
 
 	// --- STATE ---
-	let showImageModal = false;
-	let modalImageSrc = '';
+	let showImageModal = $state(false);
+	let modalImageSrc = $state('');
 
 	function openImageModal(src: string) {
 		modalImageSrc = src;
@@ -95,12 +99,13 @@
 		}
 	}
 
-	function processMessage(msg: AgentContent) {
+	function processEventContent(content: AgentContent | null | undefined) {
 		const allArtifacts: Array<{ value: string; artifact: ArtifactPart }> = [];
 		const allText: string[] = [];
 
-		if (msg.parts) {
-			msg.parts.forEach((part) => {
+		if (content?.parts) {
+			content.parts.forEach((part) => {
+				// Only process text parts (skip functionCall, functionResponse, etc.)
 				if (part.text) {
 					const parsed = parseMessageParts(part.text);
 					parsed.forEach((p) => {
@@ -115,13 +120,19 @@
 		}
 		return { artifacts: allArtifacts, texts: allText };
 	}
+
+	// Filter events that have displayable content (text)
+	function hasDisplayableContent(event: AgentEvent): boolean {
+		if (!event.content?.parts) return false;
+		return event.content.parts.some((part) => part.text !== null && part.text !== undefined);
+	}
 </script>
 
 <div class="flex flex-col gap-6 p-4 pb-0">
-	{#each content as msg, i (i)}
-		{#if msg.role}
-			{@const isUser = msg.role === 'user'}
-			{@const { artifacts: msgArtifacts, texts: msgTexts } = processMessage(msg)}
+	{#each events as event, i (event.id ?? i)}
+		{#if hasDisplayableContent(event)}
+			{@const isUser = event.author === 'user'}
+			{@const { artifacts: msgArtifacts, texts: msgTexts } = processEventContent(event.content)}
 
 			<div class="flex w-full {isUser ? 'justify-end' : 'justify-start'}">
 				<div class="flex max-w-[85%] flex-col gap-2 sm:max-w-[75%]">
@@ -133,7 +144,7 @@
 							{#if url}
 								<button
 									class="max-h-[384px] max-w-[384px] overflow-hidden rounded-lg border border-slate-700 bg-slate-800 transition-opacity hover:opacity-90"
-									on:click={() => openImageModal(url)}
+									onclick={() => openImageModal(url)}
 								>
 									<img src={url} alt={p.value} class="h-full w-full object-contain" />
 								</button>
