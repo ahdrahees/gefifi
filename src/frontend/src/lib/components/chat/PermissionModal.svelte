@@ -1,16 +1,19 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/PermissionModal.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { fly } from 'svelte/transition';
 
-	const dispatch = createEventDispatcher<{
-		close: void;
-	}>();
+	interface Props {
+		onClose?: () => void;
+	}
+
+	let { onClose }: Props = $props();
 </script>
 
 <div
 	class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm"
-	on:click|self={() => dispatch('close')}
+	onclick={(e) => {
+		if (e.target === e.currentTarget) onClose?.();
+	}}
 	role="dialog"
 	aria-modal="true"
 	aria-labelledby="permission-modal-title"
@@ -39,7 +42,7 @@
 			in your browser's address bar and choose "Allow".
 		</p>
 		<button
-			on:click={() => dispatch('close')}
+			onclick={() => onClose?.()}
 			class="w-full rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white shadow-md transition-colors hover:bg-emerald-500"
 		>
 			OK, got it

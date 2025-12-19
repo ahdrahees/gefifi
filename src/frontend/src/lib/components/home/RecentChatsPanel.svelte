@@ -1,40 +1,22 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { realtimeChatService } from '$lib/services/realtimeChat';
 	import apiClient from '$lib/api';
-	import type { Chat } from '$lib/types';
+	import type { Chat, EnrichedChat, UserProfileUI } from '$lib/types';
 	import type { Unsubscribe } from 'firebase/firestore';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import OnlineStatus from '$lib/components/chat/OnlineStatus.svelte';
 
-	type UserProfile = {
-		id: string;
-		email: string;
-		userType: string;
-		profile?: {
-			fullName?: string;
-			companyName?: string;
-			expertise?: string;
-			category?: string;
-			location?: string;
-			avatarUrl?: string;
-		};
-	};
+	interface Props {
+		recentChats?: EnrichedChat[];
+	}
 
-	type EnrichedChat = Chat & {
-		displayName: string;
-		avatarUrl?: string;
-		otherUserProfile?: UserProfile;
-		lastMessageSnippet: string;
-	};
+	let { recentChats = $bindable([]) }: Props = $props();
 
-	let currentUser: AuthUser | null = null;
-	let recentChats: EnrichedChat[] = [];
-	let fetchedUserProfiles = new Map<string, UserProfile>();
-	let chatsUnsubscribe: Unsubscribe | null = null;
-
-	$: ({ user: currentUser } = $authStore);
+	let currentUser: AuthUser | null = $derived($authStore.user);
+	let fetchedUserProfiles = new Map<string, UserProfileUI>();
+	let chatsUnsubscribe: Unsubscribe | null = $state(null);
 
 	function formatLastSeen(dateString: string) {
 		if (!dateString) return '';
@@ -63,7 +45,7 @@
 		}
 	}
 
-	function formatDisplayName(otherUser: UserProfile | undefined): string {
+	function formatDisplayName(otherUser: UserProfileUI | undefined): string {
 		if (!otherUser) return 'Unknown User';
 
 		const { fullName, companyName } = otherUser.profile || {};
@@ -110,7 +92,7 @@
 
 			let displayName = 'Chat';
 			let avatarUrl: string | undefined = undefined;
-			let otherUserProfile: UserProfile | undefined = undefined;
+			let otherUserProfile: UserProfileUI | undefined = undefined;
 
 			if (otherParticipantIds.length > 0) {
 				const otherPId = otherParticipantIds[0];
@@ -181,9 +163,11 @@
 	}
 
 	// Set up real-time chats when user is available
-	$: if (currentUser?.id && !chatsUnsubscribe) {
-		setupRealtimeChats();
-	}
+	$effect(() => {
+		if (currentUser?.id && !chatsUnsubscribe) {
+			setupRealtimeChats();
+		}
+	});
 
 	onDestroy(() => {
 		if (chatsUnsubscribe) {
@@ -251,7 +235,7 @@
 										</span>
 									{/if}
 								</div>
-								<span class="flex-shrink-0 text-xs text-slate-500 group-hover:text-slate-400"
+								<span class="shrink-0 text-xs text-slate-500 group-hover:text-slate-400"
 									>{formatLastSeen(chat.updatedAt)}</span
 								>
 							</div>
@@ -262,18 +246,18 @@
 								>
 									{#if chat.otherUserProfile.userType === 'expert' && chat.otherUserProfile.profile.expertise}
 										<span
-											class="max-w-[120px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+											class="max-w-[120px] shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
 											>{chat.otherUserProfile.profile.expertise}</span
 										>
 									{:else if chat.otherUserProfile.userType === 'supplier' && chat.otherUserProfile.profile.category}
 										<span
-											class="max-w-[120px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+											class="max-w-[120px] shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
 											>{chat.otherUserProfile.profile.category}</span
 										>
 									{/if}
 									{#if chat.otherUserProfile.profile.location}
 										<span
-											class="max-w-[100px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+											class="max-w-[100px] shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
 											>📍 {chat.otherUserProfile.profile.location}</span
 										>
 									{/if}

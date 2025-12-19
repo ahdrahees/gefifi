@@ -1,14 +1,19 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/+layout.svelte -->
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
 	import PWAInstallPrompt from '$lib/components/ui/PWAInstallPrompt.svelte';
+	interface Props {
+		children?: import('svelte').Snippet;
+	}
+
+	let { children }: Props = $props();
 
 	console.log('[Debug] (app)/+layout.svelte script is executing.');
 
-	$: currentAuth = $authStore;
+	let currentAuth = $derived($authStore);
 
 	interface NavLink {
 		href: string;
@@ -46,7 +51,7 @@
 		goto('/auth/login', { replaceState: true });
 	}
 
-	let sidebarOpen: boolean = true;
+	let sidebarOpen: boolean = $state(true);
 
 	onMount(() => {
 		console.log('[Debug] (app)/+layout.svelte has mounted.');
@@ -68,15 +73,16 @@
 	};
 
 	// More direct computation of navItemsToRender
-	$: navItemsToRender =
+	let navItemsToRender = $derived(
 		$authStore.isAuthenticated && $authStore.user
 			? navLinks.filter(
 					(link) => link.types.includes('all') || link.types.includes($authStore.user!.userType)
 				)
-			: [];
+			: []
+	);
 </script>
 
-<svelte:window on:resize={() => (sidebarOpen = window.innerWidth >= 768)} />
+<svelte:window onresize={() => (sidebarOpen = window.innerWidth >= 768)} />
 
 <div class="flex h-screen bg-slate-800 font-sans text-gray-100">
 	<!-- Sidebar -->
@@ -93,7 +99,7 @@
 
 		<nav class="flex-grow space-y-2 overflow-y-auto p-4">
 			{#if currentAuth.isLoading}
-				{#each Array(4) as _}
+				{#each Array(4) as _, id (id)}
 					<div class="h-10 animate-pulse rounded-lg bg-slate-700/50"></div>
 				{/each}
 			{:else if currentAuth.isAuthenticated}
@@ -101,11 +107,10 @@
 					<a
 						href={link.href}
 						class="group flex items-center space-x-3 rounded-lg px-3 py-2.5 transition-colors duration-150
-						{$page.url.pathname.startsWith(link.href) &&
-						(link.href !== '/home' || $page.url.pathname === '/home')
+						{page.url.pathname.startsWith(link.href) && (link.href !== '/home' || page.url.pathname === '/home')
 							? 'bg-emerald-600 text-white shadow-md'
 							: 'text-slate-300 hover:bg-slate-700/50 hover:text-emerald-300'}"
-						on:click={() => {
+						onclick={() => {
 							if (window.innerWidth < 768) sidebarOpen = false;
 						}}
 						title={link.label}
@@ -151,7 +156,7 @@
 					</div>
 				</a>
 				<button
-					on:click={handleLogout}
+					onclick={handleLogout}
 					class="flex w-full items-center justify-center space-x-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
 				>
 					{@html icons.logout}
@@ -178,7 +183,7 @@
 				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-9 w-auto" />
 			</a>
 			<button
-				on:click={() => (sidebarOpen = !sidebarOpen)}
+				onclick={() => (sidebarOpen = !sidebarOpen)}
 				class="p-2 text-slate-300 hover:text-emerald-400"
 			>
 				{@html sidebarOpen ? icons.close : icons.menu}
@@ -205,7 +210,7 @@
 					<span class="ml-3 text-slate-300">Loading application...</span>
 				</div>
 			{:else if currentAuth.isAuthenticated}
-				<slot />
+				{@render children?.()}
 			{:else}
 				<div class="flex h-full flex-col items-center justify-center text-center">
 					<h2 class="mb-3 text-2xl font-semibold text-sky-300">Access Denied</h2>

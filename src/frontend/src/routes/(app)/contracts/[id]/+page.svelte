@@ -2,35 +2,34 @@
 
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 	import AttachmentList from '$lib/components/AttachmentList.svelte';
-	import UserProfile from '$lib/components/UserProfile.svelte';
 	import ContractComments from '$lib/components/ContractComments.svelte';
 	import ContractLinking from '$lib/components/contracts/ContractLinking.svelte';
 	import FileUpload from '$lib/components/FileUpload.svelte';
-	import type { Contract, Attachment } from '$lib/types';
+	import type { Chat, Contract } from '$lib/types';
 	import type { Unsubscriber } from 'svelte/store';
 	import Avatar from '$lib/components/Avatar.svelte';
-	import { writable } from 'svelte/store';
+	import apiClient from '$lib/api';
 
 	// Define UserProfile, similar to other pages
-	type UserProfile = {
-		id: string;
-		email: string;
-		userType: 'customer' | 'expert' | 'supplier' | 'admin' | string;
-		profile?: {
-			// Profile is optional itself
-			fullName?: string;
-			companyName?: string;
-			expertise?: string;
-			category?: string;
-			location?: string;
-			avatarUrl?: string;
-		};
-	};
+	// type UserProfile = {
+	// 	id: string;
+	// 	email: string;
+	// 	userType: 'customer' | 'expert' | 'supplier' | 'admin' | string;
+	// 	profile?: {
+	// 		// Profile is optional itself
+	// 		fullName?: string;
+	// 		companyName?: string;
+	// 		expertise?: string;
+	// 		category?: string;
+	// 		location?: string;
+	// 		avatarUrl?: string;
+	// 	};
+	// };
 
 	// Define RequestInfo for fetching title
 	type RequestInfo = {
@@ -47,30 +46,30 @@
 		requestTitle?: string;
 	};
 
-	let currentUser: AuthUser | null = null;
+	let currentUser = $state<AuthUser | null>(null);
 	let token: string | null = null;
-	let contract: ContractDetail | null = null;
-	let customerProfile: AuthUser | null = null;
-	let expertSupplierProfile: AuthUser | null = null;
-	let isLoading = true;
-	let errorMessage = '';
-	let chatId: string | null = null;
-	let contractIdFromUrl: string | null = null;
-	let isSigning = false;
-	let signMessage = '';
+	let contract = $state<ContractDetail | null>(null);
+	let customerProfile: AuthUser | null = $state(null);
+	let expertSupplierProfile: AuthUser | null = $state(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let chatId: string | null = $state(null);
+	let contractIdFromUrl: string | null | undefined = $state(null);
+	let isSigning = $state(false);
+	let signMessage = $state('');
 
 	// Signature modal state
-	let showSignatureModal = false;
-	let signatureComment = '';
-	let signatureFiles = writable<File[]>([]);
+	let showSignatureModal = $state(false);
+	let signatureComment = $state('');
+	let signatureFiles = $state<File[]>([]);
 	let isSignatureCommentValid = false;
 
 	// Revision request modal state
-	let showRevisionModal = false;
-	let revisionComment = '';
-	let revisionFiles = writable<File[]>([]);
-	let isRevisionCommentValid = false;
-	let isSubmittingRevision = false;
+	let showRevisionModal = $state(false);
+	let revisionComment = $state('');
+	let revisionFiles = $state<File[]>([]);
+	let isRevisionCommentValid = $state(false);
+	let isSubmittingRevision = $state(false);
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
@@ -215,9 +214,9 @@
 			if (contract) {
 				await findChatId(contract.customerId, contract.expertSupplierId);
 			}
-		} catch (err: any) {
+		} catch (err) {
 			console.error('Fetch contract detail error:', err);
-			errorMessage = err.message;
+			errorMessage = err instanceof Error ? err.message : 'Failed to fetch contract details';
 		} finally {
 			isLoading = false;
 		}
@@ -226,26 +225,21 @@
 	async function findChatId(party1: string, party2: string) {
 		if (!token) return;
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/chat`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (response.ok) {
-				const chats = await response.json();
+			const chats = await apiClient.getUserChats();
 
-				// Find the chat that includes both the customer and the expert/supplier.
-				// This is more reliable than checking for a request ID, which is removed
-				// from the chat after a contract is created.
-				const relevantChat = chats.find(
-					(chat: any) =>
-						chat.participants.length === 2 &&
-						chat.participants.includes(party1) &&
-						chat.participants.includes(party2)
-				);
-				if (relevantChat) {
-					chatId = relevantChat.id;
-				} else {
-					console.warn('Could not find a chat between the contract parties.');
-				}
+			// Find the chat that includes both the customer and the expert/supplier.
+			// This is more reliable than checking for a request ID, which is removed
+			// from the chat after a contract is created.
+			const relevantChat = chats.find(
+				(chat: Chat) =>
+					chat.participants.length === 2 &&
+					chat.participants.includes(party1) &&
+					chat.participants.includes(party2)
+			);
+			if (relevantChat) {
+				chatId = relevantChat.id;
+			} else {
+				console.warn('Could not find a chat between the contract parties.');
 			}
 		} catch (error) {
 			console.error('Failed to find chat ID:', error);
@@ -264,7 +258,7 @@
 
 		showSignatureModal = true;
 		signatureComment = '';
-		signatureFiles.set([]);
+		signatureFiles = [];
 		isSignatureCommentValid = false;
 	}
 
@@ -289,7 +283,7 @@
 
 		showRevisionModal = true;
 		revisionComment = '';
-		revisionFiles.set([]);
+		revisionFiles = [];
 		isRevisionCommentValid = false;
 	}
 
@@ -304,18 +298,18 @@
 
 		try {
 			// Prepare the request body
-			const requestBody: any = {
+			const requestBody: JsonObject = {
 				comment: revisionComment.trim(),
 				type: 'revision_request'
 			};
 
 			// If there are revision files, we need to use FormData
-			if ($revisionFiles.length > 0) {
+			if (revisionFiles.length > 0) {
 				const formData = new FormData();
 				formData.append('comment', revisionComment.trim());
 				formData.append('type', 'revision_request');
 
-				$revisionFiles.forEach((file: File) => {
+				revisionFiles.forEach((file: File) => {
 					formData.append('files', file);
 				});
 
@@ -371,7 +365,7 @@
 
 				closeRevisionModal();
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error submitting revision request:', error);
 			// You could add a toast notification here
 		} finally {
@@ -387,7 +381,7 @@
 
 		try {
 			// Prepare the request body
-			const requestBody: any = {};
+			const requestBody: JsonObject = {};
 
 			// If there's a signature comment, add it to the request
 			if (signatureComment.trim()) {
@@ -395,13 +389,13 @@
 			}
 
 			// If there are signature files, we need to use FormData
-			if ($signatureFiles.length > 0) {
+			if (signatureFiles.length > 0) {
 				const formData = new FormData();
 				if (signatureComment.trim()) {
 					formData.append('signatureComment', signatureComment.trim());
 				}
 
-				$signatureFiles.forEach((file: File) => {
+				signatureFiles.forEach((file: File) => {
 					formData.append('signatureFiles', file);
 				});
 
@@ -467,18 +461,18 @@
 					fetchContractDetails(contract.id);
 				}
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error signing contract:', error);
-			signMessage = `Error: ${error.message}`;
+			signMessage = `Error: ${error instanceof Error ? error.message : 'Failed to sign contract'}`;
 		} finally {
 			isSigning = false;
 		}
 	}
 
-	async function handleAddComment(event: CustomEvent) {
+	async function handleAddComment(detail: { comment: string; type: string; files: File[] }) {
 		if (!contract || !currentUser || !token) return;
 
-		const { comment, type, files } = event.detail;
+		const { comment, type, files } = detail;
 
 		try {
 			const response = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/comments`, {
@@ -515,14 +509,21 @@
 				expertSupplierName: contract?.expertSupplierName,
 				requestTitle: contract?.requestTitle
 			};
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error adding comment:', error);
 			// You could add a toast notification here
 		}
 	}
 
+	$effect(() => {
+		if (page.params.id) {
+			contractIdFromUrl = page.params.id;
+			fetchContractDetails(contractIdFromUrl!);
+		}
+	});
+
 	onMount(() => {
-		contractIdFromUrl = $page.params.id;
+		contractIdFromUrl = page.params.id;
 		let unsubscribe: Unsubscriber;
 		if (contractIdFromUrl) {
 			unsubscribe = authStore.subscribe((auth) => {
@@ -540,19 +541,9 @@
 			isLoading = false;
 		}
 
-		const unsubscribePage = page.subscribe((page) => {
-			if (page.params.id) {
-				contractIdFromUrl = page.params.id;
-				fetchContractDetails(contractIdFromUrl!);
-			}
-		});
-
 		return () => {
 			if (unsubscribe) {
 				unsubscribe();
-			}
-			if (unsubscribePage) {
-				unsubscribePage();
 			}
 		};
 	});
@@ -609,40 +600,46 @@
 		return new Date(dateStr).toLocaleDateString('en-GB', { dateStyle: 'medium' });
 	}
 
-	$: canCurrentUserSign =
+	let canCurrentUserSign = $derived(
 		contract &&
-		currentUser &&
-		(contract.status === 'draft' || contract.status === 'awaiting_signatures') &&
-		((currentUser.id === contract.customerId && !contract.customerSigned) ||
-			(currentUser.id === contract.expertSupplierId && !contract.expertSupplierSigned));
+			currentUser &&
+			(contract.status === 'draft' || contract.status === 'awaiting_signatures') &&
+			((currentUser.id === contract.customerId && !contract.customerSigned) ||
+				(currentUser.id === contract.expertSupplierId && !contract.expertSupplierSigned))
+	);
 
 	// Check if user can request revision
-	$: canRequestRevision =
+	let canRequestRevision = $derived(
 		contract &&
-		currentUser &&
-		// Currently both parties can request revisions, but this may change in the future
-		(currentUser.id === contract.customerId || currentUser.id === contract.expertSupplierId) &&
-		['draft', 'awaiting_signatures'].includes(contract.status) &&
-		contract.status !== 'revision_requested';
+			currentUser &&
+			// Currently both parties can request revisions, but this may change in the future
+			(currentUser.id === contract.customerId || currentUser.id === contract.expertSupplierId) &&
+			['draft', 'awaiting_signatures'].includes(contract.status) &&
+			contract.status !== 'revision_requested'
+	);
 
 	// Check if user can edit contract (contract creator - currently customer)
-	$: canEditContract =
+	let canEditContract = $derived(
 		contract &&
-		currentUser &&
-		contract.status === 'revision_requested' &&
-		// Currently only customer can edit, but this may change in the future
-		currentUser.id === contract.customerId;
+			currentUser &&
+			contract.status === 'revision_requested' &&
+			// Currently only customer can edit, but this may change in the future
+			currentUser.id === contract.customerId
+	);
 
-	$: contractTypeLabel =
-		contract?.contractType === 'expert_contract' ? 'Expert Contract' : 'Material Contract';
-	$: relatedRequestUrl = contract?.workRequestId
-		? `/work-requests/${contract.workRequestId}`
-		: contract?.materialRequestId
-			? `/material-requests/${contract.materialRequestId}`
-			: null;
+	let contractTypeLabel = $derived(
+		contract?.contractType === 'expert_contract' ? 'Expert Contract' : 'Material Contract'
+	);
+	let relatedRequestUrl = $derived(
+		contract?.workRequestId
+			? `/work-requests/${contract.workRequestId}`
+			: contract?.materialRequestId
+				? `/material-requests/${contract.materialRequestId}`
+				: null
+	);
 
 	// Signature comment validation
-	$: {
+	$effect(() => {
 		// Remove leading spaces
 		if (signatureComment && signatureComment !== signatureComment.trimStart()) {
 			signatureComment = signatureComment.trimStart();
@@ -655,10 +652,10 @@
 		} else {
 			isSignatureCommentValid = true;
 		}
-	}
+	});
 
 	// Revision comment validation
-	$: {
+	$effect(() => {
 		// Remove leading spaces
 		if (revisionComment && revisionComment !== revisionComment.trimStart()) {
 			revisionComment = revisionComment.trimStart();
@@ -671,7 +668,7 @@
 		} else {
 			isRevisionCommentValid = true;
 		}
-	}
+	});
 </script>
 
 <svelte:head>
@@ -718,7 +715,7 @@
 			<h2 class="mb-3 text-2xl font-bold text-red-300">Unable to Load Contract</h2>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				on:click={() => goto('/contracts')}
+				onclick={() => goto('/contracts')}
 				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				← Back to Contracts
@@ -1048,7 +1045,7 @@
 					{currentUser}
 					{customerProfile}
 					{expertSupplierProfile}
-					on:addComment={handleAddComment}
+					onAddComment={handleAddComment}
 				/>
 			</div>
 
@@ -1184,7 +1181,7 @@
 										: 'Supplier'}, you can sign this contract. Please review all details carefully.
 							</p>
 							<button
-								on:click={openSignatureModal}
+								onclick={openSignatureModal}
 								disabled={isSigning}
 								class="w-full rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-emerald-600 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-slate-500"
 							>
@@ -1232,7 +1229,7 @@
 								changes are made.
 							</p>
 							<button
-								on:click={openRevisionModal}
+								onclick={openRevisionModal}
 								disabled={isSubmittingRevision}
 								class="w-full rounded-xl bg-orange-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-orange-600 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-slate-500"
 							>
@@ -1351,7 +1348,7 @@
 		<!-- Back Button -->
 		<div class="text-center">
 			<button
-				on:click={() => goto('/contracts')}
+				onclick={() => goto('/contracts')}
 				class="inline-flex items-center gap-2 rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1392,7 +1389,7 @@
 				not exist.
 			</p>
 			<button
-				on:click={() => goto('/contracts')}
+				onclick={() => goto('/contracts')}
 				class="rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white hover:bg-emerald-600"
 			>
 				← Back to Contracts
@@ -1405,8 +1402,8 @@
 {#if showSignatureModal}
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm"
-		on:click|self={closeSignatureModal}
-		on:keydown|self={(e) => e.key === 'Escape' && closeSignatureModal()}
+		onclick={(e) => e.target === e.currentTarget && closeSignatureModal()}
+		onkeydown={(e) => e.key === 'Escape' && closeSignatureModal()}
 		role="button"
 		tabindex="0"
 		aria-label="Close modal"
@@ -1421,7 +1418,7 @@
 				</div>
 				<button
 					aria-label="Close modal"
-					on:click={closeSignatureModal}
+					onclick={closeSignatureModal}
 					class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1435,7 +1432,13 @@
 				</button>
 			</div>
 
-			<form on:submit|preventDefault={handleSignContract} class="space-y-4">
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleSignContract();
+				}}
+				class="space-y-4"
+			>
 				<!-- Signature Comment -->
 				<div>
 					<label for="signature-comment" class="mb-2 block text-sm font-medium text-slate-400">
@@ -1452,7 +1455,7 @@
 
 				<!-- Signature File Attachments -->
 				<div>
-					<label class="mb-2 block text-sm font-medium text-slate-400">
+					<label for="file-upload" class="mb-2 block text-sm font-medium text-slate-400">
 						Attachments (Optional)
 					</label>
 					<FileUpload
@@ -1480,7 +1483,7 @@
 				<div class="flex justify-end gap-3 pt-4">
 					<button
 						type="button"
-						on:click={closeSignatureModal}
+						onclick={closeSignatureModal}
 						class="rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500"
 					>
 						Cancel
@@ -1502,8 +1505,8 @@
 {#if showRevisionModal}
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm"
-		on:click|self={closeRevisionModal}
-		on:keydown|self={(e) => e.key === 'Escape' && closeRevisionModal()}
+		onclick={(e) => e.target === e.currentTarget && closeRevisionModal()}
+		onkeydown={(e) => e.key === 'Escape' && closeRevisionModal()}
 		role="button"
 		tabindex="0"
 		aria-label="Close modal"
@@ -1518,7 +1521,7 @@
 				</div>
 				<button
 					aria-label="Close modal"
-					on:click={closeRevisionModal}
+					onclick={closeRevisionModal}
 					class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1532,7 +1535,13 @@
 				</button>
 			</div>
 
-			<form on:submit|preventDefault={handleRevisionRequest} class="space-y-4">
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleRevisionRequest();
+				}}
+				class="space-y-4"
+			>
 				<!-- Revision Comment -->
 				<div>
 					<label for="revision-comment" class="mb-2 block text-sm font-medium text-slate-400">
@@ -1550,7 +1559,7 @@
 
 				<!-- Revision File Attachments -->
 				<div>
-					<label class="mb-2 block text-sm font-medium text-slate-400">
+					<label for="file-upload" class="mb-2 block text-sm font-medium text-slate-400">
 						Attachments (Optional)
 					</label>
 					<FileUpload
@@ -1578,7 +1587,7 @@
 				<div class="flex justify-end gap-3 pt-4">
 					<button
 						type="button"
-						on:click={closeRevisionModal}
+						onclick={closeRevisionModal}
 						class="rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500"
 					>
 						Cancel

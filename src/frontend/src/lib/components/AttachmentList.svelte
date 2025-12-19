@@ -9,7 +9,11 @@
 		size: number;
 	}
 
-	export let attachments: Attachment[] = [];
+	interface Props {
+		attachments?: Attachment[];
+	}
+
+	let { attachments = [] }: Props = $props();
 
 	/**
 	 * Determines an appropriate icon for a file based on its MIME type or name.
@@ -149,7 +153,7 @@
 					>
 						<!-- File Icon and Type Badge -->
 						<div class="flex items-start gap-4">
-							<div class="flex-shrink-0">
+							<div class="shrink-0">
 								{#if shouldShowThumbnail(attachment.fileType, attachment.fileName)}
 									<!-- Image Thumbnail -->
 									<div class="h-12 w-12 overflow-hidden rounded-xl ring-1 ring-slate-600/50">
@@ -158,7 +162,7 @@
 											alt={attachment.fileName}
 											class="h-full w-full object-cover"
 											loading="lazy"
-											on:error={(e) => {
+											onerror={(e) => {
 												// Fallback to icon if image fails to load
 												const img = e.target as HTMLImageElement;
 												if (img) {
@@ -224,7 +228,7 @@
 					>
 						<!-- File Icon and Type Badge -->
 						<div class="flex items-start gap-4">
-							<div class="flex-shrink-0">
+							<div class="shrink-0">
 								<!-- Regular File Icon -->
 								<div
 									class="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-700/50 text-2xl ring-1 ring-slate-600/50"

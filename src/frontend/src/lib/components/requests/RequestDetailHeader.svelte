@@ -1,17 +1,19 @@
 <!-- src/frontend/src/lib/components/requests/RequestDetailHeader.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-	import type { WorkRequest, MaterialRequest } from '$lib/types';
+	import type { WorkRequest, MaterialRequest, Contract } from '$lib/types';
 
-	export let request: WorkRequest | MaterialRequest;
-	export let requestType: 'work' | 'material';
-	export let contractInfo: any = null;
-	export let canEdit: boolean = false;
+	interface Props {
+		request: WorkRequest | MaterialRequest;
+		requestType: 'work' | 'material';
+		contractInfo?: Contract;
+		canEdit?: boolean;
+		onEdit?: () => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let { request, requestType, contractInfo, canEdit = false, onEdit }: Props = $props();
 
 	function handleEdit() {
-		dispatch('edit');
+		onEdit?.();
 	}
 
 	function formatDate(dateString: string) {
@@ -43,9 +45,11 @@
 		return classes[status] || 'bg-slate-500/20 text-slate-300 border-slate-500/50';
 	}
 
-	$: isWorkRequest = requestType === 'work';
-	$: isMaterialRequest = requestType === 'material';
-	$: linkedWorkRequest = isMaterialRequest && (request as MaterialRequest).linkedWorkRequestId;
+	let isWorkRequest = $derived(requestType === 'work');
+	let isMaterialRequest = $derived(requestType === 'material');
+	let linkedWorkRequest = $derived(
+		isMaterialRequest && (request as MaterialRequest).linkedWorkRequestId
+	);
 </script>
 
 <header
@@ -169,7 +173,7 @@
 			<div class="flex items-center gap-3">
 				{#if canEdit}
 					<button
-						on:click={handleEdit}
+						onclick={handleEdit}
 						class="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/30"
 					>
 						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

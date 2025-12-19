@@ -1,29 +1,31 @@
-<!-- gefifi-2/src/frontend/src/lib/components/chat/ImageModal.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-
-	const dispatch = createEventDispatcher();
-
-	// --- PROPS ---
-	export let show: boolean = false;
-	export let imageSrc: string = '';
-
-	// --- INTERNAL STATE ---
-	let imageScale = 1;
-	let imagePosition = { x: 0, y: 0 };
-	let isDragging = false;
-	let dragStart = { x: 0, y: 0 };
-	let imageElement: HTMLImageElement;
-
-	// Reset state when modal opens
-	$: if (show) {
-		imageScale = 1;
-		imagePosition = { x: 0, y: 0 };
-		isDragging = false;
+	interface Props {
+		// --- PROPS ---
+		show?: boolean;
+		imageSrc?: string;
+		onclose?: () => void;
 	}
 
+	let { show = false, imageSrc = '', onclose }: Props = $props();
+
+	// --- INTERNAL STATE ---
+	let imageScale = $state(1);
+	let imagePosition = $state({ x: 0, y: 0 });
+	let isDragging = $state(false);
+	let dragStart = { x: 0, y: 0 };
+	let imageElement: HTMLImageElement | undefined = $state();
+
+	// Reset state when modal opens
+	$effect(() => {
+		if (show) {
+			imageScale = 1;
+			imagePosition = { x: 0, y: 0 };
+			isDragging = false;
+		}
+	});
+
 	function close() {
-		dispatch('close');
+		onclose?.();
 	}
 
 	function handleWheel(event: WheelEvent) {
@@ -132,13 +134,13 @@
 	<div
 		class="image-modal-container fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
 		class:dragging={isDragging}
-		on:click={close}
-		on:keydown={(e) => e.key === 'Escape' && close()}
-		on:wheel={handleWheel}
-		on:mousemove={handleMouseMove}
-		on:mouseup={handleMouseUp}
-		on:touchmove={handleTouchMove}
-		on:touchend={handleTouchEnd}
+		onclick={close}
+		onkeydown={(e) => e.key === 'Escape' && close()}
+		onwheel={handleWheel}
+		onmousemove={handleMouseMove}
+		onmouseup={handleMouseUp}
+		ontouchmove={handleTouchMove}
+		ontouchend={handleTouchEnd}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
@@ -148,8 +150,8 @@
 			class="relative flex h-full w-full items-center justify-center overflow-hidden p-4"
 			role="button"
 			tabindex="0"
-			on:click={(e) => e.stopPropagation()}
-			on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.key === 'Enter' && e.stopPropagation()}
 		>
 			<!-- Image with zoom and pan -->
 			<div
@@ -161,9 +163,9 @@
 				<button
 					class="relative rounded-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-black focus:outline-none"
 					style="cursor: {imageScale > 1 ? 'grab' : 'zoom-in'};"
-					on:mousedown={handleMouseDown}
-					on:touchstart={handleTouchStart}
-					on:keydown={(e) => e.key === 'Enter' && e.preventDefault()}
+					onmousedown={handleMouseDown}
+					ontouchstart={handleTouchStart}
+					onkeydown={(e) => e.key === 'Enter' && e.preventDefault()}
 					aria-label="Image viewer - scroll to zoom, drag to pan"
 				>
 					<img
@@ -171,7 +173,7 @@
 						src={imageSrc}
 						alt=""
 						class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
-						on:load={fitToScreen}
+						onload={fitToScreen}
 					/>
 				</button>
 			</div>
@@ -181,7 +183,7 @@
 		<div class="absolute top-4 right-4 flex gap-2">
 			<!-- Fit to Screen Button -->
 			<button
-				on:click={(e) => {
+				onclick={(e) => {
 					e.stopPropagation();
 					fitToScreen();
 				}}
@@ -200,7 +202,7 @@
 
 			<!-- Reset Zoom Button -->
 			<button
-				on:click={(e) => {
+				onclick={(e) => {
 					e.stopPropagation();
 					resetZoom();
 				}}
@@ -219,7 +221,7 @@
 
 			<!-- Download Button -->
 			<button
-				on:click={(e) => {
+				onclick={(e) => {
 					e.stopPropagation();
 					downloadImage();
 				}}
@@ -247,7 +249,7 @@
 
 			<!-- Close Button -->
 			<button
-				on:click={(e) => {
+				onclick={(e) => {
 					e.stopPropagation();
 					close();
 				}}

@@ -1,25 +1,36 @@
 <!-- gefifi-2/src/frontend/src/lib/components/contracts/ContractModal.svelte -->
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+	import type { Contract } from '$lib/types'; // Import Contract type
+	import { onMount, onDestroy } from 'svelte';
 	import ContractForm from './ContractForm.svelte';
 
-	export let show: boolean = false;
-	export let workRequestId: string | undefined = undefined;
-	export let materialRequestId: string | undefined = undefined;
-	export let customerId: string;
-	export let expertSupplierId: string;
+	interface Props {
+		show?: boolean;
+		workRequestId?: string | undefined;
+		materialRequestId?: string | undefined;
+		customerId: string;
+		expertSupplierId: string;
+		onClose?: () => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let {
+		show = $bindable(false),
+		workRequestId = undefined,
+		materialRequestId = undefined,
+		customerId,
+		expertSupplierId,
+		onClose
+	}: Props = $props();
 
 	function closeModal() {
 		show = false;
-		dispatch('close');
+		onClose?.();
 	}
 
-	function handleContractCreated(event: CustomEvent) {
+	function handleContractCreated(contract: Contract) {
 		// Optionally, you might want to automatically close the modal after contract creation
 		// or display a success message within the modal before closing.
-		console.log('ContractModal: Contract created event received', event.detail);
+		console.log('ContractModal: Contract created event received', contract);
 		// For now, let's keep the modal open so the user can see the success message in the form.
 		// If you want to auto-close:
 		// setTimeout(() => {
@@ -46,7 +57,9 @@
 {#if show}
 	<div
 		class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm"
-		on:click|self={closeModal}
+		onclick={(e) => {
+			if (e.target === e.currentTarget) closeModal();
+		}}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="contract-modal-title"
@@ -60,7 +73,7 @@
 					Create Contract
 				</h3>
 				<button
-					on:click={closeModal}
+					onclick={closeModal}
 					class="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
 					aria-label="Close contract creation modal"
 				>
@@ -83,7 +96,7 @@
 					{materialRequestId}
 					{customerId}
 					{expertSupplierId}
-					on:contractCreated={handleContractCreated}
+					onContractCreated={handleContractCreated}
 				/>
 			</div>
 		</div>

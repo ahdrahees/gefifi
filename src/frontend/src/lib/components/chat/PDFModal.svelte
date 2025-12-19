@@ -1,30 +1,21 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/PDFModal.svelte -->
 <script lang="ts">
-	import { createEventDispatcher, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 
-	const dispatch = createEventDispatcher();
+	interface Props {
+		// --- PROPS ---
+		show?: boolean;
+		pdfSrc?: string;
+		fileName?: string;
+		onclose?: () => void;
+	}
 
-	// --- PROPS ---
-	export let show: boolean = false;
-	export let pdfSrc: string = '';
-	export let fileName: string = '';
+	let { show = false, pdfSrc = '', fileName = '', onclose }: Props = $props();
 
 	// --- INTERNAL STATE ---
-	let blobUrl: string = '';
-	let isLoading: boolean = false;
-	let error: string = '';
-
-	// Load PDF as blob when shown (bypasses Content-Disposition: attachment headers)
-	$: if (show && pdfSrc) {
-		loadPdfAsBlob();
-	}
-
-	// Cleanup blob URL when modal closes
-	$: if (!show && blobUrl) {
-		URL.revokeObjectURL(blobUrl);
-		blobUrl = '';
-		error = '';
-	}
+	let blobUrl: string = $state('');
+	let isLoading: boolean = $state(false);
+	let error: string = $state('');
 
 	async function loadPdfAsBlob() {
 		isLoading = true;
@@ -48,7 +39,7 @@
 	}
 
 	function close() {
-		dispatch('close');
+		onclose?.();
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -57,37 +48,23 @@
 		}
 	}
 
-	async function downloadPdf() {
-		if (!pdfSrc) return;
-
-		try {
-			const response = await fetch(pdfSrc);
-			const blob = await response.blob();
-			const url = URL.createObjectURL(blob);
-
-			const link = document.createElement('a');
-			link.href = url;
-			link.download = fileName || `document-${Date.now()}.pdf`;
-
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-
-			URL.revokeObjectURL(url);
-		} catch (err) {
-			console.error('Failed to download PDF:', err);
-		}
-	}
-
-	function openInNewTab() {
-		if (pdfSrc) {
-			window.open(pdfSrc, '_blank', 'noopener,noreferrer');
-		}
-	}
-
 	onDestroy(() => {
 		if (blobUrl) {
 			URL.revokeObjectURL(blobUrl);
+		}
+	});
+	// Load PDF as blob when shown (bypasses Content-Disposition: attachment headers)
+	$effect(() => {
+		if (show && pdfSrc) {
+			loadPdfAsBlob();
+		}
+	});
+	// Cleanup blob URL when modal closes
+	$effect(() => {
+		if (!show && blobUrl) {
+			URL.revokeObjectURL(blobUrl);
+			blobUrl = '';
+			error = '';
 		}
 	});
 </script>
@@ -95,8 +72,8 @@
 {#if show}
 	<div
 		class="pdf-modal-container fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-		on:click={close}
-		on:keydown={handleKeydown}
+		onclick={close}
+		onkeydown={handleKeydown}
 		role="dialog"
 		aria-modal="true"
 		aria-label="PDF Viewer"
@@ -106,14 +83,14 @@
 		<div
 			class="relative flex h-[90vh] w-[90vw] max-w-6xl flex-col overflow-hidden rounded-xl bg-slate-800 shadow-2xl"
 			role="document"
-			on:click|stopPropagation
-			on:keydown|stopPropagation
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
 		>
 			<!-- Header -->
 			<div class="flex items-center justify-between gap-4 border-b border-slate-700 px-4 py-3">
 				<div class="flex min-w-0 flex-1 items-center gap-3">
 					<div
-						class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-500/20 text-lg"
+						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/20 text-lg"
 					>
 						📄
 					</div>
@@ -121,7 +98,7 @@
 						{fileName || 'PDF Document'}
 					</span>
 				</div>
-				<div class="flex flex-shrink-0 items-center gap-2">
+				<div class="flex shrink-0 items-center gap-2">
 					<!-- Download Button -->
 					<!-- <button
 						on:click={downloadPdf}
@@ -149,7 +126,7 @@
 
 					<!-- Close Button -->
 					<button
-						on:click={close}
+						onclick={close}
 						class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-700 text-slate-300 transition-colors hover:bg-slate-600"
 						aria-label="Close PDF viewer"
 						title="Close"

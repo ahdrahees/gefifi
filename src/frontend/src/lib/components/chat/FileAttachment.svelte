@@ -1,13 +1,14 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	interface Props {
+		attachment: {
+			fileName: string;
+			filePath: string;
+			size: number;
+		};
+		onView?: (detail: { filePath: string; fileName: string }) => void;
+	}
 
-	export let attachment: {
-		fileName: string;
-		filePath: string;
-		size: number;
-	};
-
-	const dispatch = createEventDispatcher();
+	let { attachment, onView }: Props = $props();
 
 	function getFileIcon(fileName: string): string {
 		const extension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -34,7 +35,7 @@
 	}
 
 	function handleView() {
-		dispatch('view', { filePath: attachment.filePath, fileName: attachment.fileName });
+		onView?.({ filePath: attachment.filePath, fileName: attachment.fileName });
 	}
 </script>
 
@@ -43,7 +44,7 @@
 >
 	<!-- Icon -->
 	<div
-		class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-700/50 text-xl transition-transform group-hover:scale-105"
+		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-700/50 text-xl transition-transform group-hover:scale-105"
 	>
 		{getFileIcon(attachment.fileName)}
 	</div>
@@ -60,10 +61,10 @@
 	</div>
 
 	<!-- Action -->
-	<div class="flex-shrink-0">
+	<div class="shrink-0">
 		{#if isViewableFile(attachment.fileName)}
 			<button
-				on:click={handleView}
+				onclick={handleView}
 				class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 transition-all hover:bg-emerald-500 hover:text-white focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
 				aria-label="View file"
 				title="View"

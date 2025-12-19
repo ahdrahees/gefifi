@@ -1,33 +1,34 @@
 <!-- src/frontend/src/routes/(app)/customer/edit-request/[id]/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
-	import apiClient from '$lib/api';
+	import apiClient, { type WorkRequestResponse } from '$lib/api';
 	import type { WorkRequest, MaterialRequest } from '$lib/types';
 	import EditWorkRequestForm from '$lib/components/forms/EditWorkRequestForm.svelte';
 	import EditMaterialRequestForm from '$lib/components/forms/EditMaterialRequestForm.svelte';
 
-	let currentUser: AuthUser | null = null;
-	let request: (WorkRequest | MaterialRequest) | null = null;
-	let requestType: 'work' | 'material' | null = null;
-	let isLoading = true;
-	let errorMessage = '';
+	let currentUser = $state<AuthUser | null>(null);
+	let request = $state<(WorkRequest | MaterialRequest) | null>(null);
+	let requestType: 'work' | 'material' | null = $state(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
 	});
 
-	$: canEdit =
+	let canEdit = $derived(
 		currentUser &&
-		request &&
-		currentUser.id === request.customerId &&
-		request.status === 'open' &&
-		currentUser.userType === 'customer';
+			request &&
+			currentUser.id === request.customerId &&
+			request.status === 'open' &&
+			currentUser.userType === 'customer'
+	);
 
 	onMount(async () => {
-		const requestId = $page.params.id;
+		const requestId = page.params.id;
 		if (!requestId) {
 			errorMessage = 'Request ID not found in URL.';
 			isLoading = false;
@@ -56,30 +57,28 @@
 		errorMessage = '';
 
 		try {
-			let workRequestError = null;
-			let materialRequestError = null;
-
 			// Try to fetch as work request first
 			try {
 				console.log('Trying to fetch as work request:', requestId);
-				const workRequest = await apiClient.getWorkRequestById(requestId);
+				const workRequest = (await apiClient.getWorkRequestById(requestId)) as WorkRequest;
 				request = workRequest;
 				requestType = 'work';
 				console.log('Successfully fetched work request:', workRequest);
 			} catch (error: any) {
 				console.log('Work request fetch failed:', error.data?.message || error.message);
-				workRequestError = error;
 
 				// If work request fails, try material request
 				try {
 					console.log('Trying to fetch as material request:', requestId);
-					const materialRequest = await apiClient.getMaterialRequestById(requestId);
+					const materialRequest = (await apiClient.getMaterialRequestById(
+						requestId
+					)) as MaterialRequest;
 					request = materialRequest;
 					requestType = 'material';
 					console.log('Successfully fetched material request:', materialRequest);
 				} catch (error: any) {
 					console.log('Material request fetch failed:', error.data?.message || error.message);
-					materialRequestError = error;
+
 					// Both requests failed
 					throw new Error(
 						'Request not found. It may have been deleted or you may not have access to it.'
@@ -114,9 +113,9 @@
 					errorMessage = `This request cannot be edited because its status is "${request.status}". Only open requests can be edited.`;
 				}
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to fetch request details:', error);
-			errorMessage = error.message || 'Could not load request details.';
+			errorMessage = error instanceof Error ? error.message : 'Could not load request details.';
 		} finally {
 			isLoading = false;
 		}
@@ -136,7 +135,7 @@
 				await apiClient.updateMaterialRequest(request.id, requestData);
 
 				// Handle file uploads for material requests
-				if (newFiles && newFiles.length > 0) {
+				if (newFiles && newFiles?.length > 0) {
 					const formData = new FormData();
 					newFiles.forEach((file: File) => {
 						formData.append('files', file);
@@ -144,7 +143,7 @@
 
 					try {
 						await apiClient.uploadEntityAttachments('material-requests', request.id, formData);
-					} catch (fileError: any) {
+					} catch (fileError: unknown) {
 						console.error('Failed to upload new files:', fileError);
 						// Continue anyway since the request was updated successfully
 					}
@@ -156,7 +155,7 @@
 
 			// Redirect back to request details
 			goto(`/my-requests/${request.id}`);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to update request:', error);
 			// Error will be handled by the form component
 		}
@@ -215,7 +214,7 @@
 			<h2 class="mb-3 text-2xl font-bold text-red-300">Cannot Edit Request</h2>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				on:click={handleCancel}
+				onclick={handleCancel}
 				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				← Back to Requests
@@ -252,7 +251,7 @@
 				</div>
 
 				<button
-					on:click={handleCancel}
+					onclick={handleCancel}
 					class="flex items-center gap-2 rounded-lg border border-slate-600/50 bg-slate-700/40 px-4 py-2 text-slate-300 transition-colors hover:bg-slate-600/40"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -271,15 +270,15 @@
 		<!-- Edit Form -->
 		{#if requestType === 'work'}
 			<EditWorkRequestForm
-				workRequest={request}
-				on:save={(e) => handleSave(e.detail)}
-				on:cancel={handleCancel}
+				workRequest={request as WorkRequest}
+				onSave={(detail) => handleSave(detail)}
+				onCancel={handleCancel}
 			/>
 		{:else}
 			<EditMaterialRequestForm
-				materialRequest={request}
-				on:save={(e) => handleSave(e.detail)}
-				on:cancel={handleCancel}
+				materialRequest={request as MaterialRequest}
+				onSave={(detail) => handleSave(detail)}
+				onCancel={handleCancel}
 			/>
 		{/if}
 	{/if}

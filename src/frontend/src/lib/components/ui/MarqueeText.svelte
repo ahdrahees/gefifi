@@ -2,26 +2,37 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 
-	export let text: string = '';
-	export let maxWidth: string = '120px';
-	export let className: string = '';
-	export let responsiveMaxWidth: string = '';
-	export let disabled: boolean = false;
-	export let speed: number = 50; // pixels per second
+	interface Props {
+		text?: string;
+		maxWidth?: string;
+		className?: string;
+		responsiveMaxWidth?: string;
+		disabled?: boolean;
+		speed?: number; // pixels per second
+	}
 
-	let textElement: HTMLSpanElement;
-	let containerElement: HTMLSpanElement;
-	let shouldMarquee: boolean = false;
-	let animationDuration: string = '8s';
+	let {
+		text = '',
+		maxWidth = '120px',
+		className = '',
+		responsiveMaxWidth = '',
+		disabled = false,
+		speed = 50
+	}: Props = $props();
+
+	let textElement: HTMLSpanElement | undefined = $state();
+	let containerElement: HTMLSpanElement | undefined = $state();
+	let shouldMarquee: boolean = $state(false);
+	let animationDuration: string = $state('8s');
 	let isChecking: boolean = false;
 
 	// Performance optimizations
-	$: useResponsive = responsiveMaxWidth.trim() !== '';
-	$: finalMaxWidth = useResponsive ? '' : maxWidth;
-	$: maxWidthClasses = useResponsive ? responsiveMaxWidth : '';
+	let useResponsive = $derived(responsiveMaxWidth.trim() !== '');
+	let finalMaxWidth = $derived(useResponsive ? '' : maxWidth);
+	let maxWidthClasses = $derived(useResponsive ? responsiveMaxWidth : '');
 
 	// Debounced resize handler
-	let resizeTimeout: number | NodeJS.Timeout;
+	let resizeTimeout: number | NodeJS.Timeout | undefined;
 	const debounceResize = () => {
 		clearTimeout(resizeTimeout);
 		resizeTimeout = setTimeout(checkOverflow, 100);
@@ -87,7 +98,7 @@
 	}
 
 	// Intersection Observer for performance
-	let isVisible: boolean = true;
+	let isVisible: boolean = $state(true);
 	let intersectionObserver: IntersectionObserver;
 
 	onMount(() => {
@@ -129,15 +140,19 @@
 	});
 
 	// Reactive check when text changes - but with debounce to prevent juggling
-	let checkTimeout: number | NodeJS.Timeout;
-	$: if (text && isVisible && containerElement) {
-		clearTimeout(checkTimeout);
-		checkTimeout = setTimeout(checkOverflow, 50); // Small delay to let DOM settle
-	}
+	let checkTimeout: number | NodeJS.Timeout | undefined = $state();
+	$effect(() => {
+		if (text && isVisible && containerElement) {
+			clearTimeout(checkTimeout);
+			checkTimeout = setTimeout(checkOverflow, 50); // Small delay to let DOM settle
+		}
+	});
 
-	$: if (disabled) {
-		shouldMarquee = false;
-	}
+	$effect(() => {
+		if (disabled) {
+			shouldMarquee = false;
+		}
+	});
 </script>
 
 <span

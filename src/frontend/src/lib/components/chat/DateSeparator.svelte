@@ -1,6 +1,10 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/DateSeparator.svelte -->
 <script lang="ts">
-	export let timestamp: string;
+	interface Props {
+		timestamp: string;
+	}
+
+	let { timestamp }: Props = $props();
 
 	const formatDateSeparator = (ts: string): string => {
 		const date = new Date(ts);

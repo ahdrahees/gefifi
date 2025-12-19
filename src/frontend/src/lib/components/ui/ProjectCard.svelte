@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 
-	// This will be a complex object aggregated by the backend
-	export let project: any;
+	
+	interface Props {
+		// This will be a complex object aggregated by the backend
+		project: any;
+	}
+
+	let { project }: Props = $props();
 
 	function getStatusColor(status: string) {
 		switch (status) {
@@ -60,7 +65,7 @@
 						</div>
 					</div>
 					<button
-						on:click={() => goto(`/contracts/${project.workContract.id}`)}
+						onclick={() => goto(`/contracts/${project.workContract.id}`)}
 						class="mt-4 w-full rounded-md bg-sky-600 py-1.5 text-xs font-medium text-white hover:bg-sky-500"
 						>View Work Details</button
 					>
@@ -90,7 +95,7 @@
 						</div>
 					</div>
 					<button
-						on:click={() => goto(`/contracts/${project.materialContract.id}`)}
+						onclick={() => goto(`/contracts/${project.materialContract.id}`)}
 						class="mt-4 w-full rounded-md bg-amber-600 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
 						>View Material Details</button
 					>

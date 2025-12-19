@@ -1,11 +1,14 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { slide } from 'svelte/transition';
 
 	// --- PROPS ---
-	let { isSending = false } = $props();
-
-	// --- CONSTANTS ---
+	let {
+		isSending = false,
+		onSubmit
+	}: {
+		isSending?: boolean;
+		onSubmit?: (detail: { message: string; files: File[] }) => void;
+	} = $props();
 	const MAX_FILES = 10;
 	// Allowed file extensions
 	const ALLOWED_EXTENSIONS = [
@@ -26,13 +29,9 @@
 
 	// --- INTERNAL STATE ---
 	let value = $state('');
-	let textarea: HTMLTextAreaElement;
-	let fileInput: HTMLInputElement;
+	let textarea: HTMLTextAreaElement | undefined = $state();
+	let fileInput: HTMLInputElement | undefined = $state();
 	let selectedFiles: File[] = $state([]);
-
-	const dispatch = createEventDispatcher<{
-		submit: { message: string; files: File[] };
-	}>();
 
 	// --- HELPERS ---
 	function getFileIcon(fileName: string): string {
@@ -95,7 +94,7 @@
 	function handleSubmit() {
 		if ((!value.trim() && selectedFiles.length === 0) || isSending) return;
 
-		dispatch('submit', {
+		onSubmit?.({
 			message: value,
 			files: selectedFiles
 		});
@@ -131,7 +130,7 @@
 			<div class="scrollbar-hide mb-2 flex gap-2 overflow-x-auto px-1 py-1" transition:slide>
 				{#each selectedFiles as file, i (file.name)}
 					<div
-						class="group relative flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-visible rounded-lg border border-slate-600 bg-slate-700"
+						class="group relative flex h-16 w-16 shrink-0 items-center justify-center overflow-visible rounded-lg border border-slate-600 bg-slate-700"
 					>
 						{#if shouldShowThumbnail(file)}
 							<img
@@ -194,7 +193,7 @@
 					accept={ALLOWED_EXTENSIONS.map((e) => '.' + e).join(',')}
 				/>
 				<button
-					onclick={() => fileInput.click()}
+					onclick={() => fileInput?.click()}
 					disabled={isSending}
 					class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-700 hover:text-slate-200"
 					aria-label="Add files"

@@ -1,13 +1,10 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/MessageList.svelte -->
 <script lang="ts">
-	import { tick, createEventDispatcher } from 'svelte';
+	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { AuthUser, Message, QuoteMessage } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
-
-	// Create event dispatcher for parent communication
-	const dispatch = createEventDispatcher();
 
 	// Child Components
 	import AudioMessageView from '$lib/components/chat/AudioMessageView.svelte';
@@ -19,20 +16,36 @@
 	import PDFModal from '$lib/components/chat/PDFModal.svelte';
 	import FileAttachment from '$lib/components/chat/FileAttachment.svelte';
 
-	// --- PROPS ---
-	export let isLoading: boolean = true;
-	export let errorMessage: string = '';
-	export let groupedMessages: Array<{ type: 'date' | 'message'; id: string; data: any }> = [];
-	export let currentUser: AuthUser | null = null;
-	export const chatId: string = '';
-	export let isLoadingOlder: boolean = false;
-	export let hasMoreMessages: boolean = true;
-	export let infiniteScrollEnabled: boolean = true;
-	export let typingUsers: Array<{ userId: string; userName: string }> = [];
+	interface Props {
+		// --- PROPS ---
+		chatId?: string;
+		isLoading?: boolean;
+		errorMessage?: string;
+		groupedMessages?: Array<{ type: 'date' | 'message'; id: string; data: JsonObject }>;
+		currentUser?: AuthUser | null;
+		isLoadingOlder?: boolean;
+		hasMoreMessages?: boolean;
+		infiniteScrollEnabled?: boolean;
+		typingUsers?: Array<{ userId: string; userName: string }>;
+		onLoadOlder?: (detai: { lastMessage: Message }) => void;
+	}
+
+	let {
+		chatId,
+		isLoading = true,
+		errorMessage = '',
+		groupedMessages = [],
+		currentUser = null,
+		isLoadingOlder = false,
+		hasMoreMessages = true,
+		infiniteScrollEnabled = true,
+		typingUsers = [],
+		onLoadOlder
+	}: Props = $props();
 
 	// --- INTERNAL STATE & BINDINGS ---
-	let messagesContainer: HTMLElement;
-	let isUserNearBottom: boolean = true;
+	let messagesContainer: HTMLElement | undefined = $state();
+	let isUserNearBottom: boolean = $state(true);
 	let previousScrollHeight: number = 0;
 	let hasUserScrolled: boolean = false;
 
@@ -47,8 +60,8 @@
 	}
 
 	// --- IMAGE MODAL STATE ---
-	let showImageModal = false;
-	let modalImageSrc = '';
+	let showImageModal = $state(false);
+	let modalImageSrc = $state('');
 
 	function openImageModal(imageSrc: string) {
 		modalImageSrc = imageSrc;
@@ -61,9 +74,9 @@
 	}
 
 	// --- PDF MODAL STATE ---
-	let showPdfModal = false;
-	let modalPdfSrc = '';
-	let modalPdfFileName = '';
+	let showPdfModal = $state(false);
+	let modalPdfSrc = $state('');
+	let modalPdfFileName = $state('');
 
 	function openPdfModal(pdfSrc: string, fileName: string) {
 		modalPdfSrc = pdfSrc;
@@ -159,7 +172,7 @@
 
 	const loadOlderMessages = () => {
 		// Store current scroll height before loading
-		previousScrollHeight = messagesContainer.scrollHeight;
+		previousScrollHeight = messagesContainer?.scrollHeight ?? 0;
 
 		// Find the oldest message currently loaded (first message in the list)
 		// Since messages are displayed oldest-first, the first message is the oldest
@@ -173,8 +186,8 @@
 		// console.log('[MessageList] Oldest message:', oldestMessage?.id, oldestMessage?.timestamp);
 
 		if (oldestMessage) {
-			// Dispatch Svelte event to parent component
-			dispatch('loadOlder', { lastMessage: oldestMessage });
+			// Call callback prop
+			onLoadOlder?.({ lastMessage: oldestMessage });
 		} else {
 			console.warn('[MessageList] No oldest message found to load older messages');
 		}
@@ -220,7 +233,7 @@
 <div class="relative flex-1">
 	<div
 		bind:this={messagesContainer}
-		on:scroll={handleScroll}
+		onscroll={handleScroll}
 		class="scrollable-content absolute inset-0 overflow-y-auto p-4"
 	>
 		{#if isLoading}
@@ -251,7 +264,7 @@
 
 				{#each groupedMessages as item (item.id)}
 					{#if item.type === 'date'}
-						<DateSeparator timestamp={item.data.timestamp} />
+						<DateSeparator timestamp={item.data.timestamp as string} />
 					{:else if item.type === 'message'}
 						{@const message = item.data as Message}
 						<!-- System Message -->
@@ -295,7 +308,7 @@
 												<div class="mb-2 space-y-2">
 													{#each message.images as imageSrc (imageSrc)}
 														<button
-															on:click={() => openImageModal(imageSrc)}
+															onclick={() => openImageModal(imageSrc)}
 															class="block w-full overflow-hidden rounded-lg border border-slate-600 transition-opacity hover:opacity-90 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
 															aria-label="View full size image"
 														>
@@ -311,7 +324,7 @@
 													{#each message.attachments as attachment (attachment.filePath)}
 														<FileAttachment
 															{attachment}
-															on:view={(e) => handleViewFile(e.detail.filePath, e.detail.fileName)}
+															onView={(e) => handleViewFile(e.filePath, e.fileName)}
 														/>
 													{/each}
 												</div>
@@ -344,7 +357,7 @@
 											<button
 												class="view-request-button group flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 shadow-lg transition-all duration-200 hover:scale-105 hover:border-emerald-400/50 hover:bg-slate-700 hover:shadow-lg hover:shadow-emerald-500/20"
 												aria-label="View request details"
-												on:click={() => handleUserMessageClick(message)}
+												onclick={() => handleUserMessageClick(message)}
 											>
 												<span>View request</span>
 												<svg
@@ -383,7 +396,7 @@
 												<div class="mb-2 space-y-2">
 													{#each message.images as imageSrc (imageSrc)}
 														<button
-															on:click={() => openImageModal(imageSrc)}
+															onclick={() => openImageModal(imageSrc)}
 															class="block w-full overflow-hidden rounded-lg border border-slate-600 transition-opacity hover:opacity-90 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
 															aria-label="View full size image"
 														>
@@ -399,7 +412,7 @@
 													{#each message.attachments as attachment (attachment.filePath)}
 														<FileAttachment
 															{attachment}
-															on:view={(e) => handleViewFile(e.detail.filePath, e.detail.fileName)}
+															onView={(e) => handleViewFile(e.filePath, e.fileName)}
 														/>
 													{/each}
 												</div>
@@ -438,7 +451,7 @@
 
 	{#if !isUserNearBottom}
 		<button
-			on:click={() => scrollToBottom('smooth')}
+			onclick={() => scrollToBottom('smooth')}
 			class="absolute right-4 bottom-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-slate-600/40 text-white backdrop-blur-sm transition-transform hover:scale-110"
 			aria-label="Scroll to bottom"
 		>
@@ -453,14 +466,14 @@
 	{/if}
 
 	<!-- Image Modal -->
-	<ImageModal show={showImageModal} imageSrc={modalImageSrc} on:close={closeImageModal} />
+	<ImageModal show={showImageModal} imageSrc={modalImageSrc} onclose={closeImageModal} />
 
 	<!-- PDF Modal -->
 	<PDFModal
 		show={showPdfModal}
 		pdfSrc={modalPdfSrc}
 		fileName={modalPdfFileName}
-		on:close={closePdfModal}
+		onclose={closePdfModal}
 	/>
 </div>
 

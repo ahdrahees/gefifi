@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { authStore, type AuthUser } from './stores/auth'; // Assuming AuthUser is exported from the auth store
 import { API_BASE_URL } from './config';
-import type { Chat, Message, MessagesResponse, UserInterestResponse } from './types';
+import type { Chat, Message, MessagesResponse, UserInterestResponse, Contract } from './types';
 
 // Access VITE_API_URL (set in .env file at the root of the SvelteKit project, e.g., gefifi-2/frontend/.env or gefifi-2/.env)
 
@@ -140,7 +140,7 @@ export interface WorkRequestResponse {
 	[key: string]: any;
 }
 
-interface MaterialRequestData {
+export interface MaterialRequestData {
 	title: string;
 	description: string;
 	deliveryLocation: string;
@@ -160,7 +160,7 @@ export interface MaterialRequestResponse {
 	[key: string]: any;
 }
 
-interface UserInterestData {
+export interface UserInterestData {
 	targetUserId: string;
 	workRequestId?: string;
 	materialRequestId?: string;
@@ -187,7 +187,7 @@ interface ChatMessageData {
 	messageId?: string;
 }
 
-interface ContractData {
+export interface ContractData {
 	// Required fields
 	customerId: string;
 	expertSupplierId: string;
@@ -214,11 +214,26 @@ interface ContractData {
 	termsAndConditions?: string;
 	warrantyPeriod?: string;
 	cancellationPolicy?: string;
+
+	// Attachment Management (for updates)
+	attachmentManagement?: {
+		keepExisting: Array<{
+			fileName: string;
+			filePath: string;
+			fileType: string;
+			size: number;
+		}>;
+		removeExisting: string[];
+		hasNewAttachments: boolean;
+		newAttachments?: Array<{
+			fileName: string;
+			filePath: string;
+			fileType: string;
+			size: number;
+		}>;
+	};
 }
-interface ContractResponse {
-	/* Define based on backend Contract interface */ id: string;
-	[key: string]: any;
-}
+type ContractResponse = Contract;
 type ContractStatusUpdatePayload = {
 	status:
 		| 'draft'

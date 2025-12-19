@@ -1,7 +1,7 @@
 <!-- src/frontend/src/routes/(app)/my-requests/[id]/quote/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { authStore } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
 	import type { WorkRequest, MaterialRequest, AuthUser, Quote } from '$lib/types';
@@ -10,35 +10,38 @@
 	import QuoteSubmissionForm from '$lib/components/quotes/QuoteSubmissionForm.svelte';
 	import GeneralModal from '$lib/components/ui/GeneralModal.svelte';
 	import { goto } from '$app/navigation';
+	import { assertNonNullish } from '$lib/utils/assert';
 
 	// Get request ID from URL
-	$: requestId = $page.params.id;
+	let requestId = $derived(page.params.id);
 
 	// State
-	let request: WorkRequest | MaterialRequest | null = null;
-	let requestType: 'work' | 'material' = 'work';
-	let quotes: Quote[] = [];
-	let currentUser: AuthUser | null = $authStore.user;
-	let isLoading = true;
-	let errorMessage = '';
-	let showQuoteSubmissionModal = false;
-	let showQuoteDetailModal = false;
-	let selectedQuote: Quote | null = null;
-	let revisionQuoteId: string | undefined = undefined;
-	let revisionQuote: Quote | undefined = undefined;
-	let availableRequests: (WorkRequest | MaterialRequest)[] = [];
+	let request: WorkRequest | MaterialRequest | null = $state(null);
+	let requestType: 'work' | 'material' = $state('work');
+	let quotes: Quote[] = $state([]);
+	let currentUser: AuthUser | null = $derived($authStore.user);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let showQuoteSubmissionModal = $state(false);
+	let showQuoteDetailModal = $state(false);
+	let selectedQuote: Quote | null = $state(null);
+	let revisionQuoteId: string | undefined = $state(undefined);
+	let revisionQuote: Quote | undefined = $state(undefined);
+	let availableRequests: (WorkRequest | MaterialRequest)[] = $state([]);
 
 	// Computed
-	$: isExpertOrSupplier =
-		currentUser?.userType === 'expert' || currentUser?.userType === 'supplier';
-	$: canSubmitQuote =
+	let isExpertOrSupplier = $derived(
+		currentUser?.userType === 'expert' || currentUser?.userType === 'supplier'
+	);
+	let canSubmitQuote = $derived(
 		isExpertOrSupplier &&
-		request &&
-		(requestType === 'work'
-			? (request as WorkRequest).interestedExperts?.includes(currentUser?.id || '') ||
-				(request as WorkRequest).invitedExperts?.includes(currentUser?.id || '')
-			: (request as MaterialRequest).interestedSuppliers?.includes(currentUser?.id || '') ||
-				(request as MaterialRequest).invitedSuppliers?.includes(currentUser?.id || ''));
+			request &&
+			(requestType === 'work'
+				? (request as WorkRequest).interestedExperts?.includes(currentUser?.id || '') ||
+					(request as WorkRequest).invitedExperts?.includes(currentUser?.id || '')
+				: (request as MaterialRequest).interestedSuppliers?.includes(currentUser?.id || '') ||
+					(request as MaterialRequest).invitedSuppliers?.includes(currentUser?.id || ''))
+	);
 
 	onMount(() => {
 		fetchRequestDetails();
@@ -52,27 +55,32 @@
 		errorMessage = '';
 
 		try {
+			assertNonNullish(requestId, 'Request ID is required');
 			// Try to fetch as work request first
 			try {
-				const workRequest = await apiClient.getWorkRequestById(requestId);
-				request = workRequest as any;
+				const workRequest = (await apiClient.getWorkRequestById(requestId)) as WorkRequest;
+				request = workRequest;
 				requestType = 'work';
 			} catch (workError) {
 				// If not found, try as material request
+				console.error('Error fetching work request:', workError);
 				try {
-					const materialRequest = await apiClient.getMaterialRequestById(requestId);
-					request = materialRequest as any;
+					const materialRequest = (await apiClient.getMaterialRequestById(
+						requestId
+					)) as MaterialRequest;
+					request = materialRequest;
 					requestType = 'material';
 				} catch (materialError) {
+					console.error('Error fetching material request:', materialError);
 					throw new Error('Request not found');
 				}
 			}
 
 			// Fetch quotes for this request
 			await fetchQuotes();
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error fetching request details:', error);
-			errorMessage = error.data?.message || 'Failed to load request details';
+			errorMessage = error instanceof Error ? error.message : 'Failed to load request details';
 		} finally {
 			isLoading = false;
 		}
@@ -84,9 +92,9 @@
 		try {
 			const response = await apiClient.getQuotesForRequest(request.id, requestType);
 			quotes = response.quotes as Quote[];
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error fetching quotes:', error);
-			errorMessage = error.data?.message || 'Failed to load quotes';
+			errorMessage = error instanceof Error ? error.message : 'Failed to load quotes';
 		}
 	}
 
@@ -94,12 +102,12 @@
 		if (!currentUser) return;
 
 		try {
-			const [workRequests, materialRequests] = await Promise.all([
+			const [workRequests, materialRequests] = (await Promise.all([
 				apiClient.getWorkRequestsByCustomerId(currentUser.id),
 				apiClient.getMaterialRequestsByCustomerId(currentUser.id)
-			]);
+			])) as [WorkRequest[], MaterialRequest[]];
 
-			availableRequests = [...(workRequests as any), ...(materialRequests as any)];
+			availableRequests = [...workRequests, ...materialRequests];
 		} catch (error) {
 			console.error('Error fetching available requests:', error);
 		}
@@ -124,13 +132,13 @@
 			});
 	}
 
-	function handleQuoteAccepted(quote: Quote) {
-		handleQuoteStatusUpdate(quote.id, 'accepted');
-	}
+	// function handleQuoteAccepted(quote: Quote) {
+	// 	handleQuoteStatusUpdate(quote.id, 'accepted');
+	// }
 
-	function handleQuoteRejected(quote: Quote) {
-		handleQuoteStatusUpdate(quote.id, 'rejected');
-	}
+	// function handleQuoteRejected(quote: Quote) {
+	// 	handleQuoteStatusUpdate(quote.id, 'rejected');
+	// }
 
 	function handleQuoteRevised(quote: Quote) {
 		// Open the quote submission modal for revision
@@ -164,7 +172,7 @@
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-4">
 					<button
-						on:click={handleBackToRequest}
+						onclick={handleBackToRequest}
 						class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
 						aria-label="Back to request details"
 					>
@@ -185,7 +193,7 @@
 
 				{#if canSubmitQuote}
 					<button
-						on:click={() => (showQuoteSubmissionModal = true)}
+						onclick={() => (showQuoteSubmissionModal = true)}
 						class="rounded-lg bg-emerald-600 px-4 py-2 text-white transition-colors hover:bg-emerald-700"
 					>
 						Submit New Quote
@@ -255,7 +263,7 @@
 
 				{#if canSubmitQuote}
 					<button
-						on:click={() => (showQuoteSubmissionModal = true)}
+						onclick={() => (showQuoteSubmissionModal = true)}
 						class="rounded-lg bg-emerald-600 px-6 py-3 text-white transition-colors hover:bg-emerald-700"
 					>
 						Submit New Quote
@@ -379,17 +387,17 @@
 						{quotes}
 						{requestType}
 						{currentUser}
-						on:quoteView={({ detail }) => handleViewQuote(detail.quoteId)}
-						on:quoteAccept={({ detail }) => handleQuoteStatusUpdate(detail.quoteId, 'accepted')}
-						on:quoteReject={({ detail }) => handleQuoteStatusUpdate(detail.quoteId, 'rejected')}
+						onQuoteView={({ quoteId }) => handleViewQuote(quoteId)}
+						onQuoteAccept={({ quoteId }) => handleQuoteStatusUpdate(quoteId, 'accepted')}
+						onQuoteReject={({ quoteId }) => handleQuoteStatusUpdate(quoteId, 'rejected')}
 					/>
 				{:else}
 					<!-- Quote List (for experts/suppliers) -->
 					<QuoteList
 						{quotes}
 						{currentUser}
-						on:quoteRevised={({ detail }) => handleQuoteRevised(detail)}
-						on:quoteSelected={({ detail }) => handleViewQuote(detail.id)}
+						onQuoteRevised={(quote) => handleQuoteRevised(quote)}
+						onQuoteSelected={(quote) => handleViewQuote(quote.id)}
 					/>
 				{/if}
 			</div>
@@ -401,7 +409,7 @@
 {#if showQuoteSubmissionModal && request}
 	<GeneralModal
 		bind:show={showQuoteSubmissionModal}
-		on:close={() => (showQuoteSubmissionModal = false)}
+		onClose={() => (showQuoteSubmissionModal = false)}
 	>
 		<QuoteSubmissionForm
 			requestId={request.id}
@@ -410,8 +418,8 @@
 			{availableRequests}
 			{revisionQuoteId}
 			existingQuote={revisionQuote}
-			on:quoteSubmitted={handleQuoteSubmitted}
-			on:close={() => {
+			onQuoteSubmitted={handleQuoteSubmitted}
+			onClose={() => {
 				showQuoteSubmissionModal = false;
 				revisionQuoteId = undefined;
 				revisionQuote = undefined;
@@ -426,7 +434,7 @@
 		bind:show={showQuoteDetailModal}
 		maxWidthClass="max-w-6xl"
 		closeButton={true}
-		on:close={() => {
+		onClose={() => {
 			showQuoteDetailModal = false;
 			selectedQuote = null;
 		}}
@@ -438,7 +446,7 @@
 			<div
 				class="mb-6 flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500/10 to-blue-500/10 p-3 sm:mb-8 sm:gap-3 sm:p-4"
 			>
-				<div class="flex-shrink-0 rounded-lg bg-emerald-500/20 p-1.5 sm:p-2">
+				<div class="shrink-0 rounded-lg bg-emerald-500/20 p-1.5 sm:p-2">
 					<svg
 						class="h-5 w-5 text-emerald-400 sm:h-6 sm:w-6"
 						fill="none"
@@ -484,7 +492,7 @@
 								</p>
 							{/if}
 						</div>
-						<div class="flex-shrink-0">
+						<div class="shrink-0">
 							<span
 								class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold sm:px-4 sm:py-2 sm:text-sm
 								{selectedQuote.status === 'accepted'
@@ -613,7 +621,7 @@
 				{#if selectedQuote.files && selectedQuote.files.length > 0}
 					<div class="rounded-xl border border-slate-600/30 bg-slate-700/20 p-4 sm:p-6">
 						<div class="mb-4 flex items-center gap-2 sm:gap-3">
-							<div class="flex-shrink-0 rounded-lg bg-orange-500/20 p-1.5 sm:p-2">
+							<div class="shrink-0 rounded-lg bg-orange-500/20 p-1.5 sm:p-2">
 								<svg
 									class="h-4 w-4 text-orange-400 sm:h-5 sm:w-5"
 									fill="none"
@@ -636,13 +644,13 @@
 							</div>
 						</div>
 						<div class="grid gap-3">
-							{#each selectedQuote.files as file}
+							{#each selectedQuote.files as file (file.fileName)}
 								<div
 									class="group flex flex-col gap-3 rounded-lg border border-slate-600/50 bg-slate-800/50 p-3 transition-all hover:border-slate-500 hover:bg-slate-800/70 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
 								>
 									<div class="flex min-w-0 flex-1 items-center gap-3">
 										<div
-											class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/20 sm:h-10 sm:w-10"
+											class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/20 sm:h-10 sm:w-10"
 										>
 											<svg
 												class="h-4 w-4 text-blue-400 sm:h-5 sm:w-5"
@@ -702,7 +710,7 @@
 				{#if selectedQuote.additionalTerms}
 					<div class="rounded-xl border border-slate-600/30 bg-slate-700/20 p-4 sm:p-6">
 						<div class="mb-4 flex items-center gap-2 sm:gap-3">
-							<div class="flex-shrink-0 rounded-lg bg-amber-500/20 p-1.5 sm:p-2">
+							<div class="shrink-0 rounded-lg bg-amber-500/20 p-1.5 sm:p-2">
 								<svg
 									class="h-4 w-4 text-amber-400 sm:h-5 sm:w-5"
 									fill="none"
@@ -735,7 +743,7 @@
 									})()}
 									{#if typeof parsedTerms === 'object' && parsedTerms !== null}
 										<div class="space-y-2">
-											{#each Object.entries(parsedTerms) as [key, value]}
+											{#each Object.entries(parsedTerms) as [key, value] (key)}
 												<div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
 													<span
 														class="min-w-0 text-sm font-medium text-emerald-300 capitalize sm:min-w-[120px] sm:text-base"
@@ -768,7 +776,7 @@
 							{:else}
 								<!-- Handle object directly -->
 								<div class="space-y-2">
-									{#each Object.entries(selectedQuote.additionalTerms) as [key, value]}
+									{#each Object.entries(selectedQuote.additionalTerms) as [key, value] (key)}
 										<div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
 											<span
 												class="min-w-0 text-sm font-medium text-emerald-300 capitalize sm:min-w-[120px] sm:text-base"

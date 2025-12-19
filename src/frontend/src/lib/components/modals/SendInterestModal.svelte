@@ -1,17 +1,30 @@
 <!-- gefifi-2/src/frontend/src/lib/components/modals/SendInterestModal.svelte -->
 <script lang="ts">
-	import { createEventDispatcher, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import GeneralModal from '$lib/components/ui/GeneralModal.svelte';
-	import apiClient from '$lib/api';
+	import apiClient, { type UserInterestData } from '$lib/api';
 	import { authStore } from '$lib/stores/auth';
-	import type { AuthUser, WorkRequest, MaterialRequest } from '$lib/types';
+	import type { AuthUser } from '$lib/types';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
-	export let show: boolean = false;
-	export let targetProfessionalId: string;
-	export let targetProfessionalName: string;
-	export let professionalType: 'expert' | 'supplier';
+	interface Props {
+		show?: boolean;
+		targetProfessionalId: string;
+		targetProfessionalName: string;
+		professionalType: 'expert' | 'supplier';
+		onInterestSent?: (detail: { chatId?: string }) => void;
+		onClose?: () => void;
+	}
+
+	let {
+		show = $bindable(false),
+		targetProfessionalId,
+		targetProfessionalName,
+		professionalType,
+		onInterestSent,
+		onClose
+	}: Props = $props();
 
 	// A generic type for the dropdown list to handle both request types
 	type CustomerRequest = {
@@ -20,7 +33,7 @@
 		status: string;
 	};
 
-	let currentUser: AuthUser | null = null;
+	let currentUser: AuthUser | null = $state(null);
 	let token: string | null = null;
 
 	authStore.subscribe((auth) => {
@@ -28,37 +41,38 @@
 		token = auth.token;
 	});
 
-	const dispatch = createEventDispatcher();
+	let isLoading: boolean = $state(false);
+	let formError: string | null = $state(null);
+	let formSuccess: string | null = $state(null);
 
-	let isLoading: boolean = false;
-	let formError: string | null = null;
-	let formSuccess: string | null = null;
-
-	let isPreselected: boolean = false;
-	let customerOpenRequests: CustomerRequest[] = [];
-	let isLoadingRequests = false;
-	let selectedRequestId: string | undefined = undefined;
-	let customMessage: string = '';
+	let isPreselected: boolean = $state(false);
+	let customerOpenRequests: CustomerRequest[] = $state([]);
+	let isLoadingRequests = $state(false);
+	let selectedRequestId: string | undefined = $state(undefined);
+	let customMessage: string = $state('');
 
 	// Determine if this is an invitation or interest based on preselection
-	$: isInvitation = isPreselected && selectedRequestId;
-	$: modalTitle = isInvitation
-		? `Invite ${targetProfessionalName}`
-		: `Send Interest to ${targetProfessionalName}`;
+	let isInvitation = $derived(isPreselected && selectedRequestId);
+	let modalTitle = $derived(
+		isInvitation ? `Invite ${targetProfessionalName}` : `Send Interest to ${targetProfessionalName}`
+	);
 
 	// --- Dynamic UI text based on professional type and invitation mode ---
-	$: requestTypeLabel = professionalType === 'expert' ? 'Work Request' : 'Material Request';
-	$: discussLabel = isInvitation
-		? `Invite to ${requestTypeLabel}`
-		: `Discuss a Specific ${requestTypeLabel}`;
-	$: placeholderText =
+	let requestTypeLabel = $derived(
+		professionalType === 'expert' ? 'Work Request' : 'Material Request'
+	);
+	let discussLabel = $derived(
+		isInvitation ? `Invite to ${requestTypeLabel}` : `Discuss a Specific ${requestTypeLabel}`
+	);
+	let placeholderText = $derived(
 		professionalType === 'expert'
 			? isInvitation
 				? "e.g., We'd like to invite you to work on this project..."
 				: "e.g., I'd like to discuss my upcoming renovation..."
 			: isInvitation
 				? "e.g., We'd like to invite you to supply materials for this project..."
-				: "e.g., I'm looking for a quote on cement and steel...";
+				: "e.g., I'm looking for a quote on cement and steel..."
+	);
 
 	async function fetchCustomerOpenRequests() {
 		if (!currentUser || !token || currentUser.userType !== 'customer') return;
@@ -77,7 +91,7 @@
 					)
 					.map((mr) => ({ id: mr.id, title: mr.title, status: mr.status }));
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error(`Failed to fetch customer ${professionalType} requests:`, error);
 			// Silently fail for this non-critical list
 		} finally {
@@ -92,7 +106,7 @@
 		isLoading = false;
 
 		// URL query params are passed from material/work request
-		const preselectedId = $page.url.searchParams.get('request-id');
+		const preselectedId = page.url.searchParams.get('request-id');
 		selectedRequestId = preselectedId || undefined;
 		isPreselected = !!preselectedId;
 
@@ -108,9 +122,11 @@
 	});
 
 	// Re-fetch if modal is re-shown and was hidden
-	$: if (show) {
-		resetState();
-	}
+	$effect(() => {
+		if (show) {
+			resetState();
+		}
+	});
 
 	async function handleSendQuickGreeting() {
 		isLoading = true;
@@ -123,12 +139,12 @@
 				predefinedMessageKey: 'CUSTOMER_INTEREST_IN_PROVIDER'
 			});
 			formSuccess = result.message || 'Interest sent! Redirecting to chat...';
-			dispatch('interestSent', { chatId: result.chatId });
+			onInterestSent?.({ chatId: result.chatId });
 			setTimeout(() => {
 				closeModalAndRedirect(result.chatId);
 			}, 1500);
-		} catch (error: any) {
-			formError = error.data?.message || error.message || 'Failed to send quick greeting.';
+		} catch (error: unknown) {
+			formError = error instanceof Error ? error.message : 'Failed to send quick greeting.';
 			isLoading = false;
 		}
 	}
@@ -166,6 +182,8 @@
 				});
 			}
 
+			console.log('Invitation sent successfully:', result);
+
 			// Create a chat with invitation message if one doesn't exist
 			const selectedRequest = customerOpenRequests.find((req) => req.id === selectedRequestId);
 			let messageToSend = customMessage.trim();
@@ -189,20 +207,21 @@
 				});
 
 				formSuccess = `Invitation sent successfully! ${targetProfessionalName} has been invited to your ${requestTypeLabel.toLowerCase()}.`;
-				dispatch('interestSent', { chatId: chatResult.chatId });
+				onInterestSent?.({ chatId: chatResult.chatId });
 				setTimeout(() => {
 					closeModalAndRedirect(chatResult.chatId);
 				}, 2000);
-			} catch (chatError) {
+			} catch (chatError: unknown) {
+				console.error('Failed to send interest message:', chatError);
 				// Even if chat creation fails, the invitation was successful
 				formSuccess = `Invitation sent successfully! ${targetProfessionalName} has been invited to your ${requestTypeLabel.toLowerCase()}.`;
-				dispatch('interestSent', {});
+				onInterestSent?.({});
 				setTimeout(() => {
-					dispatch('close');
+					onClose?.();
 				}, 2000);
 			}
-		} catch (error: any) {
-			formError = error.data?.message || error.message || 'Failed to send invitation.';
+		} catch (error: unknown) {
+			formError = error instanceof Error ? error.message : 'Failed to send invitation.';
 			isLoading = false;
 		}
 	}
@@ -215,26 +234,26 @@
 		}
 
 		try {
-			const payload: any = {
+			const payload: UserInterestData = {
 				targetUserId: targetProfessionalId,
 				initialMessageContent: messageToSend
 			};
 
 			const result = await apiClient.sendInterest(payload);
 			formSuccess = result.message || 'Interest sent! Redirecting to chat...';
-			dispatch('interestSent', { chatId: result.chatId });
+			onInterestSent?.({ chatId: result.chatId });
 			setTimeout(() => {
 				closeModalAndRedirect(result.chatId);
 			}, 1500);
-		} catch (error: any) {
-			formError = error.data?.message || error.message || 'Failed to send interest message.';
+		} catch (error: unknown) {
+			formError = error instanceof Error ? error.message : 'Failed to send interest message.';
 			isLoading = false;
 		}
 	}
 
 	function closeModalAndRedirect(chatId?: string) {
 		isLoading = false;
-		dispatch('close');
+		onClose?.();
 		if (chatId) {
 			goto(`/chat/${chatId}`);
 		}
@@ -242,11 +261,11 @@
 
 	function handleClose() {
 		if (isLoading) return;
-		dispatch('close');
+		onClose?.();
 	}
 </script>
 
-<GeneralModal {show} title={modalTitle} on:close={handleClose} maxWidthClass="max-w-xl">
+<GeneralModal {show} title={modalTitle} onClose={handleClose} maxWidthClass="max-w-xl">
 	<div class="space-y-6">
 		{#if formError}
 			<div
@@ -277,7 +296,7 @@
 						Send a general interest message to start a conversation.
 					</p>
 					<button
-						on:click={handleSendQuickGreeting}
+						onclick={handleSendQuickGreeting}
 						disabled={isLoading}
 						class="w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
 					>
@@ -287,9 +306,9 @@
 				</div>
 
 				<div class="my-4 flex items-center">
-					<span class="flex-grow border-t border-slate-600"></span>
-					<span class="mx-3 text-xs text-slate-400 uppercase">Or</span>
-					<span class="flex-grow border-t border-slate-600"></span>
+					<div class="grow border-t border-slate-600"></div>
+					<span class="mx-3 shrink text-xs font-medium text-slate-400 uppercase">or</span>
+					<div class="grow border-t border-slate-600"></div>
 				</div>
 			{/if}
 
@@ -367,7 +386,7 @@
 					></textarea>
 				</div>
 				<button
-					on:click={handleSendDetailedInterest}
+					onclick={handleSendDetailedInterest}
 					disabled={isLoading}
 					class="w-full rounded-md {isInvitation || isPreselected
 						? 'bg-emerald-600 hover:bg-emerald-700'
@@ -385,12 +404,12 @@
 		{/if}
 	</div>
 
-	<svelte:fragment slot="footer">
+	{#snippet footer()}
 		{#if !formSuccess}
 			<div class="flex justify-end border-t border-slate-700 p-4">
 				<button
 					type="button"
-					on:click={handleClose}
+					onclick={handleClose}
 					disabled={isLoading}
 					class="rounded-md bg-slate-600 px-4 py-2 text-sm font-medium text-slate-200 shadow-sm hover:bg-slate-500 disabled:opacity-70"
 				>
@@ -398,5 +417,5 @@
 				</button>
 			</div>
 		{/if}
-	</svelte:fragment>
+	{/snippet}
 </GeneralModal>

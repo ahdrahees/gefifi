@@ -1,34 +1,52 @@
 <!-- gefifi-2/src/frontend/src/lib/components/contracts/ContractLinking.svelte -->
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
-	import { authStore } from '$lib/stores/auth';
+	import { onMount, onDestroy } from 'svelte';
 	import apiClient from '$lib/api';
-	import type { Contract, ContractLink } from '$lib/types';
+	import type { AuthUser, Contract, ContractLink } from '$lib/types';
 
-	export let contract: Contract;
-	export let currentUser: any;
+	interface Props {
+		contract: Contract;
+		currentUser: AuthUser | null;
+		onContractLinked?: (detail: {
+			contractId: string;
+			linkedContractId: string;
+			visibility: string;
+		}) => void;
+		onContractUnlinked?: (detail: { contractId: string; linkedContractId: string }) => void;
+		onLinkVisibilityUpdated?: (detail: {
+			contractId: string;
+			linkedContractId: string;
+			visibility: string;
+		}) => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let {
+		contract = $bindable(),
+		currentUser = null,
+		onContractLinked,
+		onContractUnlinked,
+		onLinkVisibilityUpdated
+	}: Props = $props();
 
 	// State
-	let showLinkingModal = false;
-	let availableContracts: any[] = [];
-	let selectedContractId = '';
-	let linkReason = '';
-	let linkVisibility: 'private' | 'shared' = 'private';
-	let isLoading = false;
-	let isLinking = false;
-	let errorMessage = '';
-	let successMessage = '';
-	let modalContainer: HTMLElement;
-	let linkedContractDetails: Record<string, any> = {};
+	let showLinkingModal = $state(false);
+	let availableContracts: Contract[] = $state([]);
+	let selectedContractId = $state('');
+	let linkReason = $state('');
+	let linkVisibility: 'private' | 'shared' = $state('private');
+	let isLoading = $state(false);
+	let isLinking = $state(false);
+	let errorMessage = $state('');
+	let successMessage = $state('');
+	let modalContainer: HTMLElement | undefined = $state();
+	let linkedContractDetails: Record<string, any> = $state({});
 
 	// Computed
-	$: linkedContracts = contract.linkedContracts || [];
-	$: canLinkContracts = ['draft', 'awaiting_signatures', 'revision_requested'].includes(
-		contract.status
+	let linkedContracts = $derived(contract.linkedContracts || []);
+	let canLinkContracts = $derived(
+		['draft', 'awaiting_signatures', 'revision_requested'].includes(contract.status)
 	);
-	$: maxLinksReached = linkedContracts.length >= 10;
+	let maxLinksReached = $derived(linkedContracts.length >= 10);
 
 	// Track if we've fetched details to avoid infinite loops
 	let hasFetchedDetails = false;
@@ -77,13 +95,13 @@
 			// 3. Contracts where user is not a participant
 			const linkedContractIds = linkedContracts.map((link) => link.contractId);
 
-			availableContracts = (contracts as any[]).filter(
-				(c: any) =>
+			availableContracts = (contracts as Contract[]).filter(
+				(c: Contract) =>
 					c.id !== contract.id &&
 					!linkedContractIds.includes(c.id) &&
 					(c.customerId === currentUser.id || c.expertSupplierId === currentUser.id)
 			);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error fetching available contracts:', error);
 			errorMessage = 'Failed to load available contracts.';
 		} finally {
@@ -125,7 +143,7 @@
 
 			linkedContractDetails = newDetails;
 			console.log('🎯 Updated linkedContractDetails:', linkedContractDetails);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error fetching linked contract details:', error);
 		}
 	}
@@ -170,7 +188,11 @@
 		errorMessage = '';
 
 		try {
-			const linkData: any = {
+			const linkData: {
+				linkedContractId: string;
+				visibility?: 'private' | 'shared';
+				reason?: string;
+			} = {
 				linkedContractId: selectedContractId,
 				visibility: linkVisibility
 			};
@@ -185,7 +207,7 @@
 			successMessage = result.message;
 
 			// Update the contract with the new link
-			const newLink: any = {
+			const newLink: ContractLink = {
 				contractId: selectedContractId,
 				relationshipType: 'reference',
 				visibility: linkVisibility,
@@ -204,7 +226,7 @@
 			};
 
 			// Dispatch event to parent
-			dispatch('contractLinked', {
+			onContractLinked?.({
 				contractId: contract.id,
 				linkedContractId: selectedContractId,
 				visibility: linkVisibility
@@ -218,9 +240,9 @@
 			setTimeout(() => {
 				closeLinkingModal();
 			}, 1500);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error linking contract:', error);
-			errorMessage = error.message || 'Failed to link contract.';
+			errorMessage = error instanceof Error ? error.message : 'Failed to link contract.';
 		} finally {
 			isLinking = false;
 		}
@@ -239,11 +261,11 @@
 			};
 
 			// Dispatch event to parent
-			dispatch('contractUnlinked', {
+			onContractUnlinked?.({
 				contractId: contract.id,
 				linkedContractId
 			});
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error unlinking contract:', error);
 			// You could add a toast notification here
 		}
@@ -267,36 +289,36 @@
 			};
 
 			// Dispatch event to parent
-			dispatch('linkVisibilityUpdated', {
+			onLinkVisibilityUpdated?.({
 				contractId: contract.id,
 				linkedContractId,
 				visibility: newVisibility
 			});
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error updating link visibility:', error);
 			// You could add a toast notification here
 		}
 	}
-
-	function getContractDetails(contractId: string): any {
+	/*
+	function getContractDetails(contractId: string) {
 		return linkedContractDetails[contractId] || { id: contractId, status: 'unknown' };
 	}
-
-	function getContractDisplayName(contract: any): string {
+	*/
+	function getContractDisplayName(contract: Contract): string {
 		// Try to get meaningful contract information
 		if (contract.workRequestId || contract.materialRequestId) {
 			// If we have request info, use that
 			const requestType = contract.workRequestId ? 'Work' : 'Material';
 			const requestId = contract.workRequestId || contract.materialRequestId;
 			const status = contract.status?.replace(/_/g, ' ') || 'unknown';
-			return `${requestType} Contract (${requestId.substring(0, 8)}...) - ${status}`;
+			return `${requestType} Contract (${requestId?.substring(0, 8)}...) - ${status}`;
 		}
 
 		// Fallback to contract ID with status
 		const status = contract.status?.replace(/_/g, ' ') || 'unknown';
 		return `Contract ${contract.id.substring(0, 8)}... - ${status}`;
 	}
-
+	/*
 	function getVisibilityIcon(visibility: 'private' | 'shared'): string {
 		if (visibility === 'private') {
 			return 'lock';
@@ -304,7 +326,7 @@
 			return 'eye';
 		}
 	}
-
+    */
 	function getVisibilityLabel(visibility: 'private' | 'shared'): string {
 		return visibility === 'private' ? 'Private' : 'Shared';
 	}
@@ -332,7 +354,7 @@
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div class="flex items-center gap-3">
-			<div class="flex-shrink-0 rounded-lg bg-purple-500/20 p-2">
+			<div class="shrink-0 rounded-lg bg-purple-500/20 p-2">
 				<svg class="h-5 w-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
@@ -350,10 +372,10 @@
 			</div>
 		</div>
 
-		<div class="flex-shrink-0">
+		<div class="shrink-0">
 			{#if canLinkContracts && !maxLinksReached}
 				<button
-					on:click={openLinkingModal}
+					onclick={openLinkingModal}
 					class="flex w-full items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/30 sm:w-auto"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -383,7 +405,7 @@
 					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 						<!-- Contract Info -->
 						<div class="flex items-start gap-3">
-							<div class="flex-shrink-0 rounded-full bg-slate-600/50 p-2">
+							<div class="shrink-0 rounded-full bg-slate-600/50 p-2">
 								<svg
 									class="h-4 w-4 text-slate-400"
 									fill="none"
@@ -399,7 +421,7 @@
 								</svg>
 							</div>
 							<div class="min-w-0 flex-1">
-								<p class="font-medium break-words text-slate-200">
+								<p class="font-medium wrap-break-word text-slate-200">
 									{getContractDisplayName(
 										linkedContractDetails[link.contractId] || {
 											id: link.contractId,
@@ -408,7 +430,7 @@
 									)}
 								</p>
 								{#if link.reason}
-									<p class="mt-1 text-sm break-words text-slate-400">{link.reason}</p>
+									<p class="mt-1 text-sm wrap-break-word text-slate-400">{link.reason}</p>
 								{/if}
 							</div>
 						</div>
@@ -448,7 +470,7 @@
 									aria-label="View linked contract"
 								>
 									<svg
-										class="h-3 w-3 flex-shrink-0"
+										class="h-3 w-3 shrink-0"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
@@ -471,7 +493,7 @@
 
 								<!-- Toggle Visibility Button -->
 								<button
-									on:click={() =>
+									onclick={() =>
 										handleUpdateVisibility(
 											link.contractId,
 											link.visibility === 'private' ? 'shared' : 'private'
@@ -481,7 +503,7 @@
 								>
 									{#if link.visibility === 'private'}
 										<svg
-											class="h-3 w-3 flex-shrink-0"
+											class="h-3 w-3 shrink-0"
 											fill="none"
 											stroke="currentColor"
 											viewBox="0 0 24 24"
@@ -503,7 +525,7 @@
 										<span class="sm:hidden">Share</span>
 									{:else}
 										<svg
-											class="h-3 w-3 flex-shrink-0"
+											class="h-3 w-3 shrink-0"
 											fill="none"
 											stroke="currentColor"
 											viewBox="0 0 24 24"
@@ -522,12 +544,12 @@
 
 								<!-- Unlink Button -->
 								<button
-									on:click={() => handleUnlinkContract(link.contractId)}
+									onclick={() => handleUnlinkContract(link.contractId)}
 									class="flex items-center gap-1 rounded-lg bg-red-600/20 px-3 py-1.5 text-xs whitespace-nowrap text-red-300 transition-colors hover:bg-red-500/30"
 									aria-label="Unlink contract"
 								>
 									<svg
-										class="h-3 w-3 flex-shrink-0"
+										class="h-3 w-3 shrink-0"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
@@ -577,9 +599,13 @@
 <!-- Linking Modal Portal -->
 {#if showLinkingModal && modalContainer}
 	<div
-		class="contract-linking-modal fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
-		on:click|self={closeLinkingModal}
-		on:keydown|self={(e) => e.key === 'Escape' && closeLinkingModal()}
+		class="contract-linking-modal fixed inset-0 z-9999 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) closeLinkingModal();
+		}}
+		onkeydown={(e) => {
+			if (e.target === e.currentTarget && e.key === 'Escape') closeLinkingModal();
+		}}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="linking-modal-title"
@@ -595,7 +621,7 @@
 					<p class="text-sm text-slate-400">Create a reference link to another contract</p>
 				</div>
 				<button
-					on:click={closeLinkingModal}
+					onclick={closeLinkingModal}
 					class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
 					aria-label="Close modal"
 				>
@@ -626,7 +652,13 @@
 				</div>
 			{/if}
 
-			<form on:submit|preventDefault={handleLinkContract} class="space-y-4">
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleLinkContract();
+				}}
+				class="space-y-4"
+			>
 				<!-- Contract Selection -->
 				<div>
 					<label for="contract-select" class="mb-2 block text-sm font-medium text-slate-400">
@@ -663,7 +695,7 @@
 							class="w-full rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 focus:border-purple-500 focus:outline-none"
 						>
 							<option value="">Choose a contract...</option>
-							{#each availableContracts as availableContract}
+							{#each availableContracts as availableContract, id (id)}
 								<option value={availableContract.id}>
 									{getContractDisplayName(availableContract)}
 								</option>
@@ -749,7 +781,7 @@
 				<div class="flex justify-end gap-3 pt-4">
 					<button
 						type="button"
-						on:click={closeLinkingModal}
+						onclick={closeLinkingModal}
 						class="rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500"
 					>
 						Cancel

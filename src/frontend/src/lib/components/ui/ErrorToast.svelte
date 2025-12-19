@@ -1,6 +1,11 @@
 <script lang="ts">
-	/** The error message to display. Bind this to clear from child. */
-	export let message: string = '';
+	
+	interface Props {
+		/** The error message to display. Bind this to clear from child. */
+		message?: string;
+	}
+
+	let { message = $bindable('') }: Props = $props();
 
 	function dismiss() {
 		message = '';
@@ -27,7 +32,7 @@
 		<span class="flex-1 font-medium">{message}</span>
 		<button
 			class="rounded-lg p-1 hover:bg-red-500/20 active:bg-red-500/30"
-			on:click={dismiss}
+			onclick={dismiss}
 			aria-label="Dismiss error"
 		>
 			<svg

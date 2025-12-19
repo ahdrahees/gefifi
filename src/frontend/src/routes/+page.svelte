@@ -1,6 +1,6 @@
 <!-- gefifi-2/src/frontend/src/routes/+page.svelte -->
 <script lang="ts">
-	let imageLoaded = false;
+	let imageLoaded = $state(false);
 </script>
 
 <div
@@ -85,7 +85,7 @@
 					class="h-auto w-full rounded-2xl shadow-xl transition-opacity duration-700 ease-in-out"
 					class:opacity-0={!imageLoaded}
 					class:opacity-100={imageLoaded}
-					on:load={() => (imageLoaded = true)}
+					onload={() => (imageLoaded = true)}
 					loading="eager"
 					fetchpriority="high"
 				/>

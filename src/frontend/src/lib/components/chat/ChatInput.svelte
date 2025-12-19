@@ -1,52 +1,70 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/ChatInput.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { realtimeChatService } from '$lib/services/realtimeChat';
 	import DropdownMenu from '$lib/components/ui/DropdownMenu.svelte';
 	import QuoteSubmissionForm from '$lib/components/quotes/QuoteSubmissionForm.svelte';
 	import GeneralModal from '$lib/components/ui/GeneralModal.svelte';
-	import apiClient from '$lib/api';
-	import { authStore } from '$lib/stores/auth';
+	import apiClient, { type MaterialRequestResponse } from '$lib/api';
+	import { authStore, type AuthUser } from '$lib/stores/auth';
+	import type { Chat } from '$lib/types';
 
-	// --- PROPS ---
-	export let isSending: boolean = false;
-	export let isUploadingFiles: boolean = false;
-	export let selectedFiles: File[] = [];
-	export let value: string = ''; // For two-way binding of textarea content
-	export let chatId: string = '';
-	export let currentUserId: string = '';
-	export let currentUser: any = null; // Add currentUser prop for user type validation
-	export let chatDetails: any = null; // Chat object with workRequestId/materialRequestId
+	interface Props {
+		// --- PROPS ---
+		isSending?: boolean;
+		isUploadingFiles?: boolean;
+		selectedFiles?: File[];
+		value?: string; // For two-way binding of textarea content
+		chatId?: string;
+		currentUserId?: string;
+		currentUser: AuthUser | null; // Add currentUser prop for user type validation
+		chatDetails: Chat | null; // Chat object with workRequestId/materialRequestId
+		onSendMessage?: () => void;
+		onStartRecording?: () => void;
+		onSelectFiles?: (detail: { files: File[] }) => void;
+		onRemoveFile?: (detail: { index: number }) => void;
+		onClearFiles?: () => void;
+		onSubmitQuote?: () => void;
+	}
+
+	let {
+		isSending = $bindable(false),
+		isUploadingFiles = $bindable(false),
+		selectedFiles = $bindable([]),
+		value = $bindable(''),
+		chatId = '',
+		currentUserId = '',
+		currentUser = null,
+		chatDetails = null,
+		onSendMessage,
+		onStartRecording,
+		onSelectFiles,
+		onRemoveFile,
+		onClearFiles,
+		onSubmitQuote
+	}: Props = $props();
 
 	// --- INTERNAL STATE & BINDINGS ---
-	let fileInput: HTMLInputElement;
-	let imageInput: HTMLInputElement;
-	let quoteInput: HTMLInputElement;
+	let fileInput: HTMLInputElement | undefined = $state();
+	let imageInput: HTMLInputElement | undefined = $state();
+	let quoteInput: HTMLInputElement | undefined = $state();
 	let typingTimeout: NodeJS.Timeout | null = null;
-	let showDropdown = false;
-	let showQuoteModal = false;
-	let availableRequests: any[] = [];
+	let showDropdown = $state(false);
+	let showQuoteModal = $state(false);
+	let availableRequests: any[] = $state([]);
 
 	// --- CONSTANTS ---
 	const MAX_FILES = 10;
 	const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB
 
 	// --- COMPUTED PROPERTIES ---
-	$: canSubmitQuote =
+	let canSubmitQuote = $derived(
 		($authStore.user && $authStore.user.userType !== 'customer') ||
-		(currentUser && currentUser.userType !== 'customer');
+			(currentUser && currentUser.userType !== 'customer')
+	);
 	// Debug modal state changes
 	// $: console.log('Modal state changed:', { showQuoteModal, availableRequests: availableRequests.length });
 
 	// --- EVENTS ---
-	const dispatch = createEventDispatcher<{
-		sendMessage: void;
-		startRecording: void;
-		selectFiles: { files: File[] };
-		removeFile: { index: number };
-		clearFiles: void;
-		submitQuote: void;
-	}>();
 
 	// --- FILE TYPE UTILITIES ---
 	function getFileIcon(fileName: string): string {
@@ -59,7 +77,7 @@
 		return '📁';
 	}
 
-	function getFileTypeDescription(fileName: string): string {
+	/*	function getFileTypeDescription(fileName: string): string {
 		const extension = fileName.split('.').pop()?.toLowerCase() || '';
 		if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) return 'Image';
 		if (extension === 'pdf') return 'PDF Document';
@@ -84,7 +102,7 @@
 			return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
 		return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
 	}
-
+    */
 	function shouldShowThumbnail(file: File): boolean {
 		// Show thumbnails for images
 		if (file.type.startsWith('image/')) return true;
@@ -114,7 +132,7 @@
 	// --- EVENT HANDLERS ---
 	const triggerFileInput = () => fileInput?.click();
 	const triggerImageInput = () => imageInput?.click();
-	const triggerQuoteInput = () => quoteInput?.click();
+	// const triggerQuoteInput = () => quoteInput?.click();
 
 	const handleFileSelected = (event: Event) => {
 		const target = event.target as HTMLInputElement;
@@ -139,23 +157,23 @@
 			// Add new files to existing selection
 			const updatedFiles = [...selectedFiles, ...newFiles];
 			selectedFiles = updatedFiles;
-			dispatch('selectFiles', { files: updatedFiles });
+			onSelectFiles?.({ files: updatedFiles });
 		}
 	};
 
 	const handleRemoveFile = (index: number) => {
 		selectedFiles = selectedFiles.filter((_, i) => i !== index);
-		dispatch('removeFile', { index });
+		onRemoveFile?.({ index });
 	};
 
 	const handleClearFiles = () => {
 		selectedFiles = [];
-		dispatch('clearFiles');
+		onClearFiles?.();
 	};
 
 	const handleSendMessage = () => {
 		if (isSending) return;
-		dispatch('sendMessage');
+		onSendMessage?.();
 	};
 
 	const handleKeyPress = (event: KeyboardEvent) => {
@@ -219,7 +237,7 @@
 				} else if (user.userType === 'supplier') {
 					console.log('Fetching material requests for supplier...');
 					const materialRequests = await apiClient.getMaterialRequests();
-					requests = materialRequests.filter((req: any) => {
+					requests = materialRequests.filter((req: MaterialRequestResponse) => {
 						return (
 							req.customerId === otherParticipantId &&
 							(req.interestedSuppliers?.includes(user.id) ||
@@ -252,12 +270,12 @@
 
 	const handleQuoteSubmitted = () => {
 		showQuoteModal = false;
-		dispatch('submitQuote');
+		onSubmitQuote?.();
 	};
 
-	const toggleDropdown = () => {
-		showDropdown = !showDropdown;
-	};
+	// const toggleDropdown = () => {
+	// 	showDropdown = !showDropdown;
+	// };
 
 	const closeDropdown = () => {
 		showDropdown = false;
@@ -290,7 +308,7 @@
 					</span>
 				</div>
 				<button
-					on:click={handleClearFiles}
+					onclick={handleClearFiles}
 					class="rounded px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200"
 					aria-label="Clear all files"
 				>
@@ -301,7 +319,7 @@
 			<!-- Horizontal scrollable file list -->
 			<div class="file-preview-scroll flex gap-3 overflow-x-auto py-2">
 				{#each selectedFiles as file, index (index)}
-					<div class="w-24 flex-shrink-0">
+					<div class="w-24 shrink-0">
 						<div class="group relative">
 							<!-- File Preview -->
 							<div
@@ -314,7 +332,7 @@
 										alt={file.name}
 										class="h-full w-full object-cover"
 										loading="lazy"
-										on:error={(e) => {
+										onerror={(e) => {
 											// Fallback to icon if image fails to load
 											const img = e.target as HTMLImageElement;
 											if (img) {
@@ -340,7 +358,7 @@
 
 							<!-- Remove Button -->
 							<button
-								on:click={() => handleRemoveFile(index)}
+								onclick={() => handleRemoveFile(index)}
 								class="absolute -top-1 -right-1 flex h-6 w-6 touch-manipulation items-center justify-center rounded-full border border-slate-600/50 bg-slate-700/95 text-slate-200 shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-110 hover:bg-slate-600 hover:text-white active:scale-95 sm:opacity-0 sm:group-hover:opacity-100"
 								aria-label="Remove {file.name}"
 							>
@@ -375,7 +393,7 @@
 		<input
 			type="file"
 			bind:this={fileInput}
-			on:change={handleFileSelected}
+			onchange={handleFileSelected}
 			multiple
 			accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf"
 			class="hidden"
@@ -383,7 +401,7 @@
 		<input
 			type="file"
 			bind:this={imageInput}
-			on:change={handleFileSelected}
+			onchange={handleFileSelected}
 			multiple
 			accept="image/*"
 			class="hidden"
@@ -391,7 +409,7 @@
 		<input
 			type="file"
 			bind:this={quoteInput}
-			on:change={handleFileSelected}
+			onchange={handleFileSelected}
 			multiple
 			accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf"
 			class="hidden"
@@ -406,23 +424,24 @@
 				autoPosition={true}
 				debug={false}
 			>
-				<button
-					slot="trigger"
-					class="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
-					aria-label="Attach files"
-				>
-					<svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-						/>
-					</svg>
-				</button>
+				{#snippet trigger()}
+					<button
+						class="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
+						aria-label="Attach files"
+					>
+						<svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+							/>
+						</svg>
+					</button>
+				{/snippet}
 
 				<button
-					on:click={() => {
+					onclick={() => {
 						triggerFileInput();
 						closeDropdown();
 					}}
@@ -447,7 +466,7 @@
 					<span>Document</span>
 				</button>
 				<button
-					on:click={() => {
+					onclick={() => {
 						triggerImageInput();
 						closeDropdown();
 					}}
@@ -473,7 +492,7 @@
 				</button>
 				{#if canSubmitQuote}
 					<button
-						on:click={() => {
+						onclick={() => {
 							handleQuoteSubmit();
 							closeDropdown();
 						}}
@@ -502,8 +521,8 @@
 		{/if}
 		<textarea
 			bind:value
-			on:keydown={handleKeyPress}
-			on:input={handleInput}
+			onkeydown={handleKeyPress}
+			oninput={handleInput}
 			disabled={isSending}
 			rows="1"
 			placeholder="Type a message..."
@@ -511,7 +530,7 @@
 		></textarea>
 		{#if value.trim() || selectedFiles.length > 0}
 			<button
-				on:click={handleSendMessage}
+				onclick={handleSendMessage}
 				disabled={isSending}
 				class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md transition-transform hover:scale-110 hover:bg-emerald-500 disabled:scale-100 disabled:bg-slate-600 disabled:opacity-70"
 				aria-label="Send message"
@@ -522,7 +541,7 @@
 			</button>
 		{:else}
 			<button
-				on:click={() => dispatch('startRecording')}
+				onclick={() => onStartRecording?.()}
 				disabled={isSending}
 				class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md transition-transform hover:scale-110 hover:bg-emerald-500 disabled:scale-100 disabled:bg-slate-600 disabled:opacity-70"
 				aria-label="Record voice message"
@@ -539,7 +558,7 @@
 	<!-- Quote Submission Modal -->
 	<GeneralModal
 		bind:show={showQuoteModal}
-		on:close={() => (showQuoteModal = false)}
+		onClose={() => (showQuoteModal = false)}
 		title="Submit Quote"
 		maxWidthClass="max-w-4xl"
 	>
@@ -551,8 +570,8 @@
 			) || null}
 			{availableRequests}
 			{chatId}
-			on:quoteSubmitted={handleQuoteSubmitted}
-			on:close={() => (showQuoteModal = false)}
+			onQuoteSubmitted={handleQuoteSubmitted}
+			onClose={() => (showQuoteModal = false)}
 		/>
 	</GeneralModal>
 </div>

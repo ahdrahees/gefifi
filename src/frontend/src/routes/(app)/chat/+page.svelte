@@ -1,7 +1,7 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/chat/+page.svelte -->
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { authStore, type AuthUser } from '$lib/stores/auth';
+	import { onDestroy } from 'svelte';
+	import { authStore } from '$lib/stores/auth';
 	import { realtimeChatService } from '$lib/services/realtimeChat';
 	import apiClient from '$lib/api';
 	import type { Chat } from '$lib/types';
@@ -30,14 +30,12 @@
 		unreadCount: number;
 	};
 
-	let currentUser: AuthUser | null = null;
-	let chats: EnrichedChat[] = [];
-	let isLoading = true;
-	let errorMessage = '';
+	let currentUser = $derived($authStore.user);
+	let chats: EnrichedChat[] = $state([]);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 	let fetchedUserProfiles = new Map<string, UserProfile>();
-	let chatsUnsubscribe: Unsubscribe | null = null;
-
-	$: ({ user: currentUser } = $authStore);
+	let chatsUnsubscribe: Unsubscribe | null = $state(null);
 
 	function getUserTypeDisplay(userType: string): { label: string; color: string; bgColor: string } {
 		switch (userType) {
@@ -190,9 +188,11 @@
 	}
 
 	// Set up real-time chats when user is available
-	$: if (currentUser?.id && !chatsUnsubscribe) {
-		setupRealtimeChats();
-	}
+	$effect(() => {
+		if (currentUser?.id && !chatsUnsubscribe) {
+			setupRealtimeChats();
+		}
+	});
 
 	onDestroy(() => {
 		if (chatsUnsubscribe) {
@@ -266,7 +266,7 @@
 					<p class="mb-6 text-sm text-red-200/80">{errorMessage}</p>
 					<button
 						class="rounded-lg bg-red-600 px-6 py-3 text-sm font-medium text-white transition-all hover:bg-red-700 hover:shadow-lg focus:ring-2 focus:ring-red-500 focus:outline-none"
-						on:click={() => setupRealtimeChats()}
+						onclick={() => setupRealtimeChats()}
 					>
 						Retry Connection
 					</button>
@@ -306,7 +306,7 @@
 					>
 						<div class="flex items-center gap-3">
 							<!-- Avatar with Online Status -->
-							<div class="relative flex-shrink-0">
+							<div class="relative shrink-0">
 								<img
 									src={chat.avatarUrl || '/images/default-avatar.png'}
 									alt="Avatar for {chat.displayName}"
@@ -331,13 +331,13 @@
 										{#if chat.otherUserProfile}
 											{@const typeInfo = getUserTypeDisplay(chat.otherUserProfile.userType)}
 											<span
-												class="hidden items-center rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex {typeInfo.color} {typeInfo.bgColor} flex-shrink-0 border border-current/20"
+												class="hidden items-center rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex {typeInfo.color} {typeInfo.bgColor} shrink-0 border border-current/20"
 											>
 												{typeInfo.label}
 											</span>
 										{/if}
 									</div>
-									<span class="flex-shrink-0 text-xs text-slate-500 group-hover:text-slate-400">
+									<span class="shrink-0 text-xs text-slate-500 group-hover:text-slate-400">
 										{formatLastSeen(chat.updatedAt)}
 									</span>
 								</div>
@@ -349,18 +349,18 @@
 									>
 										{#if chat.otherUserProfile.userType === 'expert' && chat.otherUserProfile.profile.expertise}
 											<span
-												class="max-w-[120px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+												class="max-w-[120px] shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
 												>{chat.otherUserProfile.profile.expertise}</span
 											>
 										{:else if chat.otherUserProfile.userType === 'supplier' && chat.otherUserProfile.profile.category}
 											<span
-												class="max-w-[120px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+												class="max-w-[120px] shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
 												>{chat.otherUserProfile.profile.category}</span
 											>
 										{/if}
 										{#if chat.otherUserProfile.profile.location}
 											<span
-												class="max-w-[100px] flex-shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
+												class="max-w-[100px] shrink-0 truncate rounded-md bg-slate-600/30 px-1.5 py-0.5"
 												>📍 {chat.otherUserProfile.profile.location}</span
 											>
 										{/if}
@@ -374,7 +374,7 @@
 									</p>
 									{#if chat.unreadCount && chat.unreadCount > 0}
 										<span
-											class="ml-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white"
+											class="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white"
 										>
 											{chat.unreadCount}
 										</span>

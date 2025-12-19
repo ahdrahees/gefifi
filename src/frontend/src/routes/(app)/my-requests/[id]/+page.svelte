@@ -1,39 +1,39 @@
 <!-- src/frontend/src/routes/(app)/my-requests/[id]/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
-	import type { WorkRequest, MaterialRequest } from '$lib/types';
+	import type { WorkRequest, MaterialRequest, Contract, Chat } from '$lib/types';
 	import RequestDetailHeader from '$lib/components/requests/RequestDetailHeader.svelte';
 	import RequestDetailContent from '$lib/components/requests/RequestDetailContent.svelte';
 	import RequestDetailActions from '$lib/components/requests/RequestDetailActions.svelte';
 	import RequestDetailTabs from '$lib/components/requests/RequestDetailTabs.svelte';
 	import RequestQuotationsTab from '$lib/components/requests/RequestQuotationsTab.svelte';
 
-	let currentUser: AuthUser | null = null;
-	let request: (WorkRequest | MaterialRequest) | null = null;
-	let requestType: 'work' | 'material' | null = null;
-	let isLoading = true;
-	let errorMessage = '';
+	let currentUser = $state<AuthUser | null>(null);
+	let request = $state<WorkRequest | MaterialRequest | null>(null);
+	let requestType = $state<'work' | 'material' | null>(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 
 	// Additional data
-	let contractInfo: any = null;
-	let chatId: string | null = null;
-	let chatMap = new Map<string, string>();
-	let activeTab: 'details' | 'quotations' = 'details';
-	let quotesCount: number = 0;
+	let contractInfo = $state<Contract>();
+	let chatId = $state<string | null>(null);
+	let chatMap = $state(new Map<string, string>());
+	let activeTab: 'details' | 'quotations' = $state('details');
+	let quotesCount: number = $state(0);
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
 	});
 
-	$: isCustomer = currentUser && request && currentUser.id === request.customerId;
-	$: canEdit = isCustomer && request && request.status === 'open';
+	let isCustomer = $derived(currentUser && request && currentUser.id === request.customerId);
+	let canEdit = $derived(isCustomer && request && request.status === 'open');
 
 	onMount(async () => {
-		const requestId = $page.params.id;
+		const requestId = page.params.id;
 		if (!requestId) {
 			errorMessage = 'Request ID not found in URL.';
 			isLoading = false;
@@ -50,13 +50,15 @@
 		try {
 			// Try to fetch as work request first
 			try {
-				const workRequest = await apiClient.getWorkRequestById(requestId);
-				request = workRequest as any;
+				const workRequest = (await apiClient.getWorkRequestById(requestId)) as WorkRequest;
+				request = workRequest;
 				requestType = 'work';
 			} catch {
 				// If work request fails, try material request
-				const materialRequest = await apiClient.getMaterialRequestById(requestId);
-				request = materialRequest as any;
+				const materialRequest = (await apiClient.getMaterialRequestById(
+					requestId
+				)) as MaterialRequest;
+				request = materialRequest;
 				requestType = 'material';
 			}
 
@@ -69,9 +71,9 @@
 					fetchQuotesCount()
 				]);
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to fetch request details:', error);
-			errorMessage = error.data?.message || 'Could not load request details.';
+			errorMessage = error instanceof Error ? error.message : 'Could not load request details.';
 		} finally {
 			isLoading = false;
 		}
@@ -82,14 +84,14 @@
 
 		try {
 			const contracts = await apiClient.getUserContracts();
-			const relatedContract = contracts.find((contract: any) => {
+			const relatedContract = contracts.find((contract: Contract) => {
 				if (requestType === 'work') {
 					return contract.workRequestId === request?.id;
 				} else {
 					return contract.materialRequestId === request?.id;
 				}
 			});
-			contractInfo = relatedContract || null;
+			contractInfo = relatedContract;
 		} catch (error) {
 			console.error('Failed to fetch contract info:', error);
 		}
@@ -110,7 +112,7 @@
 						: contractInfo.customerId;
 
 				const relatedChat = chats.find(
-					(chat: any) =>
+					(chat: Chat) =>
 						chat.participants.includes(otherPartyId) && chat.participants.includes(currentUser!.id)
 				);
 				chatId = relatedChat?.id || null;
@@ -129,7 +131,7 @@
 
 				for (const userId of interestedUsers) {
 					const relatedChat = chats.find(
-						(chat: any) =>
+						(chat: Chat) =>
 							chat.participants.includes(userId) && chat.participants.includes(currentUser!.id)
 					);
 					if (relatedChat) {
@@ -140,7 +142,7 @@
 			} else {
 				// For experts/suppliers, find chat with customer
 				const relatedChat = chats.find(
-					(chat: any) =>
+					(chat: Chat) =>
 						chat.participants.includes(request!.customerId) &&
 						chat.participants.includes(currentUser!.id)
 				);
@@ -158,7 +160,7 @@
 			const chats = await apiClient.getUserChats();
 			const newChatMap = new Map<string, string>();
 
-			chats.forEach((chat: any) => {
+			chats.forEach((chat: Chat) => {
 				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
 				if (otherParticipant) {
 					newChatMap.set(otherParticipant, chat.id);
@@ -196,7 +198,7 @@
 
 			// Refresh request details
 			await fetchRequestDetails(request.id);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to update status:', error);
 			// The error will be handled by the RequestDetailActions component
 		}
@@ -212,8 +214,8 @@
 		goto('/my-requests');
 	}
 
-	function handleTabChange(event: CustomEvent) {
-		activeTab = event.detail.tab;
+	function handleTabChange(detail: { tab: 'details' | 'quotations' }) {
+		activeTab = detail.tab;
 	}
 </script>
 
@@ -261,7 +263,7 @@
 			<h2 class="mb-3 text-2xl font-bold text-red-300">Unable to Load Request</h2>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				on:click={handleBackToList}
+				onclick={handleBackToList}
 				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				← Back to My Requests
@@ -270,7 +272,7 @@
 	{:else if request && requestType}
 		<!-- Back Button -->
 		<button
-			on:click={handleBackToList}
+			onclick={handleBackToList}
 			class="mb-4 flex items-center gap-2 text-sm text-sky-400 hover:text-sky-300 hover:underline"
 		>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -285,11 +287,11 @@
 			{requestType}
 			{contractInfo}
 			canEdit={canEdit || false}
-			on:edit={handleEdit}
+			onEdit={handleEdit}
 		/>
 
 		<!-- Tabs -->
-		<RequestDetailTabs {activeTab} {quotesCount} on:tabChange={handleTabChange} />
+		<RequestDetailTabs {activeTab} {quotesCount} onTabChange={handleTabChange} />
 
 		<!-- Tab Content -->
 		{#if activeTab === 'details'}
@@ -309,8 +311,8 @@
 						{contractInfo}
 						{chatId}
 						canEdit={canEdit || false}
-						on:statusUpdate={(e) => handleStatusUpdate(e.detail)}
-						on:edit={handleEdit}
+						onStatusUpdate={(status) => handleStatusUpdate(status)}
+						onEdit={handleEdit}
 					/>
 				</div>
 			</div>

@@ -1,9 +1,15 @@
 <script lang="ts">
+
+
 	import { API_BASE_URL } from '$lib/config';
 	import { authStore } from '$lib/stores/auth';
 	import type { Contract, ContractStatus } from '$lib/types';
 
-	export let activeContracts: Contract[] = [];
+	interface Props {
+		activeContracts?: Contract[];
+	}
+
+	let { activeContracts = [] }: Props = $props();
 
 	// Enhanced contract type for display
 	type EnhancedContract = Contract & {
@@ -11,8 +17,8 @@
 		otherPartyName?: string;
 	};
 
-	let enhancedContracts: EnhancedContract[] = [];
-	let isEnriching = false;
+	let enhancedContracts: EnhancedContract[] = $state([]);
+	let isEnriching = $state(false);
 
 	// Get current user and token
 	let token: string | null = null;
@@ -130,11 +136,13 @@
 	}
 
 	// Watch for changes in activeContracts
-	$: if (activeContracts.length > 0) {
-		enrichContracts(activeContracts);
-	} else {
-		enhancedContracts = [];
-	}
+	$effect(() => {
+		if (activeContracts.length > 0) {
+			enrichContracts(activeContracts);
+		} else {
+			enhancedContracts = [];
+		}
+	});
 
 	function getStatusClasses(status: ContractStatus): string {
 		const classes: Record<string, string> = {
@@ -251,7 +259,7 @@
 								</div>
 							</div>
 							<span
-								class="flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium {getStatusClasses(
+								class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium {getStatusClasses(
 									contract.status
 								)}"
 							>

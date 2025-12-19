@@ -1,8 +1,10 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/TypingIndicator.svelte -->
 <script lang="ts">
-	export let typingUsers: Array<{ userId: string; userName: string }> = [];
+	interface Props {
+		typingUsers?: Array<{ userId: string; userName: string }>;
+	}
 
-	$: typingText = formatTypingText(typingUsers);
+	let { typingUsers = [] }: Props = $props();
 
 	function formatTypingText(users: Array<{ userId: string; userName: string }>): string {
 		if (users.length === 0) return '';
@@ -16,6 +18,7 @@
 			return `${users[0].userName}, ${users[1].userName} and ${remaining} other${remaining > 1 ? 's' : ''} are typing...`;
 		}
 	}
+	let typingText = $derived(formatTypingText(typingUsers));
 </script>
 
 {#if typingUsers.length > 0}

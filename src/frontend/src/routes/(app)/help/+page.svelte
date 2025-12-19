@@ -8,10 +8,10 @@
 	import HelpSectionComponent from '$lib/components/help/HelpSection.svelte';
 
 	// State
-	let currentUser: AuthUser | null = null;
-	let searchQuery = '';
-	let selectedLanguage = 'en';
-	let filteredSections: HelpSection[] = [];
+	let currentUser: AuthUser | null = $state(null);
+	let searchQuery = $state('');
+	let selectedLanguage = $state('en');
+	let filteredSections: HelpSection[] = $state([]);
 	let isLoading = false;
 
 	// Language support
@@ -28,7 +28,7 @@
 	});
 
 	// Analytics function
-	async function trackHelpAnalytics(data: any) {
+	async function trackHelpAnalytics(data: JsonObject) {
 		if (!currentUser) {
 			console.log('No user logged in, skipping analytics');
 			return;
@@ -83,8 +83,7 @@
 	}
 
 	// Expand/collapse sections
-	function toggleSection(event: CustomEvent) {
-		const sectionId = event.detail;
+	function toggleSection(sectionId: string) {
 		const section = filteredSections.find((s) => s.id === sectionId);
 		if (section) {
 			section.expanded = !section.expanded;
@@ -98,8 +97,8 @@
 	}
 
 	// Feedback functions
-	async function handleFeedback(event: CustomEvent) {
-		const { sectionId, helpful } = event.detail;
+	async function handleFeedback(detail: { sectionId: string; helpful: boolean }) {
+		const { sectionId, helpful } = detail;
 		await trackHelpAnalytics({
 			action: helpful ? 'helpful' : 'not_helpful',
 			sectionId: sectionId
@@ -132,12 +131,12 @@
 	});
 
 	// Reactive search - trigger when searchQuery OR selectedLanguage changes
-	$: {
+	$effect(() => {
 		if (typeof searchQuery !== 'undefined') {
 			console.log('Reactive search triggered:', { searchQuery, selectedLanguage });
 			searchHelpContent(searchQuery);
 		}
-	}
+	});
 
 	// User type display
 	function getUserTypeDisplay(userType: string) {
@@ -200,9 +199,9 @@
 		<!-- Language Selector -->
 		<div class="flex justify-center">
 			<div class="flex rounded-lg bg-slate-700/50 p-1">
-				{#each languages as language}
+				{#each languages as language (language.name)}
 					<button
-						on:click={() => {
+						onclick={() => {
 							console.log('language clicked:', language);
 							selectedLanguage = language.code;
 							console.log('selectedLanguage set to:', selectedLanguage);
@@ -412,7 +411,7 @@
 				<h3 class="mt-4 text-lg font-semibold text-slate-300">No help topics found</h3>
 				<p class="mt-2 text-slate-400">Try adjusting your search terms or browse all topics.</p>
 				<button
-					on:click={() => {
+					onclick={() => {
 						searchQuery = '';
 					}}
 					class="mt-4 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
@@ -422,7 +421,11 @@
 			</div>
 		{:else}
 			{#each filteredSections as section (section.id)}
-				<HelpSectionComponent {section} on:toggle={toggleSection} on:feedback={handleFeedback} />
+				<HelpSectionComponent
+					{section}
+					onToggle={(id) => toggleSection(id)}
+					onFeedback={(detail) => handleFeedback(detail)}
+				/>
 			{/each}
 		{/if}
 	</main>

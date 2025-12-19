@@ -2,11 +2,15 @@
 	import type { AuthUser, QuoteMessage } from '$lib/types';
 	import { goto } from '$app/navigation';
 
-	// Props
-	export let message: QuoteMessage;
-	export let currentUser: AuthUser | null = null; // For external reference only
+	interface Props {
+		// Props
+		message: QuoteMessage;
+		currentUser?: AuthUser | null; // For external reference only
+	}
 
-	$: isSender = currentUser?.id === message.senderId;
+	let { message, currentUser = null }: Props = $props();
+
+	let isSender = $derived(currentUser?.id === message.senderId);
 
 	// File utilities (same as MessageList)
 	function getFileIcon(fileName: string): string {
@@ -114,7 +118,7 @@
 			stroke-width="2"
 			stroke-linecap="round"
 			stroke-linejoin="round"
-			class="h-4 w-4 flex-shrink-0 text-emerald-400"
+			class="h-4 w-4 shrink-0 text-emerald-400"
 		>
 			<rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
 			<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
@@ -154,7 +158,7 @@
 					<div
 						class="flex w-full max-w-full items-center gap-2 rounded-lg border border-slate-600/30 bg-slate-800/50 p-2 sm:gap-3 sm:p-3"
 					>
-						<div class="flex-shrink-0">
+						<div class="shrink-0">
 							<div
 								class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-700/50 text-lg sm:h-10 sm:w-10 sm:text-2xl"
 							>
@@ -185,7 +189,7 @@
 								</span>
 							</div>
 						</div>
-						<div class="flex-shrink-0">
+						<div class="shrink-0">
 							{#if isViewableFile(attachment.fileName)}
 								<a
 									href={attachment.filePath}
@@ -240,7 +244,7 @@
 			<button
 				class="group flex items-center gap-1 rounded-lg border border-blue-500/30 bg-slate-800 px-2 py-1 text-xs font-semibold text-blue-300 shadow-lg transition-all duration-200 hover:scale-105 hover:border-blue-400/50 hover:bg-slate-700 hover:shadow-lg hover:shadow-blue-500/20"
 				aria-label="View quote details"
-				on:click={handleViewQuote}
+				onclick={handleViewQuote}
 			>
 				<span>View Quote</span>
 				<svg
@@ -262,7 +266,7 @@
 			<button
 				class="group flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-slate-800 px-2 py-1 text-xs font-semibold text-emerald-300 shadow-lg transition-all duration-200 hover:scale-105 hover:border-emerald-400/50 hover:bg-slate-700 hover:shadow-lg hover:shadow-emerald-500/20"
 				aria-label="View request details"
-				on:click={handleViewRequest}
+				onclick={handleViewRequest}
 			>
 				<span>View Request</span>
 				<svg

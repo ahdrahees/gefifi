@@ -1,37 +1,45 @@
 <!-- gefifi-2/src/frontend/src/lib/components/FileUpload.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-	import type { Writable } from 'svelte/store';
-	import { writable } from 'svelte/store';
+	interface Props {
+		acceptedFileTypes?: string[];
+		maxFileSize?: number; // 30MB
+		multiple?: boolean;
+		files: File[];
+		// New props for existing attachments
+		existingAttachments?: Array<{
+			fileName: string;
+			filePath: string;
+			fileType: string;
+			size: number;
+		}>;
+		removedExistingAttachments?: string[];
+		onFilesChanged?: (files: File[]) => void;
+		onExistingAttachmentsChanged?: (removedFiles: string[]) => void;
+	}
 
-	export let acceptedFileTypes: string[] = [
-		'image/jpeg',
-		'image/png',
-		'application/pdf',
-		'application/msword',
-		'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-		'application/vnd.ms-excel',
-		'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-		'.dwg',
-		'.dxf'
-	];
-	export let maxFileSize: number = 30 * 1024 * 1024; // 30MB
-	export let multiple: boolean = true;
-	export let files: Writable<File[]>;
+	let {
+		acceptedFileTypes = [
+			'image/jpeg',
+			'image/png',
+			'application/pdf',
+			'application/msword',
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+			'application/vnd.ms-excel',
+			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			'.dwg',
+			'.dxf'
+		],
+		maxFileSize = 30 * 1024 * 1024,
+		multiple = true,
+		files = $bindable(),
+		existingAttachments = [],
+		removedExistingAttachments = $bindable([]),
+		onFilesChanged,
+		onExistingAttachmentsChanged
+	}: Props = $props();
 
-	// New props for existing attachments
-	export let existingAttachments: Array<{
-		fileName: string;
-		filePath: string;
-		fileType: string;
-		size: number;
-	}> = [];
-	export let removedExistingAttachments: Writable<string[]> = writable([]);
-
-	const dispatch = createEventDispatcher();
-
-	let dragOver = false;
-	let errors: string[] = [];
+	let dragOver = $state(false);
+	let errors: string[] = $state([]);
 
 	function handleFileSelect(event: Event) {
 		const target = event.target as HTMLInputElement;
@@ -65,27 +73,27 @@
 		}
 
 		if (multiple) {
-			$files = [...$files, ...validFiles];
+			files = [...files, ...validFiles];
 		} else {
-			$files = validFiles.slice(0, 1);
+			files = validFiles.slice(0, 1);
 		}
 
-		dispatch('filesChanged', $files);
+		onFilesChanged?.(files);
 	}
 
 	function removeFile(index: number) {
-		$files = $files.filter((_, i) => i !== index);
-		dispatch('filesChanged', $files);
+		files = files.filter((_, i) => i !== index);
+		onFilesChanged?.(files);
 	}
 
 	function removeExistingAttachment(fileName: string) {
-		$removedExistingAttachments = [...$removedExistingAttachments, fileName];
-		dispatch('existingAttachmentsChanged', $removedExistingAttachments);
+		removedExistingAttachments = [...removedExistingAttachments, fileName];
+		onExistingAttachmentsChanged?.(removedExistingAttachments);
 	}
 
 	function restoreExistingAttachment(fileName: string) {
-		$removedExistingAttachments = $removedExistingAttachments.filter((name) => name !== fileName);
-		dispatch('existingAttachmentsChanged', $removedExistingAttachments);
+		removedExistingAttachments = removedExistingAttachments.filter((name) => name !== fileName);
+		onExistingAttachmentsChanged?.(removedExistingAttachments);
 	}
 
 	function getFileIcon(fileName: string): string {
@@ -176,10 +184,10 @@
 	}
 
 	// Computed values for display
-	$: activeExistingAttachments = existingAttachments.filter(
-		(att) => !$removedExistingAttachments.includes(att.fileName)
+	let activeExistingAttachments = $derived(
+		existingAttachments.filter((att) => !removedExistingAttachments.includes(att.fileName))
 	);
-	$: totalFiles = $files?.length + activeExistingAttachments.length;
+	let totalFiles = $derived(files?.length + activeExistingAttachments.length);
 </script>
 
 <div class="space-y-4">
@@ -189,10 +197,16 @@
 		class="relative rounded-lg border-2 border-dashed border-slate-500 bg-slate-800/50 p-6 text-center transition-all duration-200"
 		class:border-emerald-500={dragOver}
 		class:bg-slate-700={dragOver}
-		on:dragover|preventDefault={() => (dragOver = true)}
-		on:dragleave|preventDefault={() => (dragOver = false)}
-		on:drop|preventDefault={handleDrop}
-		on:keydown={(e) => {
+		ondragover={(e) => {
+			e.preventDefault();
+			dragOver = true;
+		}}
+		ondragleave={(e) => {
+			e.preventDefault();
+			dragOver = false;
+		}}
+		ondrop={handleDrop}
+		onkeydown={(e) => {
 			if (e.key === 'Enter' || e.key === ' ') {
 				e.preventDefault();
 				document.getElementById('file-upload')?.click();
@@ -227,7 +241,7 @@
 				class="hidden"
 				{multiple}
 				accept={acceptedFileTypes.join(',')}
-				on:change={handleFileSelect}
+				onchange={handleFileSelect}
 			/>
 		</label>
 	</div>
@@ -271,7 +285,7 @@
 							>
 								<!-- File Icon and Type Badge -->
 								<div class="flex items-center gap-4">
-									<div class="flex-shrink-0">
+									<div class="shrink-0">
 										{#if shouldShowThumbnail(attachment)}
 											<!-- Image Thumbnail -->
 											<div class="h-12 w-12 overflow-hidden rounded-xl ring-1 ring-slate-600/50">
@@ -280,7 +294,7 @@
 													alt={attachment.fileName}
 													class="h-full w-full object-cover"
 													loading="lazy"
-													on:error={(e) => {
+													onerror={(e) => {
 														// Fallback to icon if image fails to load
 														const img = e.target as HTMLImageElement;
 														if (img) {
@@ -335,7 +349,7 @@
 									<button
 										aria-label="Remove existing attachment"
 										type="button"
-										on:click={() => removeExistingAttachment(attachment.fileName)}
+										onclick={() => removeExistingAttachment(attachment.fileName)}
 										class="flex h-8 w-8 items-center justify-center rounded-full bg-red-600/10 text-red-400 shadow-sm transition-all duration-200 hover:scale-110 hover:bg-red-600/20 hover:text-red-300 focus:ring-2 focus:ring-red-500/50 focus:outline-none"
 										title="Remove existing attachment"
 									>
@@ -361,11 +375,11 @@
 			{/if}
 
 			<!-- Removed Existing Attachments Section -->
-			{#if $removedExistingAttachments.length > 0}
+			{#if removedExistingAttachments.length > 0}
 				<div class="space-y-3">
 					<h4 class="text-sm font-medium text-slate-400">Removed Attachments</h4>
 					<div class="grid gap-2">
-						{#each $removedExistingAttachments as fileName}
+						{#each removedExistingAttachments as fileName (fileName)}
 							<div
 								class="flex items-center justify-between rounded-lg border border-slate-600/30 bg-slate-800/20 p-3"
 							>
@@ -380,7 +394,7 @@
 								<button
 									aria-label="Restore {fileName}"
 									type="button"
-									on:click={() => restoreExistingAttachment(fileName)}
+									onclick={() => restoreExistingAttachment(fileName)}
 									class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-400 shadow-sm transition-all duration-200 hover:scale-110 hover:bg-emerald-600/20 hover:text-emerald-300 focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
 									title="Restore attachment"
 								>
@@ -400,17 +414,17 @@
 			{/if}
 
 			<!-- New Files Section -->
-			{#if $files.length > 0}
+			{#if files.length > 0}
 				<div class="space-y-3">
 					<h4 class="text-sm font-medium text-slate-300">New Files</h4>
 					<div class="grid gap-3">
-						{#each $files as file, i (i)}
+						{#each files as file, i (i)}
 							<div
 								class="group relative overflow-hidden rounded-xl border border-slate-600/30 bg-gradient-to-r from-slate-800/50 to-slate-700/30 p-4 shadow-lg backdrop-blur-sm transition-all duration-200 hover:border-slate-500/50 hover:from-slate-700/60 hover:to-slate-600/40 hover:shadow-xl"
 							>
 								<!-- File Icon and Type Badge -->
 								<div class="flex items-center gap-4">
-									<div class="flex-shrink-0">
+									<div class="shrink-0">
 										{#if shouldShowThumbnail(file)}
 											<!-- Image Thumbnail -->
 											<div class="h-12 w-12 overflow-hidden rounded-xl ring-1 ring-slate-600/50">
@@ -419,7 +433,7 @@
 													alt={file.name}
 													class="h-full w-full object-cover"
 													loading="lazy"
-													on:error={(e) => {
+													onerror={(e) => {
 														// Fallback to icon if image fails to load
 														const img = e.target as HTMLImageElement;
 														if (img) {
@@ -474,7 +488,7 @@
 									<button
 										aria-label="Remove file"
 										type="button"
-										on:click={() => removeFile(i)}
+										onclick={() => removeFile(i)}
 										class="flex h-8 w-8 items-center justify-center rounded-full bg-red-600/10 text-red-400 shadow-sm transition-all duration-200 hover:scale-110 hover:bg-red-600/20 hover:text-red-300 focus:ring-2 focus:ring-red-500/50 focus:outline-none"
 										title="Remove file"
 									>

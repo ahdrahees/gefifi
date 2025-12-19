@@ -8,11 +8,11 @@
 	// Get Google Client ID from environment variables
 	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-	let email = '';
-	let password = '';
-	let isLoading = false;
-	let errorMessage: string | null = null;
-	let googleIsLoading = false;
+	let email = $state('');
+	let password = $state('');
+	let isLoading = $state(false);
+	let errorMessage: string | null = $state(null);
+	let googleIsLoading = $state(false);
 
 	// --- Google Sign-In Functions ---
 
@@ -40,7 +40,7 @@
 			// On successful login (existing user) or registration, the backend returns a token.
 			authStore._updateAuthData(result.token, result.user);
 			goto('/home', { replaceState: true });
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Google Sign-In Error:', error);
 			if (error instanceof ApiError && error.status === 400) {
 				// Handle case where user is new and needs to select a userType
@@ -70,9 +70,9 @@
 			// would typically handle redirection based on isLoggedIn.
 			// For now, explicit navigation on success:
 			goto('/home');
-		} catch (error: any) {
+		} catch (error: unknown) {
 			// The error thrown by authStore.login already has a user-friendly message
-			errorMessage = error.message;
+			errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
 			console.error('Login page error:', error);
 		} finally {
 			isLoading = false;
@@ -127,7 +127,7 @@
 </script>
 
 <div
-	class="flex min-h-screen flex-col justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900 px-6 py-12 lg:px-8"
+	class="flex min-h-screen flex-col justify-center bg-linear-to-br from-slate-900 via-slate-800 to-gray-900 px-6 py-12 lg:px-8"
 >
 	<div class="sm:mx-auto sm:w-full sm:max-w-md">
 		<a href="/">
@@ -220,9 +220,9 @@
 			</div>
 
 			<div class="relative flex items-center py-2">
-				<div class="flex-grow border-t border-slate-600"></div>
-				<span class="mx-4 flex-shrink text-xs text-slate-400 uppercase">Or</span>
-				<div class="flex-grow border-t border-slate-600"></div>
+				<div class="grow border-t border-slate-600"></div>
+				<span class="mx-4 shrink text-xs text-slate-400 uppercase">Or</span>
+				<div class="grow border-t border-slate-600"></div>
 			</div>
 
 			<!-- Google Sign-In Button Container -->

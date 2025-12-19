@@ -1,73 +1,87 @@
 <!-- gefifi-2/src/frontend/src/lib/components/contracts/ContractForm.svelte -->
 <script lang="ts">
 	import type { Contract } from '$lib/types';
-	import { createEventDispatcher } from 'svelte';
-	import { authStore } from '$lib/stores/auth';
-	import apiClient from '$lib/api';
+	import apiClient, { type ContractData } from '$lib/api';
 	import FileUpload from '$lib/components/FileUpload.svelte';
 	import { writable } from 'svelte/store';
 
-	export let workRequestId: string | undefined = undefined;
-	export let materialRequestId: string | undefined = undefined;
-	export let customerId: string;
-	export let expertSupplierId: string;
-	export let existingContract: Contract | null = null; // For editing existing contracts
-
-	const dispatch = createEventDispatcher();
-
-	// Determine contract type and labels
-	$: contractType = workRequestId ? 'expert_contract' : 'material_contract';
-	$: isWorkContract = !!workRequestId;
-	$: detailsLabel = isWorkContract ? 'Work Details' : 'Material & Delivery Details';
-	$: detailsPlaceholder = isWorkContract
-		? 'Describe the scope of work, tasks, deliverables...'
-		: 'List the materials, quantities, and delivery terms...';
-
-	// Basic required fields
-	let workDetails = '';
-	let agreementSummary = '';
-	let contractDate = new Date().toISOString().split('T')[0]; // Today's date in YYYY-MM-DD format
-
-	// Financial fields
-	let totalAmount: number | null = null;
-	let paymentTerms = '';
-	let advanceAmount: number | null = null;
-
-	// Timeline fields
-	let startDate = '';
-	let expectedCompletionDate = '';
-
-	// Legal fields
-	let termsAndConditions = '';
-	let warrantyPeriod = '';
-	let cancellationPolicy = '';
-
-	// Pre-fill form if editing existing contract
-	$: if (existingContract) {
-		workDetails = existingContract.workDetails || '';
-		agreementSummary = existingContract.agreementSummary || '';
-		contractDate = existingContract.contractDate
-			? existingContract.contractDate.split('T')[0]
-			: new Date().toISOString().split('T')[0];
-		totalAmount = existingContract.totalAmount || null;
-		paymentTerms = existingContract.paymentTerms || '';
-		advanceAmount = existingContract.advanceAmount || null;
-		startDate = existingContract.startDate || '';
-		expectedCompletionDate = existingContract.expectedCompletionDate || '';
-		termsAndConditions = existingContract.termsAndConditions || '';
-		warrantyPeriod = existingContract.warrantyPeriod || '';
-		cancellationPolicy = existingContract.cancellationPolicy || '';
+	interface Props {
+		workRequestId?: string | undefined;
+		materialRequestId?: string | undefined;
+		customerId: string;
+		expertSupplierId: string;
+		existingContract?: Contract | null; // For editing existing contracts
+		onContractUpdate?: (detail: { contractData: Contract }) => void;
+		onContractCreated?: (contract: Contract) => void;
 	}
 
+	let {
+		workRequestId = undefined,
+		materialRequestId = undefined,
+		customerId,
+		expertSupplierId,
+		existingContract = null,
+		onContractUpdate,
+		onContractCreated
+	}: Props = $props();
+
+	// Determine contract type and labels
+	let contractType = $derived(workRequestId ? 'expert_contract' : 'material_contract');
+	let isWorkContract = $derived(!!workRequestId);
+	let detailsLabel = $derived(isWorkContract ? 'Work Details' : 'Material & Delivery Details');
+	let detailsPlaceholder = $derived(
+		isWorkContract
+			? 'Describe the scope of work, tasks, deliverables...'
+			: 'List the materials, quantities, and delivery terms...'
+	);
+
+	// Basic required fields
+	let workDetails = $state('');
+	let agreementSummary = $state('');
+	let contractDate = $state(new Date().toISOString().split('T')[0]); // Today's date in YYYY-MM-DD format
+
+	// Financial fields
+	let totalAmount: number | null = $state(null);
+	let paymentTerms = $state('');
+	let advanceAmount: number | null = $state(null);
+
+	// Timeline fields
+	let startDate = $state('');
+	let expectedCompletionDate = $state('');
+
+	// Legal fields
+	let termsAndConditions = $state('');
+	let warrantyPeriod = $state('');
+	let cancellationPolicy = $state('');
+
+	// Pre-fill form if editing existing contract
+	$effect(() => {
+		if (existingContract) {
+			workDetails = existingContract.workDetails || '';
+			agreementSummary = existingContract.agreementSummary || '';
+			contractDate = existingContract.contractDate
+				? existingContract.contractDate.split('T')[0]
+				: new Date().toISOString().split('T')[0];
+			totalAmount = existingContract.totalAmount || null;
+			paymentTerms = existingContract.paymentTerms || '';
+			advanceAmount = existingContract.advanceAmount || null;
+			startDate = existingContract.startDate || '';
+			expectedCompletionDate = existingContract.expectedCompletionDate || '';
+			termsAndConditions = existingContract.termsAndConditions || '';
+			warrantyPeriod = existingContract.warrantyPeriod || '';
+			cancellationPolicy = existingContract.cancellationPolicy || '';
+		}
+	});
+
 	// Attachment handling
-	let selectedFiles = writable<File[]>([]);
-	let removedExistingAttachments = writable<string[]>([]);
-	let isUploadingFiles = false;
+	let selectedFiles = $state(writable<File[]>([]));
+	let removedExistingAttachments = $state(writable<string[]>([]));
+	let isUploadingFiles = $state(false);
 
 	// UI state
-	let isLoading = false;
-	let errorMessage = '';
-	let successMessage = '';
+	let isLoading = $state(false);
+	let errorMessage = $state('');
+	let successMessage = $state('');
 
 	// File upload configuration
 	const acceptedFileTypes = [
@@ -86,12 +100,14 @@
 	const maxFileSize = 25 * 1024 * 1024; // 25MB
 
 	// Get existing attachments for editing
-	$: existingAttachments = existingContract?.attachments || [];
+	let existingAttachments = $derived(existingContract?.attachments || []);
 
 	// Reset removed attachments store when component loads with existing contract
-	$: if (existingContract) {
-		removedExistingAttachments.set([]);
-	}
+	$effect(() => {
+		if (existingContract) {
+			removedExistingAttachments.set([]);
+		}
+	});
 
 	async function handleSubmit() {
 		isLoading = true;
@@ -121,7 +137,7 @@
 
 		try {
 			// Prepare contract data
-			const contractData: any = {
+			const contractData: ContractData = {
 				customerId,
 				expertSupplierId,
 				workDetails: workDetails.trim(),
@@ -218,7 +234,7 @@
 					successMessage = `Contract (ID: ${updatedContract.id.substring(0, 8)}) updated successfully!`;
 
 					// Dispatch update event
-					dispatch('contractUpdate', { contractData: updatedContract });
+					onContractUpdate?.({ contractData: updatedContract });
 				}
 			} else {
 				// Create new contract
@@ -250,12 +266,15 @@
 					clearForm();
 
 					// Dispatch success event
-					dispatch('contractCreated', createdContract);
+					onContractCreated?.(createdContract);
 				}
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error saving contract:', error);
-			errorMessage = error.message || 'An unexpected error occurred while saving the contract.';
+			errorMessage =
+				error instanceof Error
+					? error.message
+					: 'An unexpected error occurred while saving the contract.';
 		} finally {
 			isLoading = false;
 		}
@@ -292,7 +311,13 @@
 		</div>
 	{/if}
 
-	<form on:submit|preventDefault={handleSubmit} class="space-y-6">
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			handleSubmit();
+		}}
+		class="space-y-6"
+	>
 		<!-- Basic Details Section -->
 		<div class="space-y-4">
 			<h3 class="text-lg font-medium text-emerald-300">Basic Details</h3>

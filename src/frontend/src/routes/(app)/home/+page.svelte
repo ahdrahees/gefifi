@@ -2,53 +2,50 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
-	import { page } from '$app/stores'; // For query params or path if needed later
 	import { goto } from '$app/navigation';
-	import { API_BASE_URL } from '$lib/config'; // Assuming you have a config file for API base
-	import apiClient, { type WorkRequestResponse, type MaterialRequestResponse } from '$lib/api';
+	import apiClient from '$lib/api';
 	import MaterialRequestCard from '$lib/components/ui/MaterialRequestCard.svelte';
 	import WorkRequestCard from '$lib/components/ui/WorkRequestCard.svelte';
 	import RecentChatsPanel from '$lib/components/home/RecentChatsPanel.svelte';
 	import ActiveContractsPanel from '$lib/components/home/ActiveContractsPanel.svelte';
-
-	type UserProfile = {
-		id: string;
-		email: string;
-		userType: 'customer' | 'expert' | 'supplier' | 'admin' | string;
-		profile?: {
-			fullName?: string;
-			companyName?: string;
-			mainExpertise?: string;
-			mainMaterial?: string;
-			location?: string;
-			avatarUrl?: string;
-		};
-	};
+	import {
+		type Chat,
+		type Contract,
+		type EnrichedChat,
+		type MaterialRequest,
+		type UserProfileUI,
+		type WorkRequest
+	} from '$lib/types';
 
 	// Assuming icons are still managed in the main layout or a global store if needed here
 	// For simplicity, using text labels for now or simple placeholders
 
-	let currentUser: AuthUser | null = null;
-	let workRequests: any[] = [];
-	let materialRequests: any[] = [];
-	let allMyRequests: any[] = []; // Combined ACTIVE requests for customer view
-	let recentChats: any[] = [];
-	let activeContracts: any[] = [];
-	let isLoading = true;
-	let errorMessage = '';
-	let fetchedUserProfiles = new Map<string, UserProfile>();
+	let currentUser: AuthUser | null = $state(null);
+	let workRequests = $state<WorkRequest[]>([]);
+	let materialRequests = $state<MaterialRequest[]>([]);
+	let allMyRequests = $state<AllRequest[]>([]); // Combined ACTIVE requests for customer view
+
+	type AllRequest =
+		| (WorkRequest & { requestType: 'work' })
+		| (MaterialRequest & { requestType: 'material' });
+
+	let recentChats: EnrichedChat[] = $state([]);
+	let activeContracts: Contract[] = $state([]);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let fetchedUserProfiles = new Map<string, UserProfileUI>();
 
 	// Map a requestId (work or material) to an existing chatId when a contract exists
-	let requestIdToChatId: Map<string, string> = new Map();
+	let requestIdToChatId: Map<string, string> = $state(new Map());
 
 	// Simple filters for the Requests panel
-	let searchQuery = '';
-	let statusFilter: string = 'all';
-	let categoryFilter: string = 'all';
+	let searchQuery = $state('');
+	let statusFilter: string = $state('all');
+	let categoryFilter: string = $state('all');
 
 	// Derived filter options (computed after we populate allMyRequests)
-	let uniqueStatuses: string[] = [];
-	let uniqueCategories: string[] = [];
+	let uniqueStatuses: string[] = $state([]);
+	let uniqueCategories: string[] = $state([]);
 
 	// Get token for API calls
 	let token: string | null = null;
@@ -57,13 +54,13 @@
 		token = auth.token;
 	});
 
-	function trimString(str: string | undefined | null, maxLength: number): string {
-		if (!str) return '';
-		if (str.length <= maxLength) return str;
-		return str.substring(0, maxLength) + '...';
-	}
+	// function trimString(str: string | undefined | null, maxLength: number): string {
+	// 	if (!str) return '';
+	// 	if (str.length <= maxLength) return str;
+	// 	return str.substring(0, maxLength) + '...';
+	// }
 
-	function formatDisplayName(otherUser: UserProfile | undefined): string {
+	function formatDisplayName(otherUser: UserProfileUI | undefined): string {
 		if (!otherUser) {
 			return 'Unknown User';
 		}
@@ -86,27 +83,20 @@
 		}
 
 		try {
-			const headers = {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			};
-
 			// Fetch common data
-			const [chatsRes, contractsRes] = await Promise.all([
-				fetch(`${API_BASE_URL}/api/chat`, { headers }),
-				fetch(`${API_BASE_URL}/api/contracts`, { headers })
+			const [chats, contracts] = await Promise.all([
+				apiClient.getUserChats(),
+				apiClient.getUserContracts()
 			]);
 
-			if (!chatsRes.ok) throw new Error(`Failed to fetch chats: ${chatsRes.statusText}`);
-			if (!contractsRes.ok)
-				throw new Error(`Failed to fetch contracts: ${contractsRes.statusText}`);
+			// if (!chatsRes.ok) throw new Error(`Failed to fetch chats: ${chatsRes.statusText}`);
+			// if (!contractsRes.ok)
 
-			const rawChatsFromAPI: any[] = await chatsRes.json();
-			activeContracts = await contractsRes.json();
+			activeContracts = contracts;
 
 			// Enrich chats for homepage display names
 			const homepageOtherParticipantIds = new Set<string>();
-			rawChatsFromAPI.forEach((chat) => {
+			chats.forEach((chat) => {
 				(chat.participants as string[])
 					.filter((pId: string) => pId !== currentUser?.id)
 					.forEach((pId: string) => homepageOtherParticipantIds.add(pId));
@@ -116,16 +106,8 @@
 				Array.from(homepageOtherParticipantIds).map(async (pId) => {
 					if (!fetchedUserProfiles.has(pId) && token) {
 						try {
-							const userRes = await fetch(`${API_BASE_URL}/api/users/${pId}`, { headers });
-							if (userRes.ok) {
-								const userData: UserProfile = await userRes.json();
-								fetchedUserProfiles.set(pId, userData);
-							} else {
-								console.warn(
-									`Home: Failed to fetch profile for user ${pId}: ${userRes.statusText}`
-								);
-								fetchedUserProfiles.set(pId, { id: pId, email: '', userType: 'unknown' }); // Basic fallback
-							}
+							const userData = await apiClient.getUserById(pId);
+							fetchedUserProfiles.set(pId, userData);
 						} catch (e) {
 							console.error(`Home: Error fetching profile for user ${pId}`, e);
 							fetchedUserProfiles.set(pId, { id: pId, email: '', userType: 'unknown' }); // Basic fallback
@@ -134,18 +116,19 @@
 				})
 			);
 
-			recentChats = rawChatsFromAPI
-				.map((chat: any) => {
+			recentChats = chats
+				.map((chat: Chat) => {
 					let displayName = 'Chat'; // Default
 					const otherPIds = (chat.participants as string[]).filter(
 						(pId) => pId !== currentUser?.id
 					);
-					let otherUserProfile: any | undefined = undefined;
+					let otherUserProfile: UserProfileUI | undefined = undefined;
+					let avatarUrl: string | undefined = undefined;
 					if (otherPIds.length > 0) {
 						const otherPId = otherPIds[0];
 						otherUserProfile = fetchedUserProfiles.get(otherPId);
 						displayName = formatDisplayName(otherUserProfile);
-						chat.avatarUrl = otherUserProfile?.profile?.avatarUrl;
+						avatarUrl = otherUserProfile?.profile?.avatarUrl;
 					} else if (
 						(chat.participants as string[]).length === 1 &&
 						chat.participants[0] === currentUser?.id
@@ -160,7 +143,7 @@
 								? `You: ${chat.lastMessage.content}`
 								: chat.lastMessage.content;
 					}
-					return { ...chat, displayName, otherUserProfile, lastMessageSnippet };
+					return { ...chat, displayName, avatarUrl, otherUserProfile, lastMessageSnippet };
 				})
 				.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
@@ -169,7 +152,7 @@
 				const chatList: Array<{ id: string; participants: string[] } & Record<string, any>> =
 					recentChats;
 				const map = new Map<string, string>();
-				(activeContracts || []).forEach((c: any) => {
+				(activeContracts || []).forEach((c: Contract) => {
 					const otherPartyIds = [c.customerId, c.expertSupplierId];
 					const match = chatList.find(
 						(ch) =>
@@ -188,10 +171,10 @@
 
 			// Fetch user-specific data
 			if (currentUser.userType === 'customer') {
-				const [wrRes, mrRes] = await Promise.all([
+				const [wrRes, mrRes] = (await Promise.all([
 					apiClient.getWorkRequestsByCustomerId(currentUser.id),
 					apiClient.getMaterialRequestsByCustomerId(currentUser.id)
-				]);
+				])) as [WorkRequest[], MaterialRequest[]];
 
 				// Keep only ACTIVE requests
 				const isActiveWork = (status: string) =>
@@ -201,13 +184,13 @@
 				const isActiveMaterial = (status: string) =>
 					['open', 'quoting', 'ordered', 'contracted'].includes(status);
 
-				const combinedActive = [
+				const combinedActive: AllRequest[] = [
 					...wrRes
-						.filter((r: WorkRequestResponse) => isActiveWork(r.status))
-						.map((r: WorkRequestResponse) => ({ ...r, requestType: 'work' })),
+						.filter((r: WorkRequest) => isActiveWork(r.status))
+						.map((r: WorkRequest) => ({ ...r, requestType: 'work' as const })),
 					...mrRes
-						.filter((r: MaterialRequestResponse) => isActiveMaterial(r.status))
-						.map((r: MaterialRequestResponse) => ({ ...r, requestType: 'material' }))
+						.filter((r: MaterialRequest) => isActiveMaterial(r.status))
+						.map((r: MaterialRequest) => ({ ...r, requestType: 'material' as const }))
 				];
 
 				allMyRequests = combinedActive.sort(
@@ -215,55 +198,59 @@
 				);
 
 				// Build filter options
-				uniqueStatuses = Array.from(
-					new Set(allMyRequests.map((r: any) => String(r.status)))
-				).sort();
+				uniqueStatuses = Array.from(new Set(allMyRequests.map((r) => String(r.status)))).sort();
 				uniqueCategories = Array.from(
 					new Set(
 						allMyRequests
-							.filter((r: any) => r.requestType === 'work' && r.category)
-							.map((r: any) => String(r.category))
+							.filter(
+								(r): r is WorkRequest & { requestType: 'work' } =>
+									r.requestType === 'work' && !!r.category
+							)
+							.map((r) => r.category ?? '')
 					)
 				).sort();
 			} else if (currentUser.userType === 'expert') {
 				// Experts see all open work requests
-				const wrRes = await apiClient.getWorkRequests();
+				const wrRes: WorkRequest[] = (await apiClient.getWorkRequests()) as WorkRequest[];
 				workRequests = wrRes.filter((req) =>
 					['open', 'awaiting_quotes', 'in_discussion'].includes(req.status)
 				);
 			} else if (currentUser.userType === 'supplier') {
 				// Suppliers see all open material requests
-				const mrRes = await apiClient.getMaterialRequests();
+				const mrRes = (await apiClient.getMaterialRequests()) as MaterialRequest[];
 				materialRequests = mrRes.filter((req) => req.status === 'open');
 			}
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error('Homepage data fetch error:', err);
-			errorMessage = err.message || 'An error occurred while loading homepage data.';
+			errorMessage =
+				err instanceof Error ? err.message : 'An error occurred while loading homepage data.';
 		} finally {
 			isLoading = false;
 		}
 	}
 	// Filtering logic for the Requests panel (customer)
-	$: filteredRequests = (allMyRequests || [])
-		.filter((r: any) => (statusFilter === 'all' ? true : String(r.status) === statusFilter))
-		.filter((r: any) =>
-			categoryFilter === 'all' ? true : String(r.category || '') === categoryFilter
-		)
-		.filter((r: any) => {
-			if (!searchQuery.trim()) return true;
-			const q = searchQuery.trim().toLowerCase();
-			return (
-				String(r.title || '')
-					.toLowerCase()
-					.includes(q) ||
-				String(r.description || '')
-					.toLowerCase()
-					.includes(q) ||
-				String(r.category || '')
-					.toLowerCase()
-					.includes(q)
-			);
-		});
+	let filteredRequests = $derived(
+		(allMyRequests || [])
+			.filter((r: AllRequest) =>
+				statusFilter === 'all' ? true : String(r.status) === statusFilter
+			)
+			.filter(
+				(r: AllRequest) =>
+					categoryFilter === 'all' || (r.requestType === 'work' && r.category === categoryFilter)
+			)
+			.filter((r: AllRequest) => {
+				if (!searchQuery.trim()) return true;
+				const q = searchQuery.trim().toLowerCase();
+				const categoryMatch =
+					r.requestType === 'work' && r.category ? r.category.toLowerCase().includes(q) : false;
+
+				return (
+					(r.title || '').toLowerCase().includes(q) ||
+					(r.description || '').toLowerCase().includes(q) ||
+					categoryMatch
+				);
+			})
+	);
 
 	function getWorkStatusClasses(status: string) {
 		const classes: Record<string, string> = {
@@ -286,8 +273,12 @@
 		return classes[status] || 'bg-slate-500/20 text-slate-300 border-slate-500/50';
 	}
 
-	async function handleSendInterest(event: CustomEvent) {
-		const { customerId, materialRequestId, workRequestId } = event.detail;
+	async function handleSendInterest(detail: {
+		customerId: string;
+		materialRequestId?: string;
+		workRequestId?: string;
+	}) {
+		const { customerId, materialRequestId, workRequestId } = detail;
 
 		if (!customerId || (!materialRequestId && !workRequestId)) return;
 
@@ -304,9 +295,10 @@
 			if (result.chatId) {
 				goto(`/chat/${result.chatId}`);
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to send interest', error);
-			errorMessage = error.data?.message || 'Could not send interest. Please try again.';
+			errorMessage =
+				error instanceof Error ? error.message : 'Could not send interest. Please try again.';
 		}
 	}
 
@@ -327,15 +319,15 @@
 		}
 	});
 
-	function truncateText(text: string, maxLength: number) {
-		if (!text) return '';
-		return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-	}
+	// function truncateText(text: string, maxLength: number) {
+	// 	if (!text) return '';
+	// 	return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+	// }
 
-	function formatDate(dateString: string) {
-		if (!dateString) return 'N/A';
-		return new Date(dateString).toLocaleDateString();
-	}
+	// function formatDate(dateString: string) {
+	// 	if (!dateString) return 'N/A';
+	// 	return new Date(dateString).toLocaleDateString();
+	// }
 </script>
 
 <div class="flex h-full flex-col space-y-8">
@@ -358,7 +350,7 @@
 			<div class="flex items-center gap-2">
 				{#if currentUser?.userType === 'customer'}
 					<button
-						on:click={() => goto('/customer/create-request')}
+						onclick={() => goto('/customer/create-request')}
 						class="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 font-semibold text-white shadow-md transition hover:bg-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none"
 						aria-label="Create new request"
 					>
@@ -493,7 +485,7 @@
 									class="h-10 w-full rounded-lg border border-slate-600/60 bg-slate-700/50 px-3 text-slate-200 focus:border-emerald-500/50 focus:outline-none"
 								>
 									<option value="all">All Statuses</option>
-									{#each uniqueStatuses as s}
+									{#each uniqueStatuses as s (s)}
 										<option value={s}>{s.replace(/_/g, ' ')}</option>
 									{/each}
 								</select>
@@ -504,14 +496,14 @@
 									class="h-10 w-full rounded-lg border border-slate-600/60 bg-slate-700/50 px-3 text-slate-200 focus:border-emerald-500/50 focus:outline-none"
 								>
 									<option value="all">All Categories</option>
-									{#each uniqueCategories as c}
+									{#each uniqueCategories as c (c)}
 										<option value={c}>{c}</option>
 									{/each}
 								</select>
 							</div>
 							<div class="flex items-center">
 								<button
-									on:click={() => {
+									onclick={() => {
 										searchQuery = '';
 										statusFilter = 'all';
 										categoryFilter = 'all';
@@ -626,12 +618,12 @@
 								</div>
 							{/each}
 						</div>
-					{:else if allMyRequests.length > 0}
+					{:else if allMyRequests.length === 0}
 						<div class="rounded-md border border-slate-600/50 bg-slate-700/30 p-4 text-slate-300">
 							<p class="mb-2">No requests match your current filters.</p>
 							<button
 								class="rounded-md bg-slate-600 px-3 py-2 text-sm text-slate-100 hover:bg-slate-500"
-								on:click={() => {
+								onclick={() => {
 									searchQuery = '';
 									statusFilter = 'all';
 									categoryFilter = 'all';
@@ -642,7 +634,7 @@
 						<p class="text-slate-400">
 							You haven't created any requests yet.
 							<button
-								on:click={() => goto('/customer/create-request')}
+								onclick={() => goto('/customer/create-request')}
 								class="ml-1 text-emerald-400 underline hover:text-emerald-300"
 								>Create one now?</button
 							>
@@ -658,7 +650,7 @@
 								<WorkRequestCard
 									request={wr}
 									showInterestButton={true}
-									on:sendInterest={handleSendInterest}
+									onSendInterest={handleSendInterest}
 									currentUserId={currentUser?.id}
 								/>
 							{/each}
@@ -677,14 +669,18 @@
 							{#each materialRequests as mr (mr.id)}
 								<div
 									class="cursor-pointer"
-									on:click={() => goto(`/material-requests/${mr.id}`)}
-									on:keypress
+									onclick={() => goto(`/material-requests/${mr.id}`)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											goto(`/material-requests/${mr.id}`);
+										}
+									}}
 									role="link"
 									tabindex="0"
 								>
 									<MaterialRequestCard
 										request={mr}
-										on:sendInterest={handleSendInterest}
+										onSendInterest={handleSendInterest}
 										showInterestButton={true}
 										currentUserId={currentUser?.id}
 									/>

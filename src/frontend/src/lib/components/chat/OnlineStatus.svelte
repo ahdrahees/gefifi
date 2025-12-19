@@ -4,13 +4,17 @@
 	import { realtimeChatService } from '$lib/services/realtimeChat';
 	import type { Unsubscribe } from 'firebase/firestore';
 
-	export let userId: string;
-	export let showLastSeen: boolean = false;
-	export let size: 'sm' | 'md' | 'lg' = 'md';
-	export let disableDotIndicator: boolean = false;
+	interface Props {
+		userId: string;
+		showLastSeen?: boolean;
+		size?: 'sm' | 'md' | 'lg';
+		disableDotIndicator?: boolean;
+	}
 
-	let isOnline = false;
-	let lastSeen: Date | null = null;
+	let { userId, showLastSeen = false, size = 'md', disableDotIndicator = false }: Props = $props();
+
+	let isOnline = $state(false);
+	let lastSeen: Date | null = $state(null);
 	let unsubscribe: Unsubscribe | null = null;
 
 	// Size configurations

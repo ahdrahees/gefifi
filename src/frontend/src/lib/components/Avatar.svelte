@@ -19,7 +19,7 @@
 	let sizeClass = $derived(sizeClasses[size] || sizeClasses.md);
 </script>
 
-<div class=" h-fit w-fit flex-shrink-0 rounded-full bg-slate-600/50 p-0.5">
+<div class=" h-fit w-fit shrink-0 rounded-full bg-slate-600/50 p-0.5">
 	<img
 		src={url || '/images/default-avatar.png'}
 		alt="Avatar for {name}"

@@ -1,10 +1,11 @@
 <script lang="ts">
-	import type { ListSessionsResponse } from '$lib/types/agent-api';
+	import type { ListSessionsResponse, AgentSession } from '$lib/types/agent-api';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	interface Props {
 		sessions: ListSessionsResponse;
-		currentSessionId: string;
+		currentSessionId?: string;
 		newChat?: () => void;
 	}
 
@@ -17,21 +18,26 @@
 	// 	return timeB - timeA;
 	// });
 
-	function formatTime(timestamp?: number): string {
-		if (!timestamp) return '';
-		// Simple relative time or date formatting could go here
-		// For now just returning empty string or maybe a simple date if needed
-		// keeping it minimal as per request "session name style with small bold font"
-		return '';
+	// function formatTime(timestamp?: number): string {
+	// 	if (!timestamp) return '';
+	// 	// Simple relative time or date formatting could go here
+	// 	// For now just returning empty string or maybe a simple date if needed
+	// 	// keeping it minimal as per request "session name style with small bold font"
+	// 	return '';
+	// }
+
+	function getSessionTitle(session: AgentSession): string {
+		const state = session.state as { sessionMetadata?: { title?: string } } | undefined;
+		return state?.sessionMetadata?.title || 'New Session';
 	}
 
-	function handleNewChat() {
+	async function handleNewChat() {
 		// Dispatch event for parent to do cleanup
 		if (newChat) {
 			newChat();
 		}
 		// Navigate to the agent home
-		goto('/agent');
+		await goto(resolve('/agent'));
 	}
 </script>
 
@@ -41,7 +47,7 @@
 		<h2 class="text-sm font-semibold text-slate-200">Chats</h2>
 		<!-- New Chat Button -->
 		<button
-			on:click={handleNewChat}
+			onclick={handleNewChat}
 			class="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-emerald-500"
 			title="Start a new chat"
 		>
@@ -75,9 +81,9 @@
 					class:text-emerald-400={session.id === currentSessionId}
 					class:text-slate-300={session.id !== currentSessionId}
 					class:group-hover:text-emerald-300={session.id !== currentSessionId}
-					title={session.state?.sessionMetadata?.title || 'New Session'}
+					title={getSessionTitle(session)}
 				>
-					{session.state?.sessionMetadata?.title || 'New Session'}
+					{getSessionTitle(session)}
 				</span>
 
 				<!-- Optional: Display time/date if needed in future -->

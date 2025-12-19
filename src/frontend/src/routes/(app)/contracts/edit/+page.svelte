@@ -1,7 +1,7 @@
 <!-- src/frontend/src/routes/(app)/contracts/edit/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
@@ -11,10 +11,10 @@
 
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
-	let contract: Contract | null = null;
-	let isLoading = true;
-	let errorMessage = '';
-	let contractId: string | null = null;
+	let contract: Contract | null = $state(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let contractId: string | null = $state(null);
 	let isSaving = false;
 
 	authStore.subscribe((auth) => {
@@ -57,15 +57,15 @@
 			}
 
 			contract = fetchedContract;
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error('Fetch contract detail error:', err);
-			errorMessage = err.message;
+			errorMessage = err instanceof Error ? err.message : 'Failed to fetch contract details';
 		} finally {
 			isLoading = false;
 		}
 	}
 
-	async function handleContractUpdate(event: CustomEvent) {
+	async function handleContractUpdate(detail: { contractData: Contract }) {
 		if (!contract || !currentUser || !token) return;
 
 		isSaving = true;
@@ -89,7 +89,7 @@
 
 			// Redirect back to contract page
 			goto(`/contracts/${contract.id}`);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error sending comment:', error);
 			// Even if comment fails, still redirect to contract page
 			goto(`/contracts/${contract.id}`);
@@ -99,7 +99,7 @@
 	}
 
 	onMount(() => {
-		contractId = $page.url.searchParams.get('id');
+		contractId = page.url.searchParams.get('id');
 		let unsubscribe: Unsubscriber;
 
 		if (contractId) {
@@ -172,7 +172,7 @@
 			<h2 class="mb-3 text-2xl font-bold text-red-300">Unable to Edit Contract</h2>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				on:click={() => goto('/contracts')}
+				onclick={() => goto('/contracts')}
 				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				← Back to Contracts
@@ -258,7 +258,7 @@
 					customerId={contract.customerId}
 					expertSupplierId={contract.expertSupplierId}
 					existingContract={contract}
-					on:contractUpdate={handleContractUpdate}
+					onContractUpdate={handleContractUpdate}
 				/>
 			{/if}
 		</div>
@@ -266,7 +266,7 @@
 		<!-- Back Button -->
 		<div class="text-center">
 			<button
-				on:click={() => goto(`/contracts/${contract?.id}`)}
+				onclick={() => goto(`/contracts/${contract?.id}`)}
 				class="inline-flex items-center gap-2 rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -307,7 +307,7 @@
 				exist.
 			</p>
 			<button
-				on:click={() => goto('/contracts')}
+				onclick={() => goto('/contracts')}
 				class="rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white hover:bg-emerald-600"
 			>
 				← Back to Contracts

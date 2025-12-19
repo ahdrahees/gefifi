@@ -23,8 +23,8 @@
 		// sessions = await api.getSessions();
 	});
 
-	async function handleSubmit(event: CustomEvent<{ message: string; files: File[] }>) {
-		const { message, files } = event.detail;
+	async function handleSubmit(detail: { message: string; files: File[] }) {
+		const { message, files } = detail;
 		isSending = true;
 
 		try {
@@ -57,7 +57,7 @@
 
 		<!-- Chat Input (Fixed Bottom) -->
 		<div class="z-10 shrink-0">
-			<AgentChatInput {isSending} on:submit={handleSubmit} />
+			<AgentChatInput {isSending} onSubmit={handleSubmit} />
 		</div>
 	</div>
 

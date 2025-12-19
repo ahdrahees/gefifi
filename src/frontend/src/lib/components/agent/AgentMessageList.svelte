@@ -154,7 +154,7 @@
 							<div class="w-full">
 								<FileAttachment
 									attachment={createAttachmentObject(p.value, p.artifact)}
-									on:view={(e) => console.log('View file', e.detail)}
+									onView={(e) => console.log('View file', e)}
 								/>
 							</div>
 						{/if}
@@ -181,4 +181,4 @@
 	{/each}
 </div>
 
-<ImageModal show={showImageModal} imageSrc={modalImageSrc} on:close={closeImageModal} />
+<ImageModal show={showImageModal} imageSrc={modalImageSrc} onclose={closeImageModal} />

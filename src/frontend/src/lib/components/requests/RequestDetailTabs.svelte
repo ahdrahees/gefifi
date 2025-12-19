@@ -1,12 +1,11 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	interface Props {
+		activeTab?: 'details' | 'quotations';
+		quotesCount?: number;
+		onTabChange?: (detail: { tab: 'details' | 'quotations' }) => void;
+	}
 
-	export let activeTab: 'details' | 'quotations' = 'details';
-	export let quotesCount: number = 0;
-
-	const dispatch = createEventDispatcher<{
-		tabChange: { tab: 'details' | 'quotations' };
-	}>();
+	let { activeTab = 'details', quotesCount = 0, onTabChange }: Props = $props();
 
 	const tabs = [
 		{
@@ -24,15 +23,15 @@
 	];
 
 	function handleTabClick(tabId: string) {
-		dispatch('tabChange', { tab: tabId as 'details' | 'quotations' });
+		onTabChange?.({ tab: tabId as 'details' | 'quotations' });
 	}
 </script>
 
 <div class="mb-6">
 	<div class="flex gap-2">
-		{#each tabs as tab}
+		{#each tabs as tab (tab.id)}
 			<button
-				on:click={() => handleTabClick(tab.id)}
+				onclick={() => handleTabClick(tab.id)}
 				class="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all {activeTab ===
 				tab.id
 					? `${tab.color} shadow-lg`

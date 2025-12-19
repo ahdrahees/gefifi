@@ -6,25 +6,23 @@
 	import apiClient from '$lib/api';
 	import ProfessionalCard from '$lib/components/ui/ProfessionalCard.svelte';
 	import SendInterestModal from '$lib/components/modals/SendInterestModal.svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
-	let currentUser: AuthUser | null = null;
-	let token: string | null = null;
+	let currentUser: AuthUser | null = $state(null);
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
-		token = auth.token;
 	});
 
-	let allExperts: AuthUser[] = [];
-	let allSuppliers: AuthUser[] = [];
-	let displayedProfessionals: AuthUser[] = [];
+	let allExperts: AuthUser[] = $state([]);
+	let allSuppliers: AuthUser[] = $state([]);
+	let displayedProfessionals: AuthUser[] = $state([]);
 
-	let searchTerm: string = '';
-	let selectedType: 'all' | 'expert' | 'supplier' = 'all';
+	let searchTerm: string = $state('');
+	let selectedType: 'all' | 'expert' | 'supplier' = $state('all');
 
-	let isLoading: boolean = true;
-	let errorMessage: string | null = null;
+	let isLoading: boolean = $state(true);
+	let errorMessage: string | null = $state(null);
 
 	onMount(async () => {
 		if (currentUser?.userType !== 'customer') {
@@ -34,7 +32,7 @@
 		}
 
 		// params are passed from material/Expert request
-		selectedType = ($page.url.searchParams.get('type') as 'expert' | 'supplier') || 'all';
+		selectedType = (page.url.searchParams.get('type') as 'expert' | 'supplier') || 'all';
 
 		await fetchData();
 	});
@@ -63,9 +61,9 @@
 			// Initial filter call after data is fetched
 			// searchTerm is '' and selectedType is 'all' at this point
 			filterAndSortProfessionals(searchTerm, selectedType, allExperts, allSuppliers, currentUser);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error('Error fetching professionals:', err);
-			errorMessage = err.data?.message || err.message || 'Failed to load professionals list.';
+			errorMessage = err instanceof Error ? err.message : 'Failed to load professionals list.';
 		} finally {
 			isLoading = false;
 		}
@@ -176,17 +174,19 @@
 		);
 	}
 
-	$: if (!isLoading) {
-		console.log(
-			`Reactive EFFECT TRIGGERED by change: Term='${searchTerm}', Type='${selectedType}'`
-		);
-		filterAndSortProfessionals(searchTerm, selectedType, allExperts, allSuppliers, currentUser);
-	}
+	$effect(() => {
+		if (!isLoading) {
+			console.log(
+				`Reactive EFFECT TRIGGERED by change: Term='${searchTerm}', Type='${selectedType}'`
+			);
+			filterAndSortProfessionals(searchTerm, selectedType, allExperts, allSuppliers, currentUser);
+		}
+	});
 
-	let showInterestModal = false;
-	let currentTargetProfessionalId: string | null = null;
-	let currentTargetProfessionalName: string | null = null;
-	let currentTargetProfessionalType: 'expert' | 'supplier';
+	let showInterestModal = $state(false);
+	let currentTargetProfessionalId: string | null = $state(null);
+	let currentTargetProfessionalName: string | null = $state(null);
+	let currentTargetProfessionalType: 'expert' | 'supplier' | undefined = $state();
 
 	function handleOpenInterestModal(eventDetail: {
 		userId: string;
@@ -203,8 +203,8 @@
 		showInterestModal = false;
 	}
 
-	function handleInterestSuccessfullySent(event: CustomEvent<{ chatId?: string }>) {
-		console.log('Interest successfully sent, event from modal:', event.detail);
+	function handleInterestSuccessfullySent(detail: { chatId?: string }) {
+		console.log('Interest successfully sent, event from modal:', detail);
 	}
 
 	function getProfessionalName(prof: AuthUser): string {
@@ -280,7 +280,7 @@
 			<p>{errorMessage}</p>
 			<button
 				class="mt-4 rounded-md bg-sky-500 px-5 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-sky-600"
-				on:click={fetchData}
+				onclick={fetchData}
 			>
 				Try Again
 			</button>
@@ -307,7 +307,7 @@
 				{#if searchTerm.trim() !== '' || selectedType !== 'all'}
 					<button
 						class="ml-1 text-emerald-400 underline hover:text-emerald-300"
-						on:click={() => {
+						onclick={() => {
 							searchTerm = '';
 							selectedType = 'all';
 						}}
@@ -322,7 +322,7 @@
 			{#each displayedProfessionals as professional (professional.id)}
 				<ProfessionalCard
 					{professional}
-					on:sendInterest={(event) => handleOpenInterestModal(event.detail)}
+					onSendInterest={(detail) => handleOpenInterestModal(detail)}
 				/>
 			{/each}
 		</div>
@@ -330,13 +330,13 @@
 </div>
 
 <!-- SendInterestModal Integration -->
-{#if currentTargetProfessionalId && currentTargetProfessionalName}
+{#if currentTargetProfessionalId && currentTargetProfessionalName && currentTargetProfessionalType}
 	<SendInterestModal
 		bind:show={showInterestModal}
 		targetProfessionalId={currentTargetProfessionalId}
 		targetProfessionalName={currentTargetProfessionalName}
-		on:close={handleCloseInterestModal}
-		on:interestSent={handleInterestSuccessfullySent}
+		onClose={handleCloseInterestModal}
+		onInterestSent={handleInterestSuccessfullySent}
 		professionalType={currentTargetProfessionalType}
 	/>
 {/if}

@@ -1,17 +1,36 @@
 <!-- src/frontend/src/lib/components/requests/RequestsTabNavigation.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import type { StatusTab } from '$lib/types';
 	import type { AuthUser } from '$lib/stores/auth';
 
-	export let activeTab: 'active' | 'contracted' | 'completed' | 'on_hold' | 'cancelled';
-	export let tabStats: Record<string, number>;
-	export let currentUser: AuthUser | null;
-	export let requestTypeFilter: 'all' | 'work' | 'material';
-	export let searchQuery: string;
+	interface Props {
+		activeTab: StatusTab;
+		tabStats: Record<string, number>;
+		currentUser: AuthUser | null;
+		requestTypeFilter: 'all' | 'work' | 'material';
+		searchQuery: string;
+		onTabChange?: (tabId: StatusTab) => void;
+		onTypeFilterChange?: (type: string) => void;
+		onSearch?: (query: string) => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let {
+		activeTab,
+		tabStats,
+		currentUser,
+		requestTypeFilter,
+		searchQuery,
+		onTabChange,
+		onTypeFilterChange,
+		onSearch
+	}: Props = $props();
 
-	const tabs = [
+	const tabs: {
+		id: StatusTab;
+		label: string;
+		icon: string;
+		color: string;
+	}[] = [
 		{
 			id: 'active',
 			label: 'Active',
@@ -44,22 +63,22 @@
 		}
 	];
 
-	function handleTabClick(tabId: string) {
-		dispatch('tabChange', tabId);
+	function handleTabClick(tabId: StatusTab) {
+		onTabChange?.(tabId);
 	}
 
 	function handleTypeFilterChange(event: Event) {
 		const target = event.target as HTMLSelectElement;
-		dispatch('typeFilterChange', target.value);
+		onTypeFilterChange?.(target.value);
 	}
 
 	function handleSearchInput(event: Event) {
 		const target = event.target as HTMLInputElement;
-		dispatch('search', target.value);
+		onSearch?.(target.value);
 	}
 
 	function clearSearch() {
-		dispatch('search', '');
+		onSearch?.('');
 	}
 </script>
 
@@ -69,9 +88,9 @@
 	<!-- Tab Navigation -->
 	<div class="mb-6">
 		<div class="flex flex-wrap gap-2">
-			{#each tabs as tab}
+			{#each tabs as tab (tab.id)}
 				<button
-					on:click={() => handleTabClick(tab.id)}
+					onclick={() => handleTabClick(tab.id)}
 					class="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all {activeTab ===
 					tab.id
 						? `${tab.color} shadow-lg`
@@ -110,13 +129,13 @@
 			<input
 				type="text"
 				value={searchQuery}
-				on:input={handleSearchInput}
+				oninput={handleSearchInput}
 				placeholder="Search requests..."
 				class="w-full rounded-lg border border-slate-600/50 bg-slate-700/50 py-2.5 pr-10 pl-10 text-slate-200 placeholder-slate-400 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 			/>
 			{#if searchQuery}
 				<button
-					on:click={clearSearch}
+					onclick={clearSearch}
 					class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-200"
 					aria-label="Clear search"
 				>
@@ -139,7 +158,7 @@
 				<select
 					id="type-filter"
 					value={requestTypeFilter}
-					on:change={handleTypeFilterChange}
+					onchange={handleTypeFilterChange}
 					class="rounded-lg border border-slate-600/50 bg-slate-700/50 px-3 py-2 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 				>
 					<option value="all">All Types</option>

@@ -5,7 +5,11 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 
-	export let message: Message;
+	interface Props {
+		message: Message;
+	}
+
+	let { message }: Props = $props();
 
 	function handleClick() {
 		if (message.contractId) {
@@ -45,7 +49,7 @@
 		<button
 			class="group flex cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-700/50 px-2 py-1 transition-all duration-200 hover:bg-slate-600/20 hover:text-slate-200 sm:px-4 sm:py-2"
 			aria-label="Clickable system message, press to view details"
-			on:click={handleClick}
+			onclick={handleClick}
 		>
 			<svg
 				class="h-4 w-4 text-slate-400 transition-colors group-hover:text-emerald-400"
