@@ -24,7 +24,7 @@
 export class FastHistory<T> {
 	// We store items in insertion order (Oldest -> Newest)
 	// This keeps the array operations O(1)
-	private _data: T[] = [];
+	private _data: T[] = $state([]);
 
 	/**
 	 * Adds an item to the "top" of the history logically.
@@ -34,16 +34,6 @@ export class FastHistory<T> {
 	add(item: T): void {
 		this._data.push(item);
 	}
-
-	// /**
-	//  * Gets an item based on logical index (0 is the newest).
-	//  * Time Complexity: O(1)
-	//  */
-	// get(index: T): T | undefined {
-	//     // Virtual mapping: Logic Index 0 = Physical Last Index
-	//     const realIndex = this._data.length - 1 - index;
-	//     return this._data[realIndex];
-	// }
 
 	/**
 	 * Gets an item based on its logical position (0 is the newest).
@@ -67,11 +57,28 @@ export class FastHistory<T> {
 	 * Returns a generator to iterate from Newest -> Oldest
 	 * efficiently without creating a new array.
 	 */
-	*iterator(): Generator<T> {
+	iterator(): Generator<T> {
+		return this[Symbol.iterator]();
+	}
+
+	/**
+	 * Allows direct iteration (e.g. for (const x of history)) newest first.
+	 */
+	*[Symbol.iterator](): Generator<T> {
 		for (let i = this._data.length - 1; i >= 0; i--) {
 			yield this._data[i];
 		}
 	}
+
+	// /**
+	//  * Returns a generator to iterate from Newest -> Oldest
+	//  * efficiently without creating a new array.
+	//  */
+	// *iterator(): Generator<T> {
+	// 	for (let i = this._data.length - 1; i >= 0; i--) {
+	// 		yield this._data[i];
+	// 	}
+	// }
 
 	get length(): number {
 		return this._data.length;

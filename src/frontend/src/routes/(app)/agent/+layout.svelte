@@ -8,12 +8,13 @@
 	import { authStore } from '$lib/stores/auth';
 
 	import { newChat, sendChat } from '$lib/services/agentChat';
+	import { agentSessionState } from '$lib/states/agent.svelte';
 
 	// --- DATA STATE ---
 	let { children } = $props();
 
 	let sessionId = $derived(page.params.sessionId);
-	let sessions: ListSessionsResponse = [];
+	// let sessions: ListSessionsResponse = [];
 	let isSending = $state(false);
 	let errorMessage = $state('');
 
@@ -63,6 +64,6 @@
 
 	<!-- RIGHT: Session Sidebar -->
 	<div class="hidden shrink-0 border-l border-slate-700/50 md:block">
-		<AgentSessionSidebar {sessions} currentSessionId={sessionId} />
+		<AgentSessionSidebar sessions={agentSessionState} currentSessionId={sessionId} />
 	</div>
 </div>
