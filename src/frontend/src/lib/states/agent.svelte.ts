@@ -1,11 +1,11 @@
 import type { AgentEvent, AgentSession, ArtifactPart } from '$lib/types/agent-api';
-import { FastHistory } from '$lib/utils/FastHistory';
+import { FastHistory } from '$lib/utils/FastHistory.svelte';
 
 /**
  * State that holds agent sessions. `events` field is not in detail.
  * Used to display agent sessions in the UI <AgentSessionSidebar />.
  */
-export const agentSessionState = $state(new FastHistory<AgentSession>());
+export const agentSessionState = new FastHistory<AgentSession>();
 
 /**
  * State that holds events of a specific session.
@@ -15,15 +15,48 @@ export const agentSessionState = $state(new FastHistory<AgentSession>());
  *
  * Used to display events in the UI <AgentMessageList />.
  */
-export const sessionEventsState = $state(new Map<string, AgentEvent[]>());
+export const sessionEventsState = $state<Record<string, AgentEvent[]>>({});
 
-export const updateSessionEventsState = (sessionId: string, event: AgentEvent) => {
-	const sessionEvents = sessionEventsState.get(sessionId);
-	if (sessionEvents) {
-		sessionEvents.push(event);
-	} else {
-		sessionEventsState.set(sessionId, [event]);
+export const updateSessionEventsState = (sessionId: string, event: AgentEvent | AgentEvent[]) => {
+	const currentEvents = sessionEventsState[sessionId] || [];
+	const newEvents = Array.isArray(event) ? event : [event];
+
+	let updatedEvents = [...currentEvents];
+
+	for (const ev of newEvents) {
+		if (ev.partial) {
+			// Find the last event to append to
+			const lastEventIndex = updatedEvents.findIndex(
+				(e, i) =>
+					i === updatedEvents.length - 1 &&
+					e.author === ev.author &&
+					e.invocationId === ev.invocationId
+			);
+
+			if (lastEventIndex !== -1) {
+				const lastEvent = updatedEvents[lastEventIndex];
+				// Clone to ensure reactivity
+				const mergedEvent = { ...lastEvent, content: { ...lastEvent.content } };
+				if (!mergedEvent.content.parts) mergedEvent.content.parts = [];
+
+				// Assuming partial events only have one part with text for simplicity in streaming
+				const newPart = ev.content?.parts?.[0];
+				if (newPart?.text) {
+					const lastPart = mergedEvent.content.parts[mergedEvent.content.parts.length - 1];
+					if (lastPart && lastPart.text !== null && lastPart.text !== undefined) {
+						lastPart.text += newPart.text;
+					} else {
+						mergedEvent.content.parts.push({ ...newPart });
+					}
+				}
+				updatedEvents[lastEventIndex] = mergedEvent;
+				continue;
+			}
+		}
+		updatedEvents.push(ev);
 	}
+
+	sessionEventsState[sessionId] = updatedEvents;
 };
 
 /**
@@ -33,17 +66,15 @@ export const updateSessionEventsState = (sessionId: string, event: AgentEvent) =
  *
  * Used to display artifacts in the UI <AgentMessageList />.
  */
-export const artifactsState: Map<string, Record<string, ArtifactPart>> = $state(
-	new Map<string, Record<string, ArtifactPart>>()
-);
+export const artifactsState = $state<Record<string, Record<string, ArtifactPart>>>({});
 
 export function updateArtifactState(sessionId: string, artifactName: string, part: ArtifactPart) {
-	const sessionArtifacts: Record<string, ArtifactPart> | undefined = artifactsState.get(sessionId);
-	if (!sessionArtifacts) {
-		artifactsState.set(sessionId, { [artifactName]: part });
-	} else {
-		sessionArtifacts[artifactName] = part;
-	}
+	const sessionArtifacts = artifactsState[sessionId] || {};
+	// Create a new object reference to ensure Svelte 5 reactivity triggers
+	artifactsState[sessionId] = {
+		...sessionArtifacts,
+		[artifactName]: part
+	};
 }
 
 // function updateArtifactState(sessionId: string, artifactName: string, part: ArtifactPart) {
@@ -55,3 +86,14 @@ export function updateArtifactState(sessionId: string, artifactName: string, par
 //         [artifactName]: part
 //     });
 // }
+
+/**
+ * State that holds loading status for different parts of the agent.
+ */
+export const agentLoaders = $state({
+	loadingSessionsList: false,
+	loadingArtifacts: false,
+	loadingSessionEvents: false,
+	isSessionsListLoadedAlready: false,
+	generating: {} as Record<string, boolean>
+});

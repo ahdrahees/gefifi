@@ -33,19 +33,28 @@ async function request<T>(
 			// In a real app, this might trigger a redirect to login or refresh token logic.
 			throw new ApiError('Authentication token is missing. Please log in.', 401);
 		}
-		body = {
-			...body,
-			state_delta: {
-				auth_token: token
-			}
-		};
+
+		// Set standard Authorization header
+		headers['Authorization'] = `Bearer ${token}`;
+
+		// For POST/PUT, we also include the token in state_delta as expected by the Agent API
+		if (method !== 'GET') {
+			body = {
+				...body,
+				state_delta: {
+					auth_token: token
+				}
+			};
+		}
 	}
 
 	const config: RequestInit = {
 		method,
 		headers
 	};
-	if (body) {
+
+	// Only attach body if it's not a GET request
+	if (body && method !== 'GET') {
 		config.body = JSON.stringify(body);
 	}
 
@@ -76,6 +85,86 @@ async function request<T>(
 	return response.json() as Promise<T>;
 }
 
+async function* streamRequest<T>(
+	endpoint: string,
+	method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
+	body?: Record<string, any>,
+	requiresAuth: boolean = true
+): AsyncGenerator<T> {
+	const headers: HeadersInit = {
+		'Accept': 'text/event-stream'
+	};
+
+	if (body && (method === 'POST' || method === 'PUT')) {
+		headers['Content-Type'] = 'application/json';
+	}
+
+	if (requiresAuth) {
+		const { token } = get(authStore);
+		if (!token) throw new ApiError('Authentication token is missing. Please log in.', 401);
+		headers['Authorization'] = `Bearer ${token}`;
+		if (method !== 'GET') {
+			body = { ...body, state_delta: { auth_token: token } };
+		}
+	}
+
+	const config: RequestInit = {
+		method,
+		headers,
+		body: body && method !== 'GET' ? JSON.stringify(body) : undefined
+	};
+
+	const response = await fetch(`${AGENT_API_URL}${endpoint}`, config);
+
+	if (!response.ok) {
+		let message = `API Error (${response.status})`;
+		try {
+			const errJson = await response.json();
+			message = errJson.message || message;
+		} catch (e) { }
+		throw new ApiError(message, response.status);
+	}
+
+	const reader = response.body?.getReader();
+	if (!reader) throw new Error('Response body is null');
+
+	const decoder = new TextDecoder();
+	let buffer = '';
+
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+
+		buffer += decoder.decode(value, { stream: true });
+		const lines = buffer.split('\n');
+		buffer = lines.pop() || '';
+
+		for (const line of lines) {
+			const trimmedLine = line.trim();
+			if (!trimmedLine) continue;
+
+			// Handle SSE format "data: {json}"
+			if (trimmedLine.startsWith('data: ')) {
+				const data = trimmedLine.slice(6);
+				if (data === '[DONE]') break;
+				try {
+					yield JSON.parse(data) as T;
+				} catch (e) {
+					console.error('Failed to parse SSE data:', data, e);
+				}
+			} else {
+				// Handle plain newline-delimited JSON
+				try {
+					yield JSON.parse(trimmedLine) as T;
+				} catch (e) {
+					// Might be part of a larger line, wait for more data
+					buffer = trimmedLine + '\n' + buffer;
+				}
+			}
+		}
+	}
+}
+
 const agentApiClient = {
 	createSessionWithId: (
 		agentName: AgentName,
@@ -95,11 +184,11 @@ const agentApiClient = {
 	getSession: (agentName: AgentName, userId: string, sessionId: string): Promise<AgentSession> => {
 		return request<AgentSession>(`/apps/${agentName}/users/${userId}/sessions/${sessionId}`, 'GET');
 	},
-	run: (args: RunAgentRequest): Promise<AgentEvent> => {
-		return request<AgentEvent>(`/run`, 'POST', args);
+	run: (args: RunAgentRequest): Promise<AgentEvent[]> => {
+		return request<AgentEvent[]>(`/run`, 'POST', args);
 	},
-	runSSE: (args: RunAgentRequest): Promise<AgentEvent> => {
-		return request<AgentEvent>(`/run_sse`, 'POST', args);
+	runSSE: (args: RunAgentRequest): AsyncGenerator<AgentEvent> => {
+		return streamRequest<AgentEvent>(`/run_sse`, 'POST', args);
 	}
 };
 

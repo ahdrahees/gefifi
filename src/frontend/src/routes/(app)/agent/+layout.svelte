@@ -2,13 +2,12 @@
 	import AgentChatInput from '$lib/components/agent/AgentChatInput.svelte';
 	import AgentSessionSidebar from '$lib/components/agent/AgentSessionSidebar.svelte';
 	import ErrorToast from '$lib/components/ui/ErrorToast.svelte';
-	import type { ListSessionsResponse } from '$lib/types/agent-api';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
 
-	import { newChat, sendChat } from '$lib/services/agentChat';
-	import { agentSessionState } from '$lib/states/agent.svelte';
+	import { fetchAllSessions, newChat, sendChat } from '$lib/services/agentChat';
+	import { agentLoaders, agentSessionState, sessionEventsState } from '$lib/states/agent.svelte';
 
 	// --- DATA STATE ---
 	let { children } = $props();
@@ -22,6 +21,25 @@
 	onMount(async () => {
 		// TODO: Fetch list of sessions
 		// sessions = await api.getSessions();
+		try {
+			const userId = $authStore?.user?.id;
+			if (!userId) {
+				errorMessage = 'Please log in and register';
+				return;
+			}
+
+			if (agentLoaders.isSessionsListLoadedAlready) {
+				agentLoaders.loadingSessionsList = false;
+				return;
+			}
+
+			agentLoaders.loadingSessionsList = true;
+			await fetchAllSessions(userId);
+			agentLoaders.loadingSessionsList = false;
+		} catch (error) {
+			console.error('Error fetching sessions:', error);
+			errorMessage = `Failed fetching sessions: ${error}`;
+		}
 	});
 
 	async function handleSubmit(detail: { message: string; files: File[] }) {
@@ -47,6 +65,8 @@
 			isSending = false;
 		}
 	}
+
+	$inspect(sessionEventsState);
 </script>
 
 <div class="flex h-full w-full overflow-hidden bg-slate-900 text-slate-200">

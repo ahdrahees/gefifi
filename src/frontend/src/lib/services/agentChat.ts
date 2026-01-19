@@ -2,7 +2,9 @@ import { goto } from '$app/navigation';
 import agentApiClient from '$lib/agents.api';
 import { CUSTOMER_AGENT_NAME } from '$lib/config';
 import {
+	agentLoaders,
 	agentSessionState,
+	sessionEventsState,
 	updateArtifactState,
 	updateSessionEventsState
 } from '$lib/states/agent.svelte';
@@ -30,8 +32,13 @@ export async function newChat(userId: string, message: string, files: File[]) {
 
 	agentSessionState.add(response); // adding to state for updating sidebar
 
-	await goto(`/agent/${newSessionId}`); // Navigate to new chat page
-	// send message
+	// Initialize the events state to empty to avoid race condition with auto-fetch in +page.svelte
+	sessionEventsState[newSessionId] = [];
+
+	// Navigate to new chat page first, then send message
+	await goto(`/agent/${newSessionId}`);
+
+	// Delegate message sending to sendChat
 	await sendChat(newSessionId, userId, message, files);
 }
 
@@ -80,8 +87,28 @@ export async function sendChat(sessionId: string, userId: string, message: strin
 		newMessage
 	};
 	// api call run agent
-	const response = await agentApiClient.run(args);
+	try {
+		agentLoaders.generating[sessionId] = true;
+		const stream = agentApiClient.runSSE(args);
+		for await (const chunk of stream) {
+			updateSessionEventsState(sessionId, chunk);
+		}
+	} finally {
+		agentLoaders.generating[sessionId] = false;
+	}
+}
 
-	// update session events state, agent message
-	updateSessionEventsState(sessionId, response);
+export async function fetchAllSessions(userId: string) {
+	const sessions = await agentApiClient.listSessions(CUSTOMER_AGENT_NAME, userId);
+	// Sort oldest to newest so FastHistory's iterator (back-to-front) shows newest first
+	sessions.sort((a, b) => (a.lastUpdateTime || 0) - (b.lastUpdateTime || 0));
+	agentSessionState.replaceAll(sessions);
+	agentLoaders.isSessionsListLoadedAlready = true;
+}
+
+export async function fetchSession(userId: string, sessionId: string) {
+	const session = await agentApiClient.getSession(CUSTOMER_AGENT_NAME, userId, sessionId);
+	if (session.events) {
+		sessionEventsState[sessionId] = session.events; // reset events state
+	}
 }

@@ -127,39 +127,40 @@
 	>
 		<!-- File Preview Row -->
 		{#if selectedFiles.length > 0}
-			<div class="scrollbar-hide mb-2 flex gap-2 overflow-x-auto px-1 py-1" transition:slide>
+			<div class="scrollable-content mb-2 flex gap-3 overflow-x-auto px-2 py-2" transition:slide>
 				{#each selectedFiles as file, i (file.name)}
 					<div
-						class="group relative flex h-16 w-16 shrink-0 items-center justify-center overflow-visible rounded-lg border border-slate-600 bg-slate-700"
+						class="group relative flex h-20 w-20 shrink-0 items-center justify-center overflow-visible rounded-xl border border-slate-700/50 bg-slate-900/50 shadow-sm transition-transform hover:scale-[1.02]"
 					>
 						{#if shouldShowThumbnail(file)}
 							<img
 								src={createFilePreviewUrl(file)}
 								alt={file.name}
-								class="h-full w-full rounded-lg object-cover"
+								class="h-full w-full rounded-xl object-cover"
 							/>
 						{:else}
-							<span class="text-2xl">{getFileIcon(file.name)}</span>
+							<div class="flex flex-col items-center gap-1">
+								<span class="text-2xl">{getFileIcon(file.name)}</span>
+								<span class="max-w-[60px] truncate text-[9px] text-slate-500">{file.name}</span>
+							</div>
 						{/if}
 
 						<!-- Remove Button -->
 						<button
 							onclick={() => removeFile(i)}
 							aria-label="Remove file"
-							class="absolute -top-1 -right-1 z-50 box-border flex h-5 w-5 items-center justify-center rounded-full bg-slate-500 p-1 text-xs text-white shadow-md sm:hidden sm:group-hover:flex"
+							class="absolute -top-1.5 -right-1.5 z-50 flex h-6 w-6 items-center justify-center rounded-full bg-slate-600 text-white shadow-xl transition-all hover:scale-110 hover:bg-red-500"
 						>
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
-								width="24"
-								height="24"
+								width="14"
+								height="14"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
-								stroke-width="2"
+								stroke-width="3"
 								stroke-linecap="round"
-								stroke-linejoin="round"
-								class="lucide lucide-x-icon lucide-x"
-								><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
+								stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
 							>
 						</button>
 					</div>
@@ -177,7 +178,9 @@
 			rows="1"
 			class="scrollable-content w-full resize-none border-0 bg-transparent px-2 py-2 text-sm text-slate-200 placeholder-slate-400 focus:border-0 focus:ring-0 focus:outline-0 focus:outline-none"
 			placeholder="Type your message here..."
-			style="min-height: 24px; max-height: 240px; outline: none !important; box-shadow: none !important;"
+			style="min-height: 24px; max-height: 240px; overflow-y: {(textarea?.scrollHeight || 0) > 230
+				? 'auto'
+				: 'hidden'}; outline: none !important; box-shadow: none !important;"
 		></textarea>
 
 		<!-- Actions Row -->
@@ -230,20 +233,26 @@
 					class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500"
 					aria-label="Send message"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="18"
-						height="18"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<path d="m5 12 7-7 7 7" />
-						<path d="M12 19V5" />
-					</svg>
+					{#if isSending}
+						<div
+							class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+						></div>
+					{:else}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="18"
+							height="18"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="m5 12 7-7 7 7" />
+							<path d="M12 19V5" />
+						</svg>
+					{/if}
 				</button>
 				<!-- Tooltip -->
 				<div
@@ -265,39 +274,42 @@
 		scrollbar-width: none;
 	}
 
-	/* Beautiful custom scrollbar matching your dark theme */
+	/* Slimmer, more subtle emerald scrollbar for a premium feel */
 	.scrollable-content::-webkit-scrollbar {
-		width: 8px;
-		height: 8px;
+		width: 4px;
+		height: 4px;
 		background-color: transparent;
 	}
 	.scrollable-content::-webkit-scrollbar-track {
 		background: transparent;
 		border-radius: 9999px;
-		margin: 4px;
+		margin: 2px;
 	}
 	.scrollable-content::-webkit-scrollbar-thumb {
 		background: linear-gradient(
 			135deg,
-			rgba(16, 185, 129, 0.6),
-			rgba(5, 150, 105, 0.8)
-		); /* emerald gradient */
+			rgba(16, 185, 129, 0.3),
+			rgba(5, 150, 105, 0.4)
+		); /* Subtle emerald gradient */
 		border-radius: 9999px;
-		border: 1px solid rgba(16, 185, 129, 0.2);
-		transition: all 0.2s ease;
+		border: 1px solid rgba(16, 185, 129, 0.1);
+		transition: all 0.3s ease;
 	}
 	.scrollable-content::-webkit-scrollbar-thumb:hover {
-		background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
-		border-color: rgba(16, 185, 129, 0.4);
-		transform: scale(1.1);
+		background: linear-gradient(
+			135deg,
+			rgba(16, 185, 129, 0.7),
+			rgba(5, 150, 105, 0.9)
+		); /* Glows on hover */
+		border-color: rgba(16, 185, 129, 0.3);
 	}
 	.scrollable-content::-webkit-scrollbar-corner {
 		background: transparent;
 	}
-	/* Firefox */
+	/* Firefox support */
 	.scrollable-content {
 		scrollbar-width: thin;
-		scrollbar-color: rgba(16, 185, 129, 0.6) transparent;
+		scrollbar-color: rgba(16, 185, 129, 0.3) transparent;
 		color-scheme: dark;
 	}
 </style>

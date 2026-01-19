@@ -20,6 +20,17 @@ export function generateSessionId(): string {
 }
 
 /**
+ * Validates if a string is a valid UUID v4 (standard session ID format).
+ * 
+ * @param {string} id - The string to validate.
+ * @returns {boolean} True if the string is a valid UUID v4, false otherwise.
+ */
+export function isValidSessionId(id: string): boolean {
+    const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidV4Regex.test(id);
+}
+
+/**
  * Converts a File object to the inlineData format expected by the ADK API.
  * Reads the file and encodes it as base64.
  * 

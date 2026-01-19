@@ -8,9 +8,10 @@
 	interface Props {
 		events: AgentEvent[];
 		artifacts: Record<string, ArtifactPart>;
+		isGenerating?: boolean;
 	}
 
-	let { events, artifacts }: Props = $props();
+	let { events, artifacts, isGenerating = false }: Props = $props();
 
 	// Configure marked
 	marked.use({ breaks: true, gfm: true });
@@ -111,7 +112,8 @@
 					parsed.forEach((p) => {
 						if (p.type === 'artifact' && p.artifact) {
 							allArtifacts.push({ value: p.value, artifact: p.artifact });
-						} else if (p.type === 'text') {
+						} else {
+							// For text parts OR artifacts with missing data, at least show the label
 							allText.push(p.value);
 						}
 					});
@@ -129,7 +131,7 @@
 </script>
 
 <div class="flex flex-col gap-6 p-4 pb-0">
-	{#each events as event, i (event.id ?? i)}
+	{#each events as event, evIndex (event.id ?? evIndex)}
 		{#if hasDisplayableContent(event)}
 			{@const isUser = event.author === 'user'}
 			{@const { artifacts: msgArtifacts, texts: msgTexts } = processEventContent(event.content)}
@@ -137,7 +139,7 @@
 			<div class="flex w-full {isUser ? 'justify-end' : 'justify-start'}">
 				<div class="flex max-w-[85%] flex-col gap-2 sm:max-w-[75%]">
 					<!-- Render Artifacts First -->
-					{#each msgArtifacts as p, i (i)}
+					{#each msgArtifacts as p, artIndex (artIndex)}
 						{#if isImageArtifact(p.value)}
 							<!-- Image Preview -->
 							{@const url = getArtifactUrl(p.artifact)}
@@ -161,9 +163,9 @@
 					{/each}
 
 					<!-- Render Text -->
-					{#each msgTexts as textPart, i (i)}
+					{#each msgTexts as textPart, textIndex (textIndex)}
 						<div
-							class="prose prose-sm prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-pre:bg-slate-900 prose-pre:p-2 max-w-none rounded-xl px-4 py-2 break-words shadow-sm"
+							class="prose prose-sm prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-pre:bg-slate-900 prose-pre:p-2 relative max-w-none rounded-xl px-4 py-2 break-words shadow-sm"
 							class:bg-emerald-600={isUser}
 							class:text-white={isUser}
 							class:prose-invert={true}
@@ -173,6 +175,10 @@
 							class:rounded-bl-none={!isUser}
 						>
 							{@html renderMarkdown(textPart)}
+							{#if !isUser && isGenerating && evIndex === events.length - 1 && textIndex === msgTexts.length - 1}
+								<span class="ml-1 inline-block h-4 w-1.5 animate-pulse bg-emerald-400 align-middle"
+								></span>
+							{/if}
 						</div>
 					{/each}
 				</div>

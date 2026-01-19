@@ -1,30 +1,32 @@
 <script lang="ts">
-	import type { ListSessionsResponse, AgentSession } from '$lib/types/agent-api';
+	import type { AgentSession } from '$lib/types/agent-api';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { agentLoaders } from '$lib/states/agent.svelte';
+	import { formatRelativeTime, getTemporalGroup } from '$lib/utils/timeUtils';
 
 	interface Props {
-		sessions: ListSessionsResponse;
+		sessions: Iterable<AgentSession>;
 		currentSessionId?: string;
 		newChat?: () => void;
 	}
 
 	let { sessions, currentSessionId = '', newChat }: Props = $props();
 
-	// Sort sessions by lastUpdateTime descending (latest first)
-	// $: sortedSessions = [...sessions].sort((a, b) => {
-	// 	const timeA = a.lastUpdateTime || 0;
-	// 	const timeB = b.lastUpdateTime || 0;
-	// 	return timeB - timeA;
-	// });
+	// Group sessions for better UI organization
+	let groupedSessions = $derived.by(() => {
+		const groups = {
+			Today: [] as AgentSession[],
+			Yesterday: [] as AgentSession[],
+			Earlier: [] as AgentSession[]
+		};
 
-	// function formatTime(timestamp?: number): string {
-	// 	if (!timestamp) return '';
-	// 	// Simple relative time or date formatting could go here
-	// 	// For now just returning empty string or maybe a simple date if needed
-	// 	// keeping it minimal as per request "session name style with small bold font"
-	// 	return '';
-	// }
+		for (const session of sessions) {
+			const group = getTemporalGroup(session.lastUpdateTime);
+			groups[group].push(session);
+		}
+		return groups;
+	});
 
 	function getSessionTitle(session: AgentSession): string {
 		const state = session.state as { sessionMetadata?: { title?: string } } | undefined;
@@ -32,23 +34,20 @@
 	}
 
 	async function handleNewChat() {
-		// Dispatch event for parent to do cleanup
 		if (newChat) {
 			newChat();
 		}
-		// Navigate to the agent home
 		await goto(resolve('/agent'));
 	}
 </script>
 
 <div class="flex h-full w-64 flex-col border-l border-slate-700/50 bg-slate-900">
 	<!-- Header -->
-	<div class="flex items-center justify-between border-b border-slate-700/50 px-4 py-3">
-		<h2 class="text-sm font-semibold text-slate-200">Chats</h2>
-		<!-- New Chat Button -->
+	<div class="flex items-center justify-between border-b border-slate-700/50 px-4 py-4">
+		<h2 class="text-sm font-semibold tracking-tight text-slate-200">Chats</h2>
 		<button
 			onclick={handleNewChat}
-			class="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-emerald-500"
+			class="flex items-center gap-1.5 rounded-lg bg-emerald-600/90 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-emerald-900/20 transition-all hover:scale-[1.02] hover:bg-emerald-500 active:scale-[0.98]"
 			title="Start a new chat"
 		>
 			<svg
@@ -57,7 +56,7 @@
 				viewBox="0 0 24 24"
 				fill="none"
 				stroke="currentColor"
-				stroke-width="2"
+				stroke-width="2.5"
 				stroke-linecap="round"
 				stroke-linejoin="round"
 			>
@@ -68,30 +67,67 @@
 	</div>
 
 	<!-- Sessions List -->
-	<div class="scrollable-sidebar flex-1 space-y-1 overflow-y-auto px-2 py-2">
-		{#each sessions as session (session.id)}
-			<a
-				href="/agent/{session.id}"
-				class="group flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-slate-800"
-				class:bg-slate-800={session.id === currentSessionId}
-				class:bg-emerald-500-10={session.id === currentSessionId}
-			>
-				<span
-					class="truncate text-xs font-bold transition-colors"
-					class:text-emerald-400={session.id === currentSessionId}
-					class:text-slate-300={session.id !== currentSessionId}
-					class:group-hover:text-emerald-300={session.id !== currentSessionId}
-					title={getSessionTitle(session)}
-				>
-					{getSessionTitle(session)}
-				</span>
-
-				<!-- Optional: Display time/date if needed in future -->
-				<!-- <span class="text-[10px] text-slate-500">{formatTime(session.lastUpdateTime)}</span> -->
-			</a>
+	<div class="scrollable-sidebar flex-1 space-y-6 overflow-y-auto px-3 py-4">
+		{#if agentLoaders.loadingSessionsList}
+			<!-- Skeleton Loader -->
+			<div class="space-y-4">
+				{#each Array(5) as _, index (index)}
+					<div class="flex w-full flex-col gap-2 rounded-lg px-2 py-2">
+						<div class="h-3 w-full animate-pulse rounded bg-slate-800"></div>
+						<div class="h-2 w-1/2 animate-pulse rounded bg-slate-800/50"></div>
+					</div>
+				{/each}
+			</div>
 		{:else}
-			<div class="px-4 py-8 text-center text-xs text-slate-500">No conversation history</div>
-		{/each}
+			{#each Object.entries(groupedSessions) as [groupName, groupItems] (groupName)}
+				{#if groupItems.length > 0}
+					<div class="space-y-1">
+						<h3 class="px-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+							{groupName}
+						</h3>
+						<div class="space-y-0.5">
+							{#each groupItems as session (session.id)}
+								<a
+									href="/agent/{session.id}"
+									class="group relative flex w-full flex-col gap-0.5 rounded-lg px-3 py-2.5 text-left transition-all duration-200 {session.id ===
+									currentSessionId
+										? 'selected bg-slate-800'
+										: 'hover:bg-slate-800/60'}"
+								>
+									<div class="flex items-start justify-between gap-2">
+										<span
+											class="truncate text-[11px] leading-tight font-bold transition-colors"
+											class:text-emerald-400={session.id === currentSessionId}
+											class:text-slate-400={session.id !== currentSessionId}
+											class:group-hover:text-emerald-300={session.id !== currentSessionId}
+											title={getSessionTitle(session)}
+										>
+											{getSessionTitle(session)}
+										</span>
+										<span
+											class="shrink-0 text-[9px] font-medium text-slate-500 transition-colors group-hover:text-slate-400"
+										>
+											{formatRelativeTime(session.lastUpdateTime)}
+										</span>
+									</div>
+
+									{#if session.id === currentSessionId}
+										<div
+											class="absolute inset-y-2 -left-1 w-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+										></div>
+									{/if}
+								</a>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			{:else}
+				<div class="flex h-32 flex-col items-center justify-center p-4 text-center opacity-60">
+					<div class="mb-2 text-2xl text-slate-600">💬</div>
+					<p class="text-[11px] font-medium text-slate-500">No conversation history</p>
+				</div>
+			{/each}
+		{/if}
 	</div>
 </div>
 
@@ -104,10 +140,14 @@
 		background: transparent;
 	}
 	.scrollable-sidebar::-webkit-scrollbar-thumb {
-		background: rgba(148, 163, 184, 0.1);
+		background: rgba(148, 163, 184, 0.05);
 		border-radius: 2px;
 	}
 	.scrollable-sidebar:hover::-webkit-scrollbar-thumb {
-		background: rgba(148, 163, 184, 0.2);
+		background: rgba(148, 163, 184, 0.15);
+	}
+
+	.selected {
+		box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.1);
 	}
 </style>
