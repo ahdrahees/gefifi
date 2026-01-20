@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
+	import { page } from '$app/state';
+	import { onMount } from 'svelte';
 
 	// --- PROPS ---
 	let {
@@ -119,8 +121,56 @@
 		target.style.height = 'auto';
 		target.style.height = Math.min(target.scrollHeight, 24 * 10) + 'px'; // Max 10 lines approx
 	}
+
+	// Handle TextArea focus
+	let isVirtualKeyboard = $state(false);
+
+	onMount(() => {
+		// This query checks if the PRIMARY input is a finger (touch)
+		// Devices with only virtual keyboards (phones/standard tablets)
+		// match "coarse"
+		const checkKeyboardType = () => {
+			isVirtualKeyboard = window.matchMedia('(pointer: coarse)').matches;
+		};
+
+		checkKeyboardType();
+
+		// Optional: Listen for changes (e.g., if someone plugs in a
+		// specialized touch monitor to a desktop)
+		const watcher = window.matchMedia('(pointer: coarse)');
+		watcher.addEventListener('change', (e) => (isVirtualKeyboard = e.matches));
+	});
+
+	function handleKeydownWindow(e: KeyboardEvent) {
+		if (e.key !== 'Enter' && e.key !== 'Shift' && !isVirtualKeyboard) {
+			textarea?.focus();
+		}
+	}
+
+	/**
+	 * @param {HTMLTextAreaElement} node
+	 */
+	function autofocus(node: HTMLTextAreaElement) {
+		node.focus();
+	}
+
+	// $effect runs whenever the values inside it (like page.url) change
+	$effect(() => {
+		const pathname = page.url.pathname;
+
+		// For mobile and other devices with virtual keyboard, focus the textarea when in the newchat page (which is /agent)
+		if (isVirtualKeyboard && pathname === '/agent') {
+			textarea?.focus();
+			return;
+		}
+
+		if (pathname === '/agent' || pathname.startsWith('/agent/')) {
+			textarea?.focus();
+		}
+	});
 </script>
 
+<svelte:window onkeydown={handleKeydownWindow} />
 <div class="border-t border-slate-700/50 bg-slate-900 p-4">
 	<div
 		class="mx-auto max-w-3xl rounded-xl border border-slate-700 bg-slate-800/50 p-2 shadow-lg backdrop-blur-sm transition-colors focus-within:border-slate-600 hover:border-slate-600"
@@ -172,6 +222,7 @@
 		<textarea
 			bind:this={textarea}
 			bind:value
+			use:autofocus
 			oninput={autoResize}
 			onkeydown={handleKeydown}
 			disabled={isSending}
