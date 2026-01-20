@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AgentChatInput from '$lib/components/agent/AgentChatInput.svelte';
 	import AgentSessionSidebar from '$lib/components/agent/AgentSessionSidebar.svelte';
+	import AgentMobileNav from '$lib/components/agent/AgentMobileNav.svelte';
 	import ErrorToast from '$lib/components/ui/ErrorToast.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
@@ -16,11 +17,18 @@
 	// let sessions: ListSessionsResponse = [];
 	let isSending = $state(false);
 	let errorMessage = $state('');
+	let isSidebarOpen = $state(false);
+
+	// Close sidebar on navigation on mobile
+	$effect(() => {
+		if (sessionId) {
+			isSidebarOpen = false;
+		}
+	});
 
 	// --- API INTEGRATION (User to implement) ---
 	onMount(async () => {
-		// TODO: Fetch list of sessions
-		// sessions = await api.getSessions();
+		// ... (keep existing onMount logic)
 		try {
 			const userId = $authStore?.user?.id;
 			if (!userId) {
@@ -69,7 +77,12 @@
 	$inspect(sessionEventsState);
 </script>
 
-<div class="flex h-full w-full overflow-hidden bg-slate-900 text-slate-200">
+<div class="relative flex h-full w-full overflow-hidden rounded-xl bg-slate-900 text-slate-200">
+	<!-- Mobile Nav Toggle Group -->
+	<div class="md:hidden">
+		<AgentMobileNav {isSidebarOpen} onToggleSidebar={() => (isSidebarOpen = !isSidebarOpen)} />
+	</div>
+
 	<!-- CENTER: Main Chat Area -->
 	<div class="relative flex min-w-0 flex-1 flex-col">
 		<ErrorToast bind:message={errorMessage} />
@@ -83,7 +96,25 @@
 	</div>
 
 	<!-- RIGHT: Session Sidebar -->
-	<div class="hidden shrink-0 border-l border-slate-700/50 md:block">
-		<AgentSessionSidebar sessions={agentSessionState} currentSessionId={sessionId} />
+	<!-- Mobile Overlay -->
+	{#if isSidebarOpen}
+		<button
+			tabindex="0"
+			class="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm transition-opacity md:hidden"
+			onclick={() => (isSidebarOpen = false)}
+			aria-label="Close sidebar"
+		></button>
+	{/if}
+
+	<div
+		class="fixed inset-y-0 right-0 z-50 transform border-l border-slate-700/50 transition-transform duration-300 md:relative md:block md:translate-x-0 md:transform-none {isSidebarOpen
+			? 'translate-x-0'
+			: 'translate-x-full'}"
+	>
+		<AgentSessionSidebar
+			sessions={agentSessionState}
+			currentSessionId={sessionId}
+			onClose={() => (isSidebarOpen = false)}
+		/>
 	</div>
 </div>

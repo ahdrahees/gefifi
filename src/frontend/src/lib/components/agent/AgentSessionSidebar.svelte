@@ -9,9 +9,10 @@
 		sessions: Iterable<AgentSession>;
 		currentSessionId?: string;
 		newChat?: () => void;
+		onClose?: () => void;
 	}
 
-	let { sessions, currentSessionId = '', newChat }: Props = $props();
+	let { sessions, currentSessionId = '', newChat, onClose }: Props = $props();
 
 	// Group sessions for better UI organization
 	let groupedSessions = $derived.by(() => {
@@ -44,7 +45,31 @@
 <div class="flex h-full w-64 flex-col border-l border-slate-700/50 bg-slate-900">
 	<!-- Header -->
 	<div class="flex items-center justify-between border-b border-slate-700/50 px-4 py-4">
-		<h2 class="text-sm font-semibold tracking-tight text-slate-200">Chats</h2>
+		<div class="flex items-center gap-3">
+			{#if onClose}
+				<button
+					onclick={onClose}
+					class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors duration-200 hover:bg-white/10 hover:text-white md:hidden"
+					aria-label="Close sidebar"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						class="h-5 w-5"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<rect width="18" height="18" x="3" y="3" rx="2" />
+						<path d="M15 3v18" />
+						<path d="m8 9 3 3-3 3" />
+					</svg>
+				</button>
+			{/if}
+			<h2 class="text-sm font-semibold tracking-tight text-slate-200">Chats</h2>
+		</div>
 		<button
 			onclick={handleNewChat}
 			class="flex items-center gap-1.5 rounded-lg bg-emerald-600/90 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-emerald-900/20 transition-all hover:scale-[1.02] hover:bg-emerald-500 active:scale-[0.98]"
