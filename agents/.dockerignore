@@ -1,0 +1,19 @@
+.local-state/
+__pycache__/
+*.pyc
+*.sqlite3
+.env
+*.env
+README.md
+.dockerignore
+Dockerfile
+.git
+
+### OSX ###
+*.DS_Store
+
+
+# virtualenv
+.venv/
+venv/
+ENV/
