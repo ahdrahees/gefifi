@@ -21,7 +21,7 @@ export const updateSessionEventsState = (sessionId: string, event: AgentEvent | 
 	const currentEvents = sessionEventsState[sessionId] || [];
 	const newEvents = Array.isArray(event) ? event : [event];
 
-	let updatedEvents = [...currentEvents];
+	const updatedEvents = [...currentEvents];
 
 	for (const ev of newEvents) {
 		if (ev.partial) {
