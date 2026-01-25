@@ -317,7 +317,7 @@ export interface Quote extends Identifiable {
 }
 
 /**
- * Represents a quote message in chat
+ * Represents a quote message in chat.
  */
 export interface QuoteMessage extends Message {
 	messageType: 'quote';
