@@ -123,4 +123,3 @@ GEFIFI prioritizes security through granular **Firestore Security Rules**, ensur
 <div align="center">
   <p>© 2026 GEFIFI. Built with ❤️ for the future of construction.</p>
 </div>
->>>>>>> Stashed changes
