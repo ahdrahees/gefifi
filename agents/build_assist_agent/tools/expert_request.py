@@ -42,7 +42,14 @@ WorkRequestCategory = Literal[
 
 
 def attach_string(first: str, second: str) -> str:
-    """Concatenates two strings with a space between them."""
+    """
+    Concatenate two strings with a comma and space, returning the non-empty input if the other is empty.
+    
+    If both inputs are non-empty the result is "first, second". If one input is empty, the other input is returned unchanged.
+    
+    Returns:
+        str: The resulting concatenated string.
+    """
     if not first:
         return second
     if not second:
@@ -51,7 +58,16 @@ def attach_string(first: str, second: str) -> str:
 
 
 def truncate_string(input_string: str, max_length: int) -> str:
-    """Truncates a string to a maximum length."""
+    """
+    Truncates a string to at most max_length characters, appending an ellipsis when truncation occurs.
+    
+    Parameters:
+        input_string (str): The string to truncate.
+        max_length (int): The maximum number of characters to keep from the original string before appending `"..."`.
+    
+    Returns:
+        str: The original string if its length is less than or equal to max_length; otherwise the first max_length characters followed by `"..."`.
+    """
     if len(input_string) <= max_length:
         return input_string
     return input_string[:max_length] + "..."
@@ -60,7 +76,15 @@ def truncate_string(input_string: str, max_length: int) -> str:
 def create_expert_request_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
-    """Guardrail for the create_expert_request tool. Validate the arguments and return an error message if the arguments are not valid."""
+    """
+    Validate arguments for creating an expert/work request and return an error payload when validation fails.
+    
+    Checks that title, description, location_or_address, and category are present; that expected cost, if provided, is greater than or equal to zero; and that any provided image filenames are non-empty and end with an allowed image extension (.jpg, .jpeg, .png, .gif, .svg, .webp, .avif). If any validation fails, returns a dict with "status": "error" and an "error_message" describing the problems; otherwise returns None to indicate the arguments are valid.
+     
+    Returns:
+        dict[str, Any]: On validation failure, a dictionary with keys "status" (set to "error") and "error_message" (a concatenated string of validation errors).
+        None: If all arguments pass validation.
+    """
     print(
         f"GUARDRAIL[create_expert_request_tool_guardrail]: running for tool: {tool.name} with args: {args}"
     )
@@ -129,29 +153,25 @@ async def create_expert_request(
     image_filenames: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """
-    Create an expert/work request post for a customer.
-
-    Use this tool in two specific scenarios:
-    1. When the user explicitly asks to create an expert/work request.
-    2. When the user uploads images that appear to be related to construction or home improvement projects. In this case, ask the user to confirm if they want to create an expert/work request. If they confirm, gather the required information (title, description, location) and any optional details (expected cost, timeline, suggested materials) before creating the request.
-
-    Remember that title, description, location, and category are mandatory fields that cannot be empty strings.
-
-    Args:
-        title (str): Title of the Expert/Work request (This can not be empty string)
-        description (str): Description of the request (This can not be empty string)
-        location_or_address (str): Location or address where the work needs to be done (This can not be empty string)
-        category (str): Category of the request, you can select an appropriate category "General Construction","Renovation","Repair","Plumbing","Electrical","Painting","Masonry","Carpentry","Interior Design","Landscaping","Other", or you can provide a suitable category as string. (This can not be empty string)
-        opt_expected_cost (float, optional): Optional expected cost for the work. Defaults to None.
-        opt_timeline (str, optional): Optional timeline for the work. Defaults to None.
-        opt_materials_suggested (str, optional): Optional materials suggested for the work. Defaults to None.
-        image_filenames (list[str], optional): Optional images filenames related to the request Maximum 3 (Highly recommended to provide images that are relevant to the request). Only provide image files if available. Defaults to None. Supported files ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".avif"
-
+    Create a new expert/work request post for the authenticated customer.
+    
+    Creates a work request with required fields (title, description, location, category), optionally uploads provided images, and includes optional metadata (expected cost, timeline, suggested materials) in the created request.
+    
+    Parameters:
+        title (str): Non-empty title of the request.
+        description (str): Non-empty description of the work.
+        location_or_address (str): Non-empty location or address for the work.
+        category (str): Non-empty category for the request.
+        tool_context (ToolContext): Execution context containing authentication state and artifact loaders.
+        opt_expected_cost (float, optional): Estimated cost for the work.
+        opt_timeline (str, optional): Proposed timeline or schedule for the work.
+        opt_materials_suggested (str, optional): Suggested materials for the job.
+        image_filenames (list[str], optional): Filenames of images to upload (recommended max 3). Supported extensions: .jpg, .jpeg, .png, .gif, .svg, .webp, .avif.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'created_expert_request' key with the expert request data and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: A result dictionary with a 'status' key.
+            If 'status' == 'success', includes 'created_expert_request' with the backend response and 'message'.
+            If 'status' == 'error', includes 'error_message' describing the failure.
     """
     print(
         f"TOOL[create_expert_request]: called with args, title: {truncate_string(title, 20)}, description: {truncate_string(description, 50)}, category: {category}, location_or_address: {truncate_string(location_or_address, 20)}"
@@ -306,16 +326,16 @@ async def upload_file(
     filename: str, bytes_data: bytes, mime_type: str, token: str
 ) -> UploadResponse:
     """
-    Uploads a file to the backend.
-
-    Args:
-        filename: The name of the file
-        bytes_data: The bytes data of the file
-        mime_type: The MIME type of the file
-        token: The authentication token
-
+    Upload a file to the backend upload endpoint and return the parsed upload response.
+    
+    Parameters:
+        filename (str): The filename to use for the upload.
+        bytes_data (bytes): Raw file bytes to send.
+        mime_type (str): MIME type of the file (e.g., "image/png").
+        token (str): Bearer authentication token sent in the Authorization header.
+    
     Returns:
-        A dictionary with the status and data of the upload
+        UploadResponse: Parsed JSON response from the upload endpoint (e.g., contains `filePath` and related metadata).
     """
     print(
         f"API[upload_file]: uploading file '{filename}' ({len(bytes_data)} bytes, {mime_type})"
@@ -339,15 +359,12 @@ async def upload_file(
 # Tool
 async def get_user_expert_requests(tool_context: ToolContext) -> dict[str, Any]:
     """
-    Get a customer's all expert/work request posts and its details.
-
-    Use this tool when customer wants to view their all existing expert/work request posts.
-
+    Retrieve all expert/work requests for the authenticated customer.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'expert_requests_list' key this will contain a list of expert/work request posts and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: Contains a 'status' key ('success' or 'error'). If 'status' is 'success', includes
+            'expert_requests_list' (list of expert request objects) and 'message' (success message).
+            If 'status' is 'error', includes 'error_message' (string describing the failure).
     """
     print("TOOL[get_user_expert_requests]: fetching user's expert requests")
     try:
@@ -455,15 +472,10 @@ class ExpertRequest(TypedDict):
 # Tool
 async def get_active_user_expert_requests(tool_context: ToolContext) -> dict[str, Any]:
     """
-    Get a customer's active expert/work request posts and its details.
-    active expert requests have these status: "open", "in_discussion", "awaiting_quotes", "contracted", "in_progress"
-    Use this tool when customer wants to view their active expert/work request posts.
-
+    Retrieve the current customer's expert/work requests whose status is one of: "open", "in_discussion", "awaiting_quotes", "contracted", or "in_progress".
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'active_expert_requests_list' key this will contain a list of active expert/work request posts and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: Contains a 'status' key ('success' or 'error'). If 'status' is 'success', includes 'active_expert_requests_list' (a list of expert request objects) and 'message'. If 'status' is 'error', includes 'error_message'.
     """
     print("TOOL[get_active_user_expert_requests]: fetching user's expert requests")
     try:
@@ -561,18 +573,13 @@ async def get_a_expert_request_of_user_with_request_id(
     request_id: str, tool_context: ToolContext
 ) -> dict[str, Any]:
     """
-    Get a expert/work request posts of customer.
-
-    Use this tool when you have a expert or work request ID and you want to retrieve or display the details of a specific request.
-
-    Args:
-        request_id (str): ID of the expert/work request to retrieve.
-
+    Retrieve a specific expert/work request by its ID for the authenticated user.
+    
+    Parameters:
+        request_id (str): The ID of the expert/work request to retrieve.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'expert_request' key this will contain a expert/work request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: If successful, contains `status: "success"`, `expert_request` with the request data, and a `message`. On failure, contains `status: "error"` and `error_message` describing the problem.
     """
     print(
         f"TOOL[get_a_expert_request_of_user_with_request_id]: called with request_id: {request_id}"
@@ -641,7 +648,20 @@ async def get_a_expert_request_of_user_with_request_id(
 def update_expert_request_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
-    """Guardrail for update_expert_request_tool. Validate the arguments and return an error message if the arguments are not valid."""
+    """
+    Validate and normalize arguments for updating an expert request; return an error payload if validation fails.
+    
+    Parameters:
+        tool (BaseTool): The tool instance invoking the guardrail (not modified).
+        args (Dict[str, Any]): Candidate update fields; recognized keys: "title", "description", "location",
+            "category", "expected_cost", "timeline", "materials_suggested". String values will be trimmed in-place.
+        tool_context (ToolContext): Execution context providing auth and environment (not modified).
+    
+    Returns:
+        dict: If validation fails, returns {"status": "error", "error_message": <details>} describing one or more
+            validation problems (e.g., all arguments None, empty strings for provided fields, expected_cost <= 0).
+        None: If validation succeeds; args is mutated with trimmed string values and execution may proceed.
+    """
     print(
         f"GUARDRAIL[update_expert_request_tool_guardrail]: running for tool: {tool.name} with args: {args}"
     )
@@ -731,28 +751,16 @@ async def update_expert_request(
     materials_suggested: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    Update an exsisting open status expert request post of a customer.
-
-    Use this tool only for updating an existing expert request that is open.
-
-    Remember passed argument will replace the already existing values
-
-    Args:
-        request_id (str): The ID of the expert request to update.
-        Pass the following optional args to update the request. Default is None (This will not be update field):
-            title (Optional[str]): Pass title of the request to update
-            description (Optional[str]): Pass description of the request to update
-            location (Optional[str]): Pass location of the request to update
-            category (Optional[str]): Pass category of the request to update
-            expected_cost (Optional[float]): Pass value > 0 to update the
-            timeline (Optional[str]): Pass timeline of the request to update expected cost
-            materials_suggested (Optional[str]): Pass materials suggested of the request to update
-
+    Update an open expert request by applying any provided fields; fields with value None are left unchanged.
+    
+    Only requests in an open state can be updated. If provided, `expected_cost` must be greater than 0.
+    
+    Parameters:
+        request_id (str): ID of the expert request to update.
+        expected_cost (Optional[float]): New expected cost; must be greater than 0 when supplied.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: A result dictionary with a 'status' key. On success, includes 'updated_expert_request' (the updated request object) and 'message'. On error, includes 'error_message'.
     """
     print(f"TOOL[update_expert_request]: called with request_id: {request_id}")
     try:
@@ -845,18 +853,17 @@ async def update_expert_request_image(
     filenames_of_images_to_add: Optional[list[str]],
 ) -> dict[str, Any]:
     """
-    Update the images of an existing open status expert request post of a customer.
-    Use this tool only when updating images of an existing expert request that is open
-
-    Args:
-        url_of_images_to_remove (Optional[list[str]]): Pass list of strings contains url of images to remove from the request. Pass None for not removing existing images.
-        filenames_of_images_to_add (Optional[list[str]]): Pass list of strings contains filenames of images to add to request. Pass None for not adding
-
+    Update the image list for an existing expert/work request.
+    
+    If successful, returns the updated expert request with the new set of image URLs.
+    
+    Parameters:
+        request_id (str): ID of the expert request to modify.
+        url_of_images_to_remove (Optional[list[str]]): URLs of images to remove; pass None to not remove any.
+        filenames_of_images_to_add (Optional[list[str]]): Local artifact filenames to upload and add; pass None to not add any.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: `{"status": "success", "updated_expert_request": <obj>, "message": <str>}` on success; `{"status": "error", "error_message": <str>}` on failure or when no changes are applied.
     """
     print(
         f"TOOL[update_expert_request_image]: called with request_id: {request_id}, url_of_images_to_remove: {url_of_images_to_remove}, filenames_of_images_to_add: {filenames_of_images_to_add}"
@@ -1028,7 +1035,14 @@ async def update_expert_request_image(
 async def update_expert_request_status_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
-    """Guardrail for updating expert request status of a customer"""
+    """
+    Validate that a requested status update for a customer's expert request is allowed.
+    
+    Checks that `request_id` and `status` are present in `args`, fetches the current expert request, and verifies the requested status is an allowed customer-initiated transition. Does not perform the update; returns None to indicate the tool may proceed.
+    
+    Returns:
+        None if the transition is permitted; otherwise a dict with `"status": "error"` and a user-facing `"message"` describing why the update is disallowed.
+    """
     print(
         f"GUARDRAIL[update_expert_request_status_tool_guardrail]: running for tool: {tool.name} with args: {args}"
     )
@@ -1122,40 +1136,25 @@ async def update_expert_request_status_tool_guardrail(
 async def update_expert_request_status(
     request_id: str, status: str, tool_context: ToolContext
 ):
-    """Update the status of an expert request of customer.
-
-    Use this function tool to update the status of an expert request of customer. You are updating the status on behalf of the customer, so customers are allowed to update certain status (which are mentioned under the Args docstring) of a request.
-    Use this tool when current status of a request is one of the following:
-        - open
-        - in_discussion
-        - awaiting_quotes
-        - in_progress
-    If a request has the status of `completed`, `closed`, or `cancelled`, it cannot be updated further through this tool. Those are considered final or "terminal" statuses.
-    If the current status is `contracted`, only experts can update the status to `in_progress` (when they start the work).
-
-    Expert Request status:
-        - open: The initial status when a customer creates a new request. It is visible to experts and ready for discussion.
-        - in_discussion: The customer and one or more experts are actively discussing the project details before any quotes are sent.
-        - awaiting_quotes: The customer has formally requested quotes. Interested experts can now submit their cost proposals.
-        - contracted: The customer has accepted a quote, and a contract has been established with an expert to perform the work.
-        - in_progress: The expert has officially started working on the project.
-        - completed: The work has been finished by the expert and approved by the customer. The request was successful.
-        - cancelled: The request was actively stopped by the customer. The project will not move forward.
-        - disputed: A problem was reported by either the customer or the expert while the work was "In Progress." This pauses the project and requires resolution.
-        - closed: This is a final status for a request that is no longer active but wasn't successfully completed or cancelled. It can be used for requests that are abandoned, expire, or are manually closed after a dispute is settled.
-
-    Args:
-        request_id (str): The ID of the expert request to update.
-        status (str): The new status for the expert request. The value must be a valid next step from the current status.
-            - If current is `open`, next can be `in_discussion` or `cancelled`.
-            - If current is `in_discussion`, next can be `awaiting_quotes` or `cancelled`.
-            - If current is `awaiting_quotes`, next can be `contracted` or `cancelled`.
-            - If current is `in_progress`, next can be `completed` or `disputed`.
+    """
+    Update the customer's expert request to a new status.
+    
+    Parameters:
+        request_id (str): Identifier of the expert/work request to update.
+        status (str): Desired next status. Allowed transitions from the current status:
+            - open -> in_discussion, cancelled
+            - in_discussion -> awaiting_quotes, cancelled
+            - awaiting_quotes -> contracted, cancelled
+            - in_progress -> completed, disputed
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: On success, contains
+            - 'status': 'success'
+            - 'updated_expert_request': the updated expert request object
+            - 'message': human-readable success message.
+        On error, contains
+            - 'status': 'error'
+            - 'error_message': human-readable error description.
     """
     print(
         f"TOOL[update_expert_request_status]: called with request_id: {request_id}, status: {status}"

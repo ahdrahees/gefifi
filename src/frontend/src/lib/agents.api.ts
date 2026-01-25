@@ -11,6 +11,18 @@ import type {
 
 type AgentName = 'build_assist_agent' | 'expert_assist_agent' | 'supplier_assist_agent';
 
+/**
+ * Perform an HTTP request against the Agent API and return the parsed JSON response.
+ *
+ * When `requiresAuth` is true, the current auth token is added to the Authorization header; for non-GET requests the token is also injected into `state_delta.auth_token` in the request body.
+ *
+ * @param endpoint - Path appended to the Agent API base URL (e.g. `/run`)
+ * @param method - HTTP method to use
+ * @param body - Optional request payload; for POST/PUT this is sent as JSON (FormData should not be passed here)
+ * @param requiresAuth - If true, include the current auth token in the request and, for non-GET methods, in `state_delta.auth_token`
+ * @returns The response body parsed as JSON typed as `T`. For 204 (No Content) responses, returns `null` cast to `T`.
+ * @throws {ApiError} If no auth token is available for an authenticated request or if the HTTP response is not ok (status >= 400). The thrown ApiError contains status and parsed error details when available.
+ */
 async function request<T>(
 	endpoint: string,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',

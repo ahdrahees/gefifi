@@ -68,6 +68,13 @@ export const updateSessionEventsState = (sessionId: string, event: AgentEvent | 
  */
 export const artifactsState = $state<Record<string, Record<string, ArtifactPart>>>({});
 
+/**
+ * Set or replace an artifact part for a given session and artifact name, ensuring UI reactivity.
+ *
+ * @param sessionId - Identifier of the session the artifact belongs to
+ * @param artifactName - Name/key of the artifact to set or replace
+ * @param part - The ArtifactPart value to store for the artifact
+ */
 export function updateArtifactState(sessionId: string, artifactName: string, part: ArtifactPart) {
 	const sessionArtifacts = artifactsState[sessionId] || {};
 	// Create a new object reference to ensure Svelte 5 reactivity triggers

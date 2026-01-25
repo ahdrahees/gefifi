@@ -83,24 +83,25 @@ async def create_material_request(
     expert_request_id_to_link: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    Create a material request post for a customer
-
-    Use this tool when customer wants to create a new material request post or when customer uploads files that probably related to materials you can suggest the customer to create a new material request post.
-
-    Args:
-        title (str): The title of the material request.
-        description (str): The description of the material request.
-        delivery_location (str): The delivery location of the material request.
-        material_items (list[dict[str, str]]): The list of material items in the request. Each Material Item should be a dictionary with keys 'item_name', 'quantity_of_item_with_unit', and optionally 'notes'. Example: [{"item_name": "Wood", "quantity_of_item_with_unit": "10Nos of 2x4 feet"},{"item_name": "Portland Cement", "quantity_of_item_with_unit": "50 bags", "notes": "Grade 43"}, {"item_name": "Nails", "quantity_of_item_with_unit": "50 Nos of 1 inch", "notes": "Please provide high-quality nails"}]
-        delivery_date (Optional[str]): The delivery date of the material request. Defaults to None.
-        attachment_list (Optional[list[str]]): The list of filenames of attachments for the material request. Supported file types are pdf, doc, docx, xls, xlsx, dwg, dxf, png, jpeg, jpg, webp, and gif. Defaults to None.
-        expert_request_id_to_link (Optional[str]): The ID of the expert request to link with this material request. The expert/work request must be in `open` or `contracted` status. Defaults to None.
-
+    Create a new material request for the authenticated customer and optionally upload attachments.
+    
+    Parameters:
+        title (str): Material request title.
+        description (str): Material request description.
+        delivery_location (str): Delivery location for the request.
+        material_items (list[dict[str, str]]): List of items where each item must include keys
+            'item_name' and 'quantity_of_item_with_unit', and may include 'notes'.
+        tool_context (ToolContext): Execution context (provides auth token and artifact loading).
+        delivery_date (Optional[str]): Optional delivery date (string) to include on the request.
+        attachment_list (Optional[list[str]]): Optional list of filenames to attach; supported file types include
+            pdf, doc, docx, xls, xlsx, dwg, dxf, png, jpeg, jpg, webp, and gif.
+        expert_request_id_to_link (Optional[str]): Optional work/expert request ID to link to this material request.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'created_material_request' key with the material request data and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key. may include 'created_material_request' if api call for creating material request is successful but uploading attachments is failed or after successfully uploaded attachments but failed to get the updated material request the uploaded attachments.
+        dict: Result object with a 'status' key ('success' or 'error').
+            On success: includes 'created_material_request' (the created request object) and 'message'.
+            On error: includes 'error_message'; may include 'created_material_request' if creation succeeded but
+            subsequent attachment upload or fetch of the updated request failed.
     """
     # Initialize to None to ensure the variable is always bound
     created_material_request: MaterialRequest | None = None
@@ -303,16 +304,16 @@ async def upload_entity_attachments(
     token: str,
 ) -> UploadAttachmentsResponse:
     """
-    Uploads attachments to the specified entity.
-
-    Args:
-        entity_type (Literal["material-requests", "work-requests", "contracts"]): The type of entity to upload attachments to.
-        entity_id (str): The ID of the entity to upload attachments to.
-        attachments (list[tuple[str, bytes, str]]): A list of tuples containing the attachment name, content, and content type (The MIME type of the file).
-        token (str): The authentication token.
-
+    Upload files as attachments for a given entity.
+    
+    Parameters:
+        entity_type: Which entity to attach files to; one of "material-requests", "work-requests", or "contracts".
+        entity_id: ID of the target entity.
+        attachments: List of tuples (filename, content_bytes, mime_type) representing each file to upload.
+        token: Bearer authentication token used for the request.
+    
     Returns:
-        None
+        UploadAttachmentsResponse: Parsed JSON response containing `message`, `attachments`, and `totalAttachments`.
     """
     files = [("files", file) for file in attachments]
     headers = {"Authorization": f"Bearer {token}"}
@@ -333,15 +334,18 @@ async def upload_entity_attachments(
 # Tool
 async def get_user_material_requests(tool_context: ToolContext) -> dict[str, Any]:
     """
-    Get a customer's all material request posts and its details.
-
-    Use this tool when customer wants to view their all existing material request posts.
-
+    Retrieve all material requests for the authenticated customer.
+    
+    Parameters:
+        tool_context (ToolContext): Context that must provide "auth_token" and "auth_data" (containing "user_id") used to authenticate and identify the customer.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'material_requests_list' key this will contain a list of material request posts and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: A dictionary with a 'status' key set to 'success' or 'error'.
+            - If 'status' is 'success', includes:
+                - 'material_requests_list': list of material request objects retrieved from the backend.
+                - 'message': success message.
+            - If 'status' is 'error', includes:
+                - 'error_message': human-readable error description.
     """
     print("TOOL[get_user_material_requests]: fetching user's material requests")
     try:
@@ -421,16 +425,15 @@ async def get_active_material_requests_of_user(
     tool_context: ToolContext,
 ) -> dict[str, Any]:
     """
-    Get a customer's active material request posts and its details.
-    active material request have these status: 'open', 'quoting', 'ordered', 'contracted'
-
-    Use this tool when customer wants to view their active material request posts.
-
+    Retrieve the authenticated customer's material requests filtered to active statuses.
+    
+    Active statuses considered: "open", "quoting", "ordered", and "contracted".
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'active_material_requests_list' key this will contain a list of active material request posts and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: A result dictionary containing:
+            - `status`: `"success"` or `"error"`.
+            - On success: `active_material_requests_list` (list of material request objects) and `message` (success message).
+            - On error: `error_message` (description of the failure).
     """
     print(
         "TOOL[get_active_material_requests_of_user]: fetching user's material requests"
@@ -525,18 +528,19 @@ async def get_a_material_request_of_user_with_request_id(
     request_id: str, tool_context: ToolContext
 ) -> dict[str, Any]:
     """
-    Get a material request posts of customer.
-
-    Use this tool when you have a material request ID and you want to retrieve or display the details of a specific request.
-
-    Args:
-        request_id (str): ID of the material request to retrieve.
-
+    Retrieve a material request by its ID for the authenticated user.
+    
+    Parameters:
+        request_id (str): ID of the material request to fetch.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'material_request' key this will contain a material request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: On success, contains
+            - 'status': 'success'
+            - 'material_request': the material request object returned by the backend
+            - 'message': success message
+          On error, contains
+            - 'status': 'error'
+            - 'error_message': explanation of the failure
     """
     print(
         f"TOOL[get_a_material_request_of_user_with_request_id]: called with request_id: {request_id}"
@@ -614,27 +618,17 @@ async def update_material_request(
     expert_request_id_to_link: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    Update an exsisting open status material request post of a customer.
-
-    Use this tool only for updating an existing material request that is open.
-
-    Remember passed argument will replace the already existing values
-
-    Args:
-        request_id (str): The ID of the material request to update.
-        Pass the following optional args to update the request. Default is None (This will not be update field):
-            title (Optional[str]): Pass updated title of the request to update
-            description (Optional[str]): Pass updated description of the request to update
-            delivery_location (Optional[str]): Pass updated delivery location of the request to update
-            material_items (Optional[List[dict[str, str]]]): Pass updated material items of the request to update. Note this will replace all the existing material items with the new ones. Each Material Item should be a dictionary with keys 'item_name', 'quantity_of_item_with_unit', and optionally 'notes'.
-            delivery_date (Optional[str]): Pass updated delivery_date of the request to update
-            expert_request_id_to_link (Optional[str]): To update linked expert/work request post. Pass the ID of the expert/work request to link. The expert/work request must be in `open` or `contracted` status.
-
+    Update fields of an existing open material request.
+    
+    Only the arguments provided (non-None) will replace the corresponding fields on the server. If `material_items` is provided, it replaces the request's entire items list.
+    
+    Parameters:
+        request_id (str): ID of the material request to update.
+        material_items (Optional[list[dict[str, str]]]): New list of material items where each item dict must include 'item_name' and 'quantity_of_item_with_unit', and may include 'notes'. This list replaces existing items.
+        expert_request_id_to_link (Optional[str]): ID of an expert/work request to link via `linkedWorkRequestId` (the linked request must be in an appropriate state).
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: On success, contains `"status": "success"`, `"updated_material_request"` with the server response, and `"message"`; on error, contains `"status": "error"` and `"error_message"` describing the failure.
     """
     print(f"TOOL[update_material_request]: called with request_id: {request_id}")
     try:
@@ -733,19 +727,15 @@ async def update_material_request_attachments(
     filenames_of_attachments_to_add: Optional[list[str]],
 ) -> dict[str, Any]:
     """
-    Update the attachments of an existing open status material request post of a customer.
-    Use this tool only when updating attachments of an existing material request that is open
-
-    Args:
-        url_or_path_of_attachments_to_remove (Optional[list[str]]): Pass list of strings contains url or path (`filePath` field of attachment object) of attachments file to remove from the request. Pass None for not removing existing file attachments.
-        filenames_of_attachments_to_add (Optional[list[str]]): Pass list of strings contains filenames of attachments to add to request. Pass None for not adding
-
+    Update attachments on an existing material request by removing specified attachments and/or adding new files.
+    
+    Parameters:
+        request_id (str): ID of the material request to update.
+        url_or_path_of_attachments_to_remove (Optional[list[str]]): List of attachment `filePath` values to remove from the request; pass None to skip removals.
+        filenames_of_attachments_to_add (Optional[list[str]]): List of filenames (in tool_context) to add as attachments; pass None to skip additions.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key. may include `updated_material_request` if attachments removed successfully but failed to add new attachments.
-            If 'status' is 'no changes', includes a 'message' key with the message that no changes were made and `existing_material_request` key contains the existing material request.
+        dict: Result object with a `status` key (`"success"`, `"error"`, or `"no changes"`). On `"success"` includes `updated_material_request` and `message`. On `"no changes"` includes `existing_material_request` and `message`. On `"error"` includes `error_message` and may include `updated_material_request` if a partial change succeeded.
     """
     print(
         f"TOOL[update_material_request_attachments]: called with request_id: {request_id}, url_of_attachments_to_remove: {url_or_path_of_attachments_to_remove}, filenames_of_attachments_to_add: {filenames_of_attachments_to_add}"
@@ -1063,7 +1053,21 @@ async def update_material_request_attachments(
 async def update_material_request_status_tool_guardrail(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
-    """Guardrail for updating material request status of a customer"""
+    """
+    Validate a requested material-request status transition for a customer before the update is performed.
+    
+    Checks that `args` contains `request_id` and `status`, fetches the existing material request, and verifies the requested status is an allowed next state from the current status. If the transition is permitted, returns `None`; otherwise returns a dict with `"status": "error"` and a human-readable `"message"` describing the problem.
+    
+    Parameters:
+        args (dict[str, Any]): Expected to include:
+            - "request_id" (str): ID of the material request to check.
+            - "status" (str): Desired target status.
+    
+    Returns:
+        None if the transition is allowed; otherwise a dict with keys:
+            - "status" (str): `"error"`.
+            - "message" (str): Explanation of why the transition is invalid or why the check failed.
+    """
     print(
         f"GUARDRAIL[update_material_request_status_tool_guardrail]: running for tool: {tool.name} with args: {args}"
     )
@@ -1156,35 +1160,25 @@ async def update_material_request_status_tool_guardrail(
 async def update_material_request_status(
     request_id: str, status: str, tool_context: ToolContext
 ):
-    """Update the status of a material request of customer.
-
-    Use this function tool to update the status of a material request of customer. You are updating the status on behalf of the customer, so customers are allowed to update certain status (which are mentioned under the Args docstring) of a request.
-    Use this tool when current status of a request is one of the following: `open`, `quoting`, `ordered`, and `contracted`
-
-    If a request has the status of `completed` or `cancelled`, it cannot be updated further through this tool. Those are considered final or "terminal" statuses.
-
-    Material Request status:
-        - open: This is the initial status. The customer has created the request and is now waiting for suppliers to show interest or for the customer to invite them.
-        - quoting: The customer is actively seeking price quotes from one or more interested or invited suppliers. This stage involves communication and negotiation between the customer and potential suppliers.
-        - ordered: The customer has officially selected a supplier and placed an order based on the agreed-upon quote. This is a commitment from the customer's side.
-        - contracted:  A formal agreement has been established. The supplier has accepted the order, and the customer has confirmed the contract. This is the stage where the actual fulfillment of the order begins.
-        - completed: This is a final status indicating that the transaction is finished.
-            *   From the **Supplier's** perspective, it means the materials have been delivered.
-            *   From the **Customer's** perspective, it means the materials have been received.
-        - cancelled: The request has been terminated by either the customer or the supplier. This can happen at any stage before completion.
-
-    Args:
-        request_id (str): The ID of the material request to update.
-        status (str): The new status for the material request. The value must be a valid next step from the current status.
-            - If current is `open`, next can be `quoting` or `cancelled`.
-            - If current is `quoting`, next can be `ordered` or `cancelled`.
-            - If current is `ordered`, next can be `contracted`.
-            - If current is `contracted`, next can be `completed` or `cancelled`.
+    """
+    Change the status of a material request to the specified next status.
+    
+    Allowed transitions:
+    - open -> quoting, cancelled
+    - quoting -> ordered, cancelled
+    - ordered -> contracted
+    - contracted -> completed, cancelled
+    
+    Terminal statuses that cannot be changed: completed, cancelled.
+    
+    Parameters:
+        request_id (str): ID of the material request to update.
+        status (str): Desired next status; must be a valid next step from the request's current status.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: A result object with a 'status' key ('success' or 'error').
+            On success, includes 'updated_material_request' with the updated resource and a 'message'.
+            On error, includes an 'error_message' describing the failure.
     """
     print(
         f"TOOL[update_material_request_status]: called with request_id: {request_id}, status: {status}"

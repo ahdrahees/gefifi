@@ -61,17 +61,21 @@ async def find_experts(
     experience: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    This tool is used to find experts based on the given filter criteria.
-    Use this tool when you need to find experts based on their expertise, experience, and location.
-    Args (All arguments are optional):
-        expertise (Optional[str]): The area of expertise of the expert.
-        location (Optional[str]): The general location or area of the expert e.g., "Bangalore", "Kochi".
-        experience (Optional[str]): The number of years of experience of the expert e.g., "5", "10".
+    Retrieve experts from the backend and optionally filter them by expertise, location, and experience.
+    
+    Parameters:
+        expertise (Optional[str]): Substring to match against an expert's expertise (case-insensitive).
+        location (Optional[str]): Substring to match against an expert's location (case-insensitive).
+        experience (Optional[str]): Substring to match against an expert's experience field (case-insensitive).
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'list_of_experts' key this will contain a list of experts and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: On success (`"status": "success"`), contains:
+            - "list_of_experts": list of sanitized expert dicts with keys
+              `expert_id`, `user_type`, `name`, `profile_picture`, `location`,
+              `experience`, `expertise`, `is_active`, and `registration_date`.
+            - "message": success message.
+          On error (`"status": "error"`), contains:
+            - "error_message": human-readable description of the failure.
     """
     # fix add authentication header
     try:
@@ -179,17 +183,24 @@ async def find_suppliers(
     experience: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    This tool is used to find suppliers based on the given filter criteria.
-    Use this tool when you need to find suppliers based on their material category they are selling(supplies), experience, and location.
-    Args (All arguments are optional):
-        material_category (Optional[str]): The material category of the supplier sells e.g., "Cement & Steel", "Paints & Finishes".
-        location (Optional[str]): The general location or area of the supplier shop e.g., "Bangalore", "Kochi".
-        experience (Optional[str]): The number of years of experience of the supplier e.g., "5", "10".
+    Find suppliers optionally filtered by material category, location, and experience.
+    
+    Parameters:
+        tool_context (ToolContext): Execution context carrying state (e.g., auth token).
+        material_category (Optional[str]): Substring to match against supplier `profile.category`.
+        location (Optional[str]): Substring to match against supplier `profile.location`.
+        experience (Optional[str]): Substring to match against supplier `profile.experience`.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'list_of_suppliers' key this will contain a list of suppliers and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: Result object with keys:
+            - `status`: `"success"` or `"error"`.
+            - If `status` is `"success"`:
+                - `list_of_suppliers`: list of sanitized supplier dicts with keys
+                  `supplier_id`, `user_type`, `supplier_name`, `profile_picture`,
+                  `location`, `experience`, `category`, `is_active`, `registration_date`.
+                - `message`: human-readable success message.
+            - If `status` is `"error"`:
+                - `error_message`: description of the failure.
     """
     # fix add authentication header
     try:
@@ -293,20 +304,16 @@ async def find_suppliers(
 
 # Tool to get a user by id
 async def find_a_user_by_id(user_id: str, tool_context: ToolContext) -> dict[str, Any]:
-    """Retrieves information for any user (customer, expert, or supplier) by their ID.
-
-    Use this tool in the following scenarios:
-    - To get details about an expert or supplier involved in a contract.
-    - To get details for an expert from the 'interestedExperts' or 'invitedExperts' lists of an expert request.
-    - To get details for a supplier from the 'interestedSuppliers' or 'invitedSuppliers' lists of a material request.
-
-    Args:
-        user_id: The ID of the user to retrieve.
+    """
+    Retrieve and sanitize a user's public details by user ID.
+    
+    Parameters:
+        user_id (str): The ID of the user to retrieve.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'user' key this will contain a user details and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: Contains a 'status' key with value 'success' or 'error'.
+            - On success: includes 'user' (sanitized user dictionary) and 'message' (success message).
+            - On error: includes 'error_message' describing the failure.
     """
     try:
         token: str = tool_context.state.get("auth_token")
@@ -368,6 +375,21 @@ async def find_a_user_by_id(user_id: str, tool_context: ToolContext) -> dict[str
 
 
 def sanitize_user(user: User) -> dict[str, str | bool | None]:
+    """
+    Convert a backend User record into a sanitized public dictionary keyed by role.
+    
+    Parameters:
+        user (User): Backend user object containing `userType`, `id`, `profile`, `isActive`, and `createdAt`.
+    
+    Returns:
+        dict[str, str | bool | None]: A sanitized dictionary with fields depending on `userType`:
+            - If `userType == "expert"`: keys `expert_id`, `user_type`, `name`, `profile_picture`,
+              `location`, `experience`, `expertise`, `is_active`, `registration_date`.
+            - If `userType == "supplier"`: keys `supplier_id`, `user_type`, `supplier_name`,
+              `profile_picture`, `location`, `experience`, `category`, `is_active`, `registration_date`.
+            - Otherwise (customer): keys `customer_id`, `user_type`, `name`, `profile_picture`,
+              `location`, `is_active`, `registration_date`.
+    """
     if user["userType"] == "expert":
         return {
             "expert_id": user["id"],
@@ -408,21 +430,21 @@ def sanitize_user(user: User) -> dict[str, str | bool | None]:
 async def find_users_by_ids(
     users_ids: list[str], tool_context: ToolContext
 ) -> dict[str, Any]:
-    """Retrieves information for any user (customer, expert, or supplier) by their ID.
-
-    Use this tool in the following scenarios:
-    - To get details for experts from the 'interestedExperts' or 'invitedExperts' lists of an expert request.
-    - To get details for suppliers from the 'interestedSuppliers' or 'invitedSuppliers' lists of a material request.
-
-    Args:
-        users_ids: The IDs of the users to retrieve.
+    """
+    Fetches and sanitizes user records for the given user IDs.
+    
+    Parameters:
+        users_ids (list[str]): List of user IDs to retrieve.
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'users' key this will contain a list of user details and 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
-            In both status may also include a 'failed_users' key with a list of users that could not be fetched (element is dict includes the `user_id` key for user_id and `error` key for reason).
-            The 'failed_users' key is included if fetching details for any user fails, even if other users are retrieved successfully.
+        dict: A result object with a 'status' key set to 'success' or 'error'.
+            If 'status' is 'success', includes:
+                - 'users': list of sanitized user dicts for the successfully fetched users.
+                - optional 'failed_users': list of objects with `user_id` and `error` for any fetches that failed.
+                - 'message': a human-readable success message.
+            If 'status' is 'error', includes:
+                - 'error_message': explanation of the overall failure.
+                - optional 'failed_users': list of objects with `user_id` and `error`.
     """
     try:
         token: str = tool_context.state.get("auth_token")
@@ -501,21 +523,17 @@ async def invite_expert_to_expert_request(
     invitation_message: str,
     tool_context: ToolContext,
 ) -> dict[str, Any]:
-    """Invites an expert to a expert request.
-    Use this tool to invite an expert to a expert request.
-    Before using this tool, make sure the expert is available, expert request is valid and the expert is not invited or interested before in this request.
-
-    Args:
-        expert_id: The ID of the expert to invite.
-        expert_request_id: The ID of the expert request to invite the expert to.
-        invitation_message: The message to send to the expert. Examples:
-            - "You've been invited to our expert request "Full Smart Home System Install". Hi there, we saw you specialize in smart home setups and were very impressed. We are looking to install a complete system including lighting, security, and climate control."
-            - "Hi [expert_name], I need your help with [expert_request_title]. Can you please help me?"
+    """
+    Invite an expert to a specific expert request and send them an initial invitation message.
+    
+    Parameters:
+        expert_id (str): ID of the expert to invite.
+        expert_request_id (str): ID of the expert request to which the expert will be invited.
+        invitation_message (str): Non-empty message to send to the expert as the invitation. Must be provided.
+        tool_context (ToolContext): Execution context containing authentication state (omitted from generated docs by some tools).
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: A result object with a `status` key set to `'success'` or `'error'`. On success includes a `message` describing the outcome. On error includes an `error_message` with failure details.
     """
     try:
         token: str = tool_context.state.get("auth_token")
@@ -625,21 +643,17 @@ async def invite_supplier_to_material_request(
     invitation_message: str,
     tool_context: ToolContext,
 ) -> dict[str, Any]:
-    """Invites a supplier to a material request.
-    Use this tool to invite a supplier to a material request.
-    Before using this tool, make sure the supplier is available, material request is valid and the supplier is not invited or interested before in this request.
-
-    Args:
-        supplier_id: The ID of the supplier to invite.
-        material_request_id: The ID of the material request to invite the supplier to.
-        invitation_message: The message to send to the supplier. Examples:
-            - "You've been invited to our material request "Framing Lumber for Residential Build". We are framing a new two-story house and have attached the full list of required lumber. We'd like to get your best price for the complete package, including delivery to the job site."
-            - "Hi [supplier_name], I need your help with [material_request_title]. Can you please help me?"
+    """
+    Invite a supplier to a material request and send an initial invitation message.
+    
+    Parameters:
+        supplier_id: ID of the supplier to invite.
+        material_request_id: ID of the material request to which the supplier will be invited.
+        invitation_message: Message content to send to the supplier; must be non-empty.
+        tool_context: ToolContext providing runtime state (e.g., auth token).
+    
     Returns:
-        dict: A dictionary containing the following:
-            Includes a 'status' key ('success' or 'error').
-            If 'status' is 'success', includes 'message' key with the success message and what to do next.
-            If 'status' is 'error', includes an 'error_message' key.
+        dict: Contains a 'status' key with value 'success' or 'error'. On success includes a 'message' describing the outcome. On error includes an 'error_message' with details about the failure.
     """
     try:
         token: str = tool_context.state.get("auth_token")

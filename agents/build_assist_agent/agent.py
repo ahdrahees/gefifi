@@ -77,13 +77,13 @@ if JWT_SECRET is None:
 
 def verify_auth_token(auth_token: str) -> AuthData | None:
     """
-    Verify JWT token and return user_id if valid.
-
-    Args:
-        auth_token: JWT token from the user
-
+    Validate a JWT auth token and return authenticated user information.
+    
+    Parameters:
+        auth_token (str): JWT string to verify. May include a "Bearer " prefix.
+    
     Returns:
-        user_id if valid, None if invalid
+        AuthData | None: `AuthData` with `user_id` and `user_type` if the token is valid, `None` otherwise.
     """
     print("HELPER[verify_auth_token]: verifying JWT token")
     try:
@@ -128,7 +128,15 @@ async def auth_before_agent_callback(
     callback_context: CallbackContext,
 ) -> types.Content | None:
     """
-    Authenticate user before processing any agent request.
+    Validate and persist non-sensitive authentication information before an agent request is processed.
+    
+    On success, extracts and verifies an auth token (from DEV_MODE env var or callback state), stores a non-sensitive `auth_data` object in `callback_context.state`, and allows the agent request to proceed. In DEV_MODE only, the raw auth token is also persisted in state to simulate development behavior.
+    
+    Parameters:
+        callback_context (CallbackContext): The callback context for the intercepted agent request; this function will read from `callback_context.state` to find a transient `auth_token` and will write a persistent `auth_data` entry on successful verification.
+    
+    Returns:
+        types.Content | None: A `types.Content` prompting login if no token is provided, or a `types.Content` indicating an invalid or expired token if verification fails; returns `None` to proceed when authentication succeeds.
     """
     agent_name = (
         callback_context.agent_name
@@ -193,7 +201,12 @@ async def auth_before_model_callback(
     callback_context: CallbackContext, llm_request: LlmRequest
 ) -> LlmResponse | None:
     """
-    Authenticate user before processing any model request.
+    Authenticate the caller and populate callback_context.state with non-sensitive authentication data before a model request.
+    
+    If no token is provided, returns an LlmResponse containing model-facing content that prompts the user to log in. If the token is invalid or expired, returns an LlmResponse containing model-facing content that indicates authentication failure. On successful verification, stores `auth_data` (non-sensitive fields such as `user_id` and `user_type`) in `callback_context.state` and returns `None` to allow normal processing to continue. The function does not persist the raw `auth_token` to persistent state.
+     
+    Returns:
+        LlmResponse: A response with model-facing content when authentication is missing or invalid; `None` when authentication succeeds.
     """
     agent_name = (
         callback_context.agent_name
@@ -257,10 +270,17 @@ async def before_tool_callback(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """
-    Inject auth_token and user_id into tool calls.
-
-    Note: auth_token is accessible here even though we don't persist it, because
-    it was passed via state_delta and is merged into the current invocation's state.
+    Validate authentication, inject `auth_token` and `user_id` into tool arguments when present, list available artifacts, and delegate to tool-specific guardrails.
+    
+    This callback reads persistent auth data from the tool context, obtains the auth token (from DEV_MODE env or context state), ensures both `user_id` and `auth_token` are present, and—if the tool's `args` contain `auth_token` or `user_id` keys—overwrites them with the validated values. It returns an error dict when authentication is missing, otherwise forwards execution to the tool-specific guardrail and returns that guardrail's result.
+    
+    Parameters:
+        tool: The tool about to be invoked.
+        args: Mutable dictionary of arguments that will be passed to the tool; this function may inject or overwrite `auth_token` and `user_id` keys.
+        tool_context: Execution context providing access to persistent state and artifacts.
+    
+    Returns:
+        A dictionary with an error (`{"status": "error", "error_message": <msg>}`) when authentication is required, the result produced by a tool-specific guardrail when one applies, or `None` when no guardrail returns a value.
     """
 
     # Get user_id from persistent state (stored in before_model_callback or before_tool_callback)
@@ -301,7 +321,15 @@ async def run_tool_specific_guardrail(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """
-    Run a tool specific guardrail for the given tool.
+    Dispatches and runs a tool-specific guardrail based on the tool's name.
+    
+    Parameters:
+        tool (BaseTool): The tool being invoked; its `name` determines which guardrail to run.
+        args (dict[str, Any]): Arguments that will be passed to the tool; may be inspected or modified by the guardrail.
+        tool_context (ToolContext): Execution context containing persistent state and metadata available to guardrails.
+    
+    Returns:
+        dict[str, Any]: Guardrail result (for example, an error payload or modified arguments) if a specific guardrail handled the tool, `None` if no tool-specific guardrail applies.
     """
     print(
         f"HELPER[run_tool_specific_guardrail]: checking for tool-specific guardrail for tool: {tool.name}"

@@ -16,6 +16,13 @@ import type {
 } from '$lib/types/agent-api';
 import { fileToInlineData, generateSessionId } from '$lib/utils/agentUtils';
 
+/**
+ * Create a new chat session, navigate to its page, and send the initial user message with optional file attachments.
+ *
+ * @param userId - The identifier of the user starting the chat
+ * @param message - The initial message text (the session title is derived from the first 200 characters)
+ * @param files - An array of file attachments to include with the initial message; may be empty
+ */
 export async function newChat(userId: string, message: string, files: File[]) {
 	// Create new session
 	const newSessionId = generateSessionId();
@@ -42,6 +49,13 @@ export async function newChat(userId: string, message: string, files: File[]) {
 	await sendChat(newSessionId, userId, message, files);
 }
 
+/**
+ * Sends a user message (with optional file attachments) to an existing agent session and streams the assistant's responses into session events.
+ *
+ * The function appends any provided files as inline artifacts, updates artifact state and the local session events with the user's message, invokes the agent backend, and incrementally updates session events as response chunks arrive.
+ *
+ * @param files - Array of files to attach to the message; each file is converted to inline artifact data and recorded in artifact state. 
+ */
 export async function sendChat(sessionId: string, userId: string, message: string, files: File[]) {
 	// for new message in run api call
 	const partsInput: AgentContentPartInput[] = [{ text: message }];
@@ -98,6 +112,13 @@ export async function sendChat(sessionId: string, userId: string, message: strin
 	}
 }
 
+/**
+ * Fetches all sessions for the given user and populates the global session state.
+ *
+ * Sessions are stored sorted by last update time from oldest to newest; the function replaces the current session list and marks the sessions list as loaded.
+ *
+ * @param userId - The ID of the user whose sessions should be fetched
+ */
 export async function fetchAllSessions(userId: string) {
 	const sessions = await agentApiClient.listSessions(CUSTOMER_AGENT_NAME, userId);
 	// Sort oldest to newest so FastHistory's iterator (back-to-front) shows newest first
@@ -106,6 +127,11 @@ export async function fetchAllSessions(userId: string) {
 	agentLoaders.isSessionsListLoadedAlready = true;
 }
 
+/**
+ * Fetches a session and initializes its events state if events are present.
+ *
+ * If the retrieved session contains an `events` array, replaces the sessionEventsState entry for `sessionId` with that array.
+ */
 export async function fetchSession(userId: string, sessionId: string) {
 	const session = await agentApiClient.getSession(CUSTOMER_AGENT_NAME, userId, sessionId);
 	if (session.events) {

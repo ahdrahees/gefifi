@@ -25,7 +25,12 @@ const initialAuthState: AuthState = {
 const store: Writable<AuthState> = writable(initialAuthState);
 
 // Helper to parse JWT (client-side) to get basic info like expiry
-// WARNING: This does NOT validate the token's signature. Signature validation MUST happen on the server.
+/**
+ * Parse the payload of a JWT (JSON Web Token) string without validating its signature.
+ *
+ * @param token - The compact JWT string (three dot-separated parts) to decode.
+ * @returns The decoded payload object (may include an `exp` claim) or `null` if the token is missing or cannot be parsed.
+ */
 function parseJwt(token: string): { exp?: number; [key: string]: unknown } | null {
 	if (!token) return null;
 	try {
@@ -80,7 +85,15 @@ async function updateAuthData(
 	}
 }
 
-// Function to load user state from localStorage on app startup
+/**
+ * Restores authentication state from localStorage and validates the session with the backend.
+ *
+ * If executed in a non-browser environment, clears loading state and returns. In the browser, the function:
+ * - Loads an existing token from localStorage.
+ * - Performs a client-side expiry check and, if valid, temporarily sets the token in the store and requests the current user from the API.
+ * - Updates the auth store with the fresh user on success, which may trigger silent Firebase sign-in.
+ * - Clears the session and sets an explanatory error message if the token is missing, expired, or the backend validation fails.
+ */
 async function loadUserFromStorage() {
 	if (!browser) {
 		store.set({ ...initialAuthState, isLoading: false }); // No localStorage on server
@@ -130,7 +143,11 @@ async function loadUserFromStorage() {
 	}
 }
 
-// New: Firebase Sign-In Logic
+/**
+ * Perform a silent Firebase sign-in by obtaining a backend-issued custom token and signing in with it.
+ *
+ * @param _sessionToken - Session token from the current session; accepted by the caller but not used by this implementation
+ */
 async function signInToFirebase(_sessionToken: string) {
 	try {
 		console.log('[Firebase] Requesting custom token from backend...');

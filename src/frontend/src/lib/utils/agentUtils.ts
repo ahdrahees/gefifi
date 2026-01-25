@@ -1,9 +1,9 @@
-
 /**
- * Generates a new random UUID v4 for use as a session ID.
- * Uses the native crypto.randomUUID() API available in modern browsers and Node environments.
- * 
- * @returns {string} A standard UUID string (e.g. "550e8400-e29b-41d4-a716-446655440000")
+ * Generate a UUID version 4 string suitable for use as a session identifier.
+ *
+ * If the platform lacks `crypto.randomUUID`, a fallback UUID v4 string is produced and a warning is logged.
+ *
+ * @returns A UUID v4 string (e.g., "550e8400-e29b-41d4-a716-446655440000")
  */
 export function generateSessionId(): string {
     // Fallback for environments where crypto might be missing (rare in modern contexts)
@@ -20,10 +20,9 @@ export function generateSessionId(): string {
 }
 
 /**
- * Validates if a string is a valid UUID v4 (standard session ID format).
- * 
- * @param {string} id - The string to validate.
- * @returns {boolean} True if the string is a valid UUID v4, false otherwise.
+ * Checks whether a string is a UUID v4 (the standard session ID format).
+ *
+ * @returns `true` if the string is a UUID v4, `false` otherwise.
  */
 export function isValidSessionId(id: string): boolean {
     const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -31,11 +30,10 @@ export function isValidSessionId(id: string): boolean {
 }
 
 /**
- * Converts a File object to the inlineData format expected by the ADK API.
- * Reads the file and encodes it as base64.
- * 
- * @param file - The File object to convert
- * @returns Promise resolving to an object with inlineData containing displayName, mimeType, and base64 data
+ * Convert a File to the ADK API inlineData shape by encoding its contents as base64.
+ *
+ * @param file - The File to convert; `file.name` becomes `displayName` and `file.type` is used for `mimeType` (falls back to 'application/octet-stream').
+ * @returns An object with `inlineData.displayName`, `inlineData.mimeType`, and `inlineData.data` containing the base64-encoded file contents.
  */
 export function fileToInlineData(file: File): Promise<{
     inlineData: {

@@ -32,7 +32,17 @@ export class ApiError extends Error {
 	}
 }
 
-// Core request function
+/**
+ * Send an HTTP request to the API and return the parsed JSON response.
+ *
+ * @param endpoint - Path (prefixed with `/api`) to call on the configured API base URL
+ * @param method - HTTP method to use
+ * @param body - Request payload; if `isFormData` is true, this should be a FormData instance
+ * @param requiresAuth - When true, includes the current auth token in the `Authorization` header; throws if token is missing
+ * @param isFormData - When true, send the body as multipart/form-data and do not set `Content-Type` manually
+ * @returns The response body parsed as JSON and typed as `T`, or `null` when the response status is 204 (No Content)
+ * @throws ApiError when the response has a non-OK status or when an authenticated request is attempted without a token
+ */
 async function request<T = any>( // Default T to any if not specified by caller
 	endpoint: string,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',

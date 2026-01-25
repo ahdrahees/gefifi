@@ -1,6 +1,10 @@
 /**
- * Normalizes a timestamp to milliseconds. 
- * Handles seconds (e.g. 1766390561) and milliseconds.
+ * Convert an epoch timestamp to milliseconds.
+ *
+ * If the input appears to be in seconds (less than 30000000000) it is multiplied by 1000; otherwise the value is returned unchanged.
+ *
+ * @param ts - Epoch timestamp in seconds or milliseconds
+ * @returns The timestamp expressed in milliseconds
  */
 function normalizeTimestamp(ts: number): number {
     // If the timestamp is likely in seconds (less than the year 3000 in ms)
@@ -11,7 +15,10 @@ function normalizeTimestamp(ts: number): number {
 }
 
 /**
- * Formats a timestamp into a relative time string (e.g., "5m ago", "2h ago").
+ * Produce a human-readable relative time label for a given timestamp.
+ *
+ * @param timestamp - Unix timestamp in seconds or milliseconds. If omitted or falsy, no time is formatted.
+ * @returns `'Just now'` for timestamps less than 1 minute old; `'<n>m ago'` for minutes; `'<n>h ago'` for hours; `'Yesterday'` if exactly one day old; `'<n>d ago'` for days fewer than 7; otherwise the timestamp's locale date string. An empty string is returned when `timestamp` is falsy.
  */
 export function formatRelativeTime(timestamp?: number): string {
     if (!timestamp) return '';
@@ -33,7 +40,10 @@ export function formatRelativeTime(timestamp?: number): string {
 }
 
 /**
- * Categorizes a timestamp into temporal groups.
+ * Determine which temporal group a timestamp falls into.
+ *
+ * @param timestamp - Optional timestamp, in seconds or milliseconds. If omitted or falsy, the function treats it as absent.
+ * @returns `'Today'` if the timestamp falls on the current calendar day, `'Yesterday'` if it falls on the previous calendar day, `'Earlier'` otherwise.
  */
 export function getTemporalGroup(timestamp?: number): 'Today' | 'Yesterday' | 'Earlier' {
     if (!timestamp) return 'Earlier';
