@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
-	import type { ArtifactPart } from '$lib/types/agent-api';
-
 	import AgentMessageList from '$lib/components/agent/AgentMessageList.svelte';
 	import { isValidSessionId } from '$lib/utils/agentUtils';
 	import { goto } from '$app/navigation';
 	import { sessionEventsState, artifactsState, agentLoaders } from '$lib/states/agent.svelte';
 	import { fetchSession } from '$lib/services/agentChat';
+	import { authStore } from '$lib/stores/auth';
 
 	// --- DATA STATE ---
 	let agentEvents = $derived(sessionEventsState[page.params.sessionId || ''] ?? []);
@@ -16,9 +14,9 @@
 	// --- API INTEGRATION ---
 	$effect(() => {
 		const sessionId = page.params.sessionId;
-		const userId = '0c203a1e-5244-40f1-b0c7-623b23efe61d'; // TODO: Get from auth state
+		const userId = $authStore?.user?.id;
 
-		if (!sessionId || !isValidSessionId(sessionId)) {
+		if (!sessionId || !isValidSessionId(sessionId) || !userId) {
 			goto('/agent');
 			return;
 		}
