@@ -27,5 +27,6 @@ ENV PORT=8000
 # Use adk api_server; configure URIs via env from Dokploy
 # Point adk at AGENTS_DIR="." (which contains build_assist_agent)
 CMD ["sh", "-c", "adk api_server --host 0.0.0.0 --port $PORT \
-  --session_service_uri \"$SESSION_SERVICE_URI\" \
-  --artifact_service_uri \"$ARTIFACT_SERVICE_URI\" ."]
+    --allow_origins \"$ALLOW_ORIGINS\" \
+    --session_service_uri \"$SESSION_SERVICE_URI\" \
+    --artifact_service_uri \"$ARTIFACT_SERVICE_URI\" ."]
