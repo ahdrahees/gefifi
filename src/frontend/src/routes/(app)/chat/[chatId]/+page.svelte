@@ -17,6 +17,7 @@
 	import AudioRecordingForm from '$lib/components/chat/AudioRecordingForm.svelte';
 	import PermissionModal from '$lib/components/chat/PermissionModal.svelte';
 	import { assertNonNullish } from '$lib/utils/assert';
+	import type { JsonObject } from '$lib/types/json';
 
 	// --- Component Instances ---
 	let messageListComponent: MessageList;

@@ -8,6 +8,7 @@ import type {
 	ListSessionsResponse,
 	RunAgentRequest
 } from './types/agent-api';
+import type { JsonObject } from './types/json';
 
 type AgentName = 'build_assist_agent' | 'expert_assist_agent' | 'supplier_assist_agent';
 
@@ -92,7 +93,7 @@ async function* streamRequest<T>(
 	requiresAuth: boolean = true
 ): AsyncGenerator<T> {
 	const headers: HeadersInit = {
-		'Accept': 'text/event-stream'
+		Accept: 'text/event-stream'
 	};
 
 	if (body && (method === 'POST' || method === 'PUT')) {

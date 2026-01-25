@@ -1,6 +1,6 @@
-type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
+export type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
 
-type JsonArray = JsonValue[];
+export type JsonArray = JsonValue[];
 
 /**
  * Represents a JSON object, which is a collection of key-value pairs.
@@ -25,4 +25,4 @@ type JsonArray = JsonValue[];
  * };
  * ```
  */
-type JsonObject = { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };

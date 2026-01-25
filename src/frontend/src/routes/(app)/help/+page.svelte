@@ -6,6 +6,7 @@
 	import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 	import { helpContentMap, type HelpSection } from '$lib/components/help/HelpContent';
 	import HelpSectionComponent from '$lib/components/help/HelpSection.svelte';
+	import type { JsonObject } from '$lib/types/json';
 
 	// State
 	let currentUser: AuthUser | null = $state(null);

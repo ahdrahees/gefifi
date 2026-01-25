@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	// --- PROPS ---
 	let {
@@ -34,6 +34,7 @@
 	let textarea: HTMLTextAreaElement | undefined = $state();
 	let fileInput: HTMLInputElement | undefined = $state();
 	let selectedFiles: File[] = $state([]);
+	const previewUrls = new WeakMap<File, string>();
 
 	// --- HELPERS ---
 	function getFileIcon(fileName: string): string {
@@ -51,7 +52,12 @@
 	}
 
 	function createFilePreviewUrl(file: File): string {
-		return URL.createObjectURL(file);
+		let url = previewUrls.get(file);
+		if (!url) {
+			url = URL.createObjectURL(file);
+			previewUrls.set(file, url);
+		}
+		return url;
 	}
 
 	// function formatBytes(bytes: number): string {
@@ -89,9 +95,23 @@
 		if (target) target.value = '';
 	}
 
+	function revokePreviewUrl(file: File) {
+		const url = previewUrls.get(file);
+		if (url) {
+			URL.revokeObjectURL(url);
+			previewUrls.delete(file);
+		}
+	}
+
 	function removeFile(index: number) {
+		const file = selectedFiles[index];
+		if (file) revokePreviewUrl(file);
 		selectedFiles = selectedFiles.filter((_, i) => i !== index);
 	}
+
+	onDestroy(() => {
+		selectedFiles.forEach(revokePreviewUrl);
+	});
 
 	function handleSubmit() {
 		if ((!value.trim() && selectedFiles.length === 0) || isSending) return;

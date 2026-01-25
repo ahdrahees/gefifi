@@ -49,7 +49,7 @@ export async function sendChat(sessionId: string, userId: string, message: strin
 	// for UI state update
 	const partsUI: AgentContentPart[] = [{ text: message }];
 
-	if (files.length == 1) {
+	if (files.length === 1) {
 		const part = await fileToInlineData(files[0]);
 		partsInput.push(part);
 

@@ -14,6 +14,7 @@
 	import type { Unsubscriber } from 'svelte/store';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import apiClient from '$lib/api';
+	import type { JsonObject } from '$lib/types/json';
 
 	// Define UserProfile, similar to other pages
 	// type UserProfile = {

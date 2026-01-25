@@ -15,6 +15,7 @@
 	import ImageModal from '$lib/components/chat/ImageModal.svelte';
 	import PDFModal from '$lib/components/chat/PDFModal.svelte';
 	import FileAttachment from '$lib/components/chat/FileAttachment.svelte';
+	import type { JsonObject } from '$lib/types/json';
 
 	interface Props {
 		// --- PROPS ---

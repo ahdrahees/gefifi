@@ -7,6 +7,7 @@
 	import type { Unsubscribe } from 'firebase/firestore';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import OnlineStatus from '$lib/components/chat/OnlineStatus.svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 
 	interface Props {
 		recentChats?: EnrichedChat[];
@@ -15,7 +16,7 @@
 	let { recentChats = $bindable([]) }: Props = $props();
 
 	let currentUser: AuthUser | null = $derived($authStore.user);
-	let fetchedUserProfiles = new Map<string, UserProfileUI>();
+	let fetchedUserProfiles = new SvelteMap<string, UserProfileUI>();
 	let chatsUnsubscribe: Unsubscribe | null = $state(null);
 
 	function formatLastSeen(dateString: string) {
