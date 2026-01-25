@@ -1,17 +1,20 @@
 <!-- src/frontend/src/lib/components/forms/EditMaterialRequestForm.svelte -->
 <script lang="ts">
-	import { createEventDispatcher, onMount } from 'svelte';
-	import { writable } from 'svelte/store';
+	import { onMount } from 'svelte';
 	import type { MaterialRequest } from '$lib/types';
 	import FileUpload from '$lib/components/FileUpload.svelte';
 	import apiClient from '$lib/api';
 
-	export let materialRequest: MaterialRequest;
+	interface Props {
+		materialRequest: MaterialRequest;
+		onSave?: (updatedRequest: any) => void;
+		onCancel?: () => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let { materialRequest, onSave, onCancel }: Props = $props();
 
 	// Form data
-	let formData = {
+	let formData = $state({
 		title: materialRequest.title,
 		description: materialRequest.description,
 		deliveryLocation: materialRequest.deliveryLocation,
@@ -19,19 +22,19 @@
 		linkedWorkRequestId: materialRequest.linkedWorkRequestId || '',
 		items: [...materialRequest.items],
 		attachments: [...(materialRequest.attachments || [])]
-	};
+	});
 
 	// Work requests for linking
-	let customerWorkRequests: any[] = [];
-	let isLoadingWorkRequests = false;
+	let customerWorkRequests: any[] = $state([]);
+	let isLoadingWorkRequests = $state(false);
 
 	// File upload handling
-	let newFiles = writable<File[]>([]);
-	let removedExistingFiles = writable<string[]>([]);
+	let newFiles = $state<File[]>([]);
+	let removedExistingFiles = $state<string[]>([]);
 
 	// Form state
-	let isSubmitting = false;
-	let errors: Record<string, string> = {};
+	let isSubmitting = $state(false);
+	let errors: Record<string, string> = $state({});
 
 	// Fetch customer's work requests for linking
 	onMount(async () => {
@@ -94,21 +97,21 @@
 				...formData,
 				// Filter out removed existing attachments
 				attachments: formData.attachments.filter(
-					(att) => !$removedExistingFiles.includes(att.fileName)
+					(att) => !removedExistingFiles.includes(att.fileName)
 				)
 			};
 
 			// Add information about new files to be uploaded
-			if ($newFiles.length > 0) {
-				updatedRequest.newFiles = $newFiles;
+			if (newFiles.length > 0) {
+				updatedRequest.newFiles = newFiles;
 			}
 
 			// Add information about removed files
-			if ($removedExistingFiles.length > 0) {
-				updatedRequest.removedFiles = $removedExistingFiles;
+			if (removedExistingFiles.length > 0) {
+				updatedRequest.removedFiles = removedExistingFiles;
 			}
 
-			dispatch('save', updatedRequest);
+			onSave?.(updatedRequest);
 		} catch (error) {
 			console.error('Form submission error:', error);
 		} finally {
@@ -117,7 +120,7 @@
 	}
 
 	function handleCancel() {
-		dispatch('cancel');
+		onCancel?.();
 	}
 
 	function addItem() {
@@ -128,16 +131,14 @@
 		formData.items = formData.items.filter((_, i) => i !== index);
 	}
 
-	function handleNewFilesChanged(event: CustomEvent) {
+	function handleNewFilesChanged(files: File[]) {
 		// Handle new files being added
-		const files = event.detail as File[];
-		$newFiles = files;
+		newFiles = files;
 	}
 
-	function handleExistingFilesChanged(event: CustomEvent) {
+	function handleExistingFilesChanged(removedFiles: string[]) {
 		// Handle existing files being removed
-		const removedFiles = event.detail as string[];
-		$removedExistingFiles = removedFiles;
+		removedExistingFiles = removedFiles;
 	}
 </script>
 
@@ -246,7 +247,7 @@
 						class="w-full rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-3 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 					>
 						<option value="">None</option>
-						{#each customerWorkRequests as wr}
+						{#each customerWorkRequests as wr, id (id)}
 							<option value={wr.id}>{wr.title}</option>
 						{/each}
 					</select>
@@ -320,7 +321,7 @@
 			</div>
 			<button
 				type="button"
-				on:click={addItem}
+				onclick={addItem}
 				class="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -340,14 +341,14 @@
 		{/if}
 
 		<div class="space-y-4">
-			{#each formData.items as item, index}
+			{#each formData.items as item, index (index)}
 				<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-4">
 					<div class="mb-4 flex items-center justify-between">
 						<h3 class="font-semibold text-slate-200">Item {index + 1}</h3>
 						{#if formData.items.length > 1}
 							<button
 								type="button"
-								on:click={() => removeItem(index)}
+								onclick={() => removeItem(index)}
 								class="text-red-400 hover:text-red-300"
 								aria-label="Remove item"
 							>
@@ -460,11 +461,11 @@
 			]}
 			maxFileSize={25 * 1024 * 1024}
 			multiple={true}
-			files={newFiles}
+			bind:files={newFiles}
 			existingAttachments={formData.attachments}
-			removedExistingAttachments={removedExistingFiles}
-			on:filesChanged={handleNewFilesChanged}
-			on:existingAttachmentsChanged={handleExistingFilesChanged}
+			bind:removedExistingAttachments={removedExistingFiles}
+			onFilesChanged={handleNewFilesChanged}
+			onExistingAttachmentsChanged={handleExistingFilesChanged}
 		/>
 		<p class="mt-2 text-xs text-slate-400">
 			Upload specifications, drawings, or reference documents. Supported formats: PDF, Word, Excel,
@@ -476,14 +477,14 @@
 	<div class="flex flex-col gap-4 sm:flex-row sm:justify-end">
 		<button
 			type="button"
-			on:click={handleCancel}
+			onclick={handleCancel}
 			class="rounded-lg border border-slate-600/50 bg-slate-700/40 px-6 py-3 font-semibold text-slate-300 transition-colors hover:bg-slate-600/40"
 		>
 			Cancel
 		</button>
 		<button
 			type="button"
-			on:click={handleSubmit}
+			onclick={handleSubmit}
 			disabled={isSubmitting}
 			class="rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
 		>

@@ -2,24 +2,29 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import type { WorkRequest } from '$lib/types';
-	import { createEventDispatcher } from 'svelte';
 
-	export let request: WorkRequest;
-	export let showInterestButton: boolean = false;
-	export let currentUserId: string | null | undefined = null;
+	interface Props {
+		request: WorkRequest;
+		showInterestButton?: boolean;
+		currentUserId?: string | null | undefined;
+		onSendInterest?: (detail: { customerId: string; workRequestId: string }) => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let {
+		request,
+		showInterestButton = false,
+		currentUserId = null,
+		onSendInterest
+	}: Props = $props();
 
-	$: alreadyInterested = !!(
-		currentUserId &&
-		(request.interestedExperts?.includes(currentUserId) ||
-			request.interestedSuppliers?.includes(currentUserId))
+	let alreadyInterested = $derived(
+		!!(currentUserId && request.interestedExperts?.includes(currentUserId))
 	);
 
 	function handleSendInterest(event: MouseEvent) {
 		event.stopPropagation(); // Prevent card's on:click from firing
 		if (alreadyInterested) return;
-		dispatch('sendInterest', {
+		onSendInterest?.({
 			customerId: request.customerId,
 			workRequestId: request.id
 		});
@@ -42,7 +47,7 @@
 
 <div
 	class="flex h-full cursor-pointer flex-col justify-between rounded-xl bg-slate-700/70 p-5 shadow-xl transition-all duration-300 ease-in-out hover:ring-2 hover:shadow-sky-500/25 hover:ring-sky-500/40"
-	on:click={() => goto(`/work-requests/${request.id}`)}
+	onclick={() => goto(`/work-requests/${request.id}`)}
 	title="Click to view details"
 >
 	<div>
@@ -77,7 +82,7 @@
 	{#if showInterestButton}
 		<div class="mt-5 border-t border-slate-600/70 pt-4">
 			<button
-				on:click={handleSendInterest}
+				onclick={handleSendInterest}
 				disabled={alreadyInterested}
 				class="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors duration-150 ease-in-out hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-600 disabled:opacity-70"
 			>

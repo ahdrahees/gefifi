@@ -13,6 +13,7 @@ node_modules
 backend/dist
 .kiro
 .vscode
+__pycache__
 
 # OS
 .DS_Store
@@ -32,7 +33,7 @@ vite.config.ts.timestamp-*
 /data/*
 
 # Notes
-/z-notes
+**/z-notes
 
 # GCP credentials
 
@@ -46,3 +47,6 @@ firestore-migration
 .emulator-persisted-data
 /firebase-export-*
 *.log
+
+# Adk web sessions
+agents/.local-state

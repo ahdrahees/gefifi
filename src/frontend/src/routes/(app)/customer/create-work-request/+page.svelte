@@ -5,7 +5,7 @@
 	import { API_BASE_URL } from '$lib/config';
 	import { onMount } from 'svelte';
 
-	let workRequestData = {
+	let workRequestData = $state({
 		title: '',
 		description: '',
 		images: [] as string[], // Store paths of uploaded images after successful upload
@@ -14,14 +14,14 @@
 		timeline: '',
 		materialsSuggested: '',
 		category: 'General Construction' // Default category
-	};
+	});
 
 	let imageFiles: FileList | null = null;
-	let imagePreviews: string[] = [];
-	let formMessage: { type: 'success' | 'error'; text: string } | null = null;
-	let isLoading = false;
+	let imagePreviews: string[] = $state([]);
+	let formMessage: { type: 'success' | 'error'; text: string } | null = $state(null);
+	let isLoading = $state(false);
 	let isUploadingImages = false;
-	let fileInputKey = Date.now(); // Used to reset file input
+	let fileInputKey = $state(Date.now()); // Used to reset file input
 
 	let token: string | null = null;
 	authStore.subscribe((auth) => {
@@ -107,7 +107,7 @@
 		const uploadPromises: Promise<void>[] = [];
 
 		for (let i = 0; i < imageFiles.length; i++) {
-			const file = imageFiles[i];
+			const file: File = imageFiles[i];
 			const formData = new FormData();
 			formData.append('file', file);
 
@@ -227,12 +227,13 @@
 
 			setTimeout(() => {
 				goto('/home');
-			}, 2000); // 2 seconds delay to show message
-		} catch (error: any) {
+			}, 1000); // 1 seconds delay to show message
+		} catch (error: unknown) {
 			console.error('Failed to create work request:', error);
 			formMessage = {
 				type: 'error',
-				text: error.message || 'An unexpected error occurred. Please try again.'
+				text:
+					error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.'
 			};
 		} finally {
 			isLoading = false;
@@ -245,7 +246,10 @@
 	<h1 class="text-3xl font-bold text-emerald-400">Create New Work Request</h1>
 
 	<form
-		on:submit|preventDefault={handleSubmit}
+		onsubmit={(e) => {
+			e.preventDefault();
+			handleSubmit();
+		}}
 		class="space-y-6 rounded-xl bg-slate-700/50 p-6 shadow-2xl sm:p-8"
 	>
 		{#if formMessage}
@@ -282,7 +286,7 @@
 				bind:value={workRequestData.category}
 				class="w-full rounded-lg border border-slate-500 bg-slate-600/70 px-4 py-2.5 text-gray-100 transition-colors outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
 			>
-				{#each workCategories as cat}
+				{#each workCategories as cat (cat)}
 					<option value={cat}>{cat}</option>
 				{/each}
 			</select>
@@ -312,13 +316,13 @@
 					id="images"
 					multiple
 					accept="image/png, image/jpeg, image/gif, image/webp"
-					on:change={handleImageChange}
+					onchange={handleImageChange}
 					class="w-full cursor-pointer text-sm text-slate-300 file:mr-4 file:rounded-lg file:border-0 file:bg-emerald-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white file:transition-colors hover:file:bg-emerald-600"
 				/>
 			{/key}
 			{#if imagePreviews.length > 0}
 				<div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-					{#each imagePreviews as previewUrl, i}
+					{#each imagePreviews as previewUrl, i (i)}
 						<div class="relative aspect-square">
 							<img
 								src={previewUrl}

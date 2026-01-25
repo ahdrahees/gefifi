@@ -1,17 +1,20 @@
 <!-- src/frontend/src/lib/components/forms/EditWorkRequestForm.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { get } from 'svelte/store';
 	import { authStore } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 	import type { WorkRequest } from '$lib/types';
 
-	export let workRequest: WorkRequest;
+	interface Props {
+		workRequest: WorkRequest;
+		onSave?: (updatedRequest: any) => void;
+		onCancel?: () => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let { workRequest, onSave, onCancel }: Props = $props();
 
 	// Form data
-	let formData = {
+	let formData = $state({
 		title: workRequest.title,
 		description: workRequest.description,
 		location: workRequest.location,
@@ -20,17 +23,17 @@
 		timeline: workRequest.timeline || '',
 		materialsSuggested: workRequest.materialsSuggested || '',
 		images: [...(workRequest.images || [])]
-	};
+	});
 
 	// Image upload handling (same as create form)
 	let imageFiles: FileList | null = null;
-	let imagePreviews: string[] = [];
-	let fileInputKey = Date.now();
-	let isUploadingImages = false;
+	let imagePreviews: string[] = $state([]);
+	let fileInputKey = $state(Date.now());
+	let isUploadingImages = $state(false);
 
 	// Form state
-	let isSubmitting = false;
-	let errors: Record<string, string> = {};
+	let isSubmitting = $state(false);
+	let errors: Record<string, string> = $state({});
 
 	// Categories for work requests
 	const categories = [
@@ -180,8 +183,8 @@
 			if (imageFiles && imageFiles.length > 0) {
 				try {
 					newImagePaths = await uploadImages();
-				} catch (error: any) {
-					errors.images = error.message || 'Failed to upload images.';
+				} catch (error: unknown) {
+					errors.images = error instanceof Error ? error.message : 'Failed to upload images.';
 					isSubmitting = false;
 					return;
 				}
@@ -193,7 +196,7 @@
 				images: [...formData.images, ...newImagePaths]
 			};
 
-			dispatch('save', updatedRequest);
+			onSave?.(updatedRequest);
 		} catch (error) {
 			console.error('Form submission error:', error);
 		} finally {
@@ -202,7 +205,7 @@
 	}
 
 	function handleCancel() {
-		dispatch('cancel');
+		onCancel?.();
 	}
 
 	function removeExistingImage(index: number) {
@@ -408,7 +411,7 @@
 							/>
 							<button
 								type="button"
-								on:click={() => removeExistingImage(index)}
+								onclick={() => removeExistingImage(index)}
 								class="absolute top-2 right-2 rounded-full bg-red-500/80 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
 								aria-label="Remove image"
 							>
@@ -436,7 +439,7 @@
 					id="new-images"
 					multiple
 					accept="image/png, image/jpeg, image/gif, image/webp"
-					on:change={handleImageChange}
+					onchange={handleImageChange}
 					class="w-full cursor-pointer text-sm text-slate-300 file:mr-4 file:rounded-lg file:border-0 file:bg-emerald-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white file:transition-colors hover:file:bg-emerald-600"
 				/>
 			{/key}
@@ -471,14 +474,14 @@
 	<div class="flex flex-col gap-4 sm:flex-row sm:justify-end">
 		<button
 			type="button"
-			on:click={handleCancel}
+			onclick={handleCancel}
 			class="rounded-lg border border-slate-600/50 bg-slate-700/40 px-6 py-3 font-semibold text-slate-300 transition-colors hover:bg-slate-600/40"
 		>
 			Cancel
 		</button>
 		<button
 			type="button"
-			on:click={handleSubmit}
+			onclick={handleSubmit}
 			disabled={isSubmitting}
 			class="rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
 		>

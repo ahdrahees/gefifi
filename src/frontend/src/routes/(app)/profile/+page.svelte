@@ -1,19 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { authStore } from '$lib/stores/auth';
+	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
 	import Avatar from '$lib/components/Avatar.svelte';
 
-	let currentUser: any;
+	let currentUser = $state<AuthUser | null>(null);
 	let token: string | null = null;
-	let isLoading = true;
-	let isEditing = false;
-	let isSaving = false;
-	let saveMessage = '';
+	let isLoading = $state(true);
+	let isEditing = $state(false);
+	let isSaving = $state(false);
+	let saveMessage = $state('');
 
 	// Form data for editing
-	let profileData = {
+	let profileData = $state({
 		// Common fields
 		fullName: '',
 		phoneNumber: '',
@@ -25,10 +24,10 @@
 		companyName: '',
 		category: ''
 		// Note: avatar is only added when user actually selects a new file
-	};
+	});
 
 	// Avatar preview
-	let avatarPreview: string | null = null;
+	let avatarPreview: string | null = $state(null);
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
@@ -130,9 +129,9 @@
 			setTimeout(() => {
 				saveMessage = '';
 			}, 3000);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Profile update error:', error);
-			saveMessage = error.data?.message || 'Failed to update profile.';
+			saveMessage = error instanceof Error ? error.message : 'Failed to update profile.';
 		} finally {
 			isSaving = false;
 		}
@@ -179,13 +178,13 @@
 	function startEditing() {
 		// Pre-fill form data with current user data
 		profileData = {
-			fullName: currentUser.profile?.fullName || '',
-			phoneNumber: currentUser.profile?.phoneNumber || '',
-			location: currentUser.profile?.location || '',
-			expertise: currentUser.profile?.expertise || '',
-			experience: currentUser.profile?.experience || '',
-			companyName: currentUser.profile?.companyName || '',
-			category: currentUser.profile?.category || ''
+			fullName: currentUser?.profile?.fullName || '',
+			phoneNumber: currentUser?.profile?.phoneNumber || '',
+			location: currentUser?.profile?.location || '',
+			expertise: currentUser?.profile?.expertise || '',
+			experience: currentUser?.profile?.experience || '',
+			companyName: currentUser?.profile?.companyName || '',
+			category: currentUser?.profile?.category || ''
 		};
 
 		isEditing = true;
@@ -247,7 +246,7 @@
 			</div>
 			{#if !isEditing}
 				<button
-					on:click={startEditing}
+					onclick={startEditing}
 					class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-white transition-colors hover:bg-emerald-700"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -263,13 +262,13 @@
 			{:else}
 				<div class="flex gap-3">
 					<button
-						on:click={cancelEditing}
+						onclick={cancelEditing}
 						class="rounded-lg border border-slate-600 px-4 py-2 text-slate-300 transition-colors hover:bg-slate-800"
 					>
 						Cancel
 					</button>
 					<button
-						on:click={handleSave}
+						onclick={handleSave}
 						disabled={isSaving}
 						class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
 					>
@@ -353,7 +352,7 @@
 										type="file"
 										accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/svg+xml"
 										class="hidden"
-										on:change={handleAvatarChange}
+										onchange={handleAvatarChange}
 									/>
 								</div>
 								<p class="mt-2 text-center text-xs text-slate-400">Click to upload new picture</p>

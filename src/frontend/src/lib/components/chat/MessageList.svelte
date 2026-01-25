@@ -1,13 +1,10 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/MessageList.svelte -->
 <script lang="ts">
-	import { tick, createEventDispatcher } from 'svelte';
+	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { AuthUser, Message, QuoteMessage } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
-
-	// Create event dispatcher for parent communication
-	const dispatch = createEventDispatcher();
 
 	// Child Components
 	import AudioMessageView from '$lib/components/chat/AudioMessageView.svelte';
@@ -15,174 +12,92 @@
 	import TypingIndicator from '$lib/components/chat/TypingIndicator.svelte';
 	import SystemMessage from '$lib/components/chat/SystemMessage.svelte';
 	import QuoteMessageView from '$lib/components/chat/QuoteMessageView.svelte';
+	import ImageModal from '$lib/components/chat/ImageModal.svelte';
+	import PDFModal from '$lib/components/chat/PDFModal.svelte';
+	import FileAttachment from '$lib/components/chat/FileAttachment.svelte';
+	import type { JsonObject } from '$lib/types/json';
 
-	// --- PROPS ---
-	export let isLoading: boolean = true;
-	export let errorMessage: string = '';
-	export let groupedMessages: Array<{ type: 'date' | 'message'; id: string; data: any }> = [];
-	export let currentUser: AuthUser | null = null;
-	export const chatId: string = '';
-	export let isLoadingOlder: boolean = false;
-	export let hasMoreMessages: boolean = true;
-	export let infiniteScrollEnabled: boolean = true;
-	export let typingUsers: Array<{ userId: string; userName: string }> = [];
+	interface Props {
+		// --- PROPS ---
+		chatId?: string;
+		isLoading?: boolean;
+		errorMessage?: string;
+		groupedMessages?: Array<{ type: 'date' | 'message'; id: string; data: JsonObject }>;
+		currentUser?: AuthUser | null;
+		isLoadingOlder?: boolean;
+		hasMoreMessages?: boolean;
+		infiniteScrollEnabled?: boolean;
+		typingUsers?: Array<{ userId: string; userName: string }>;
+		onLoadOlder?: (detai: { lastMessage: Message }) => void;
+	}
+
+	let {
+		chatId,
+		isLoading = true,
+		errorMessage = '',
+		groupedMessages = [],
+		currentUser = null,
+		isLoadingOlder = false,
+		hasMoreMessages = true,
+		infiniteScrollEnabled = true,
+		typingUsers = [],
+		onLoadOlder
+	}: Props = $props();
 
 	// --- INTERNAL STATE & BINDINGS ---
-	let messagesContainer: HTMLElement;
-	let isUserNearBottom: boolean = true;
+	let messagesContainer: HTMLElement | undefined = $state();
+	let isUserNearBottom: boolean = $state(true);
 	let previousScrollHeight: number = 0;
 	let hasUserScrolled: boolean = false;
 
-	// --- FILE TYPE UTILITIES ---
-	function getFileIcon(fileName: string): string {
+	function isImageFile(fileName: string): boolean {
 		const extension = fileName.split('.').pop()?.toLowerCase() || '';
-		if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) return '🖼️';
-		if (extension === 'pdf') return '📄';
-		if (['doc', 'docx'].includes(extension)) return '📝';
-		if (['xls', 'xlsx'].includes(extension)) return '📊';
-		if (['dwg', 'dxf'].includes(extension)) return '📐';
-		return '📁';
+		return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension);
 	}
 
-	function getFileTypeDescription(fileName: string): string {
+	function isPdfFile(fileName: string): boolean {
 		const extension = fileName.split('.').pop()?.toLowerCase() || '';
-		if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) return 'Image';
-		if (extension === 'pdf') return 'PDF Document';
-		if (['doc', 'docx'].includes(extension)) return 'Word Document';
-		if (['xls', 'xlsx'].includes(extension)) return 'Excel Spreadsheet';
-		if (extension === 'dwg') return 'AutoCAD Drawing';
-		if (extension === 'dxf') return 'DXF Drawing';
-		return 'Document';
-	}
-
-	function getFileTypeClasses(fileName: string): string {
-		const extension = fileName.split('.').pop()?.toLowerCase() || '';
-		if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
-			return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
-		}
-		if (extension === 'pdf') return 'bg-red-500/20 text-red-300 border-red-500/30';
-		if (['doc', 'docx'].includes(extension))
-			return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-		if (['xls', 'xlsx'].includes(extension))
-			return 'bg-green-500/20 text-green-300 border-green-500/30';
-		if (['dwg', 'dxf'].includes(extension))
-			return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
-		return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
-	}
-
-	function formatBytes(bytes: number, decimals = 1): string {
-		if (bytes === 0) return '0 Bytes';
-		const k = 1024;
-		const dm = decimals < 0 ? 0 : decimals;
-		const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-	}
-
-	function isViewableFile(fileName: string): boolean {
-		const extension = fileName.split('.').pop()?.toLowerCase() || '';
-		return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'pdf'].includes(extension);
+		return extension === 'pdf';
 	}
 
 	// --- IMAGE MODAL STATE ---
-	let showImageModal = false;
-	let modalImageSrc = '';
-	let imageScale = 1;
-	let imagePosition = { x: 0, y: 0 };
-	let isDragging = false;
-	let dragStart = { x: 0, y: 0 };
-	let imageElement: HTMLImageElement;
+	let showImageModal = $state(false);
+	let modalImageSrc = $state('');
 
 	function openImageModal(imageSrc: string) {
 		modalImageSrc = imageSrc;
 		showImageModal = true;
-		// Reset zoom and position when opening
-		imageScale = 1;
-		imagePosition = { x: 0, y: 0 };
 	}
 
 	function closeImageModal() {
 		showImageModal = false;
 		modalImageSrc = '';
-		// Reset state
-		imageScale = 1;
-		imagePosition = { x: 0, y: 0 };
-		isDragging = false;
 	}
 
-	function handleWheel(event: WheelEvent) {
-		event.preventDefault();
-		const delta = event.deltaY > 0 ? 0.9 : 1.1;
-		const newScale = Math.max(0.1, Math.min(5, imageScale * delta));
-		imageScale = newScale;
+	// --- PDF MODAL STATE ---
+	let showPdfModal = $state(false);
+	let modalPdfSrc = $state('');
+	let modalPdfFileName = $state('');
+
+	function openPdfModal(pdfSrc: string, fileName: string) {
+		modalPdfSrc = pdfSrc;
+		modalPdfFileName = fileName;
+		showPdfModal = true;
 	}
 
-	function handleMouseDown(event: MouseEvent) {
-		if (imageScale > 1) {
-			event.preventDefault(); // Prevent default drag behavior
-			isDragging = true;
-			dragStart = { x: event.clientX - imagePosition.x, y: event.clientY - imagePosition.y };
+	function closePdfModal() {
+		showPdfModal = false;
+		modalPdfSrc = '';
+		modalPdfFileName = '';
+	}
+
+	// --- VIEWABLE FILE HANDLER ---
+	function handleViewFile(filePath: string, fileName: string) {
+		if (isImageFile(fileName)) {
+			openImageModal(filePath);
+		} else if (isPdfFile(fileName)) {
+			openPdfModal(filePath, fileName);
 		}
-	}
-
-	function handleMouseMove(event: MouseEvent) {
-		if (isDragging && imageScale > 1) {
-			imagePosition = {
-				x: event.clientX - dragStart.x,
-				y: event.clientY - dragStart.y
-			};
-		}
-	}
-
-	function handleMouseUp() {
-		isDragging = false;
-	}
-
-	// Touch support for mobile
-	function handleTouchStart(event: TouchEvent) {
-		if (imageScale > 1 && event.touches.length === 1) {
-			event.preventDefault();
-			isDragging = true;
-			const touch = event.touches[0];
-			dragStart = { x: touch.clientX - imagePosition.x, y: touch.clientY - imagePosition.y };
-		}
-	}
-
-	function handleTouchMove(event: TouchEvent) {
-		if (isDragging && imageScale > 1 && event.touches.length === 1) {
-			event.preventDefault();
-			const touch = event.touches[0];
-			imagePosition = {
-				x: touch.clientX - dragStart.x,
-				y: touch.clientY - dragStart.y
-			};
-		}
-	}
-
-	function handleTouchEnd() {
-		isDragging = false;
-	}
-
-	function resetZoom() {
-		imageScale = 1;
-		imagePosition = { x: 0, y: 0 };
-	}
-
-	function fitToScreen() {
-		if (!imageElement) return;
-
-		const container = imageElement.parentElement;
-		if (!container) return;
-
-		const containerRect = container.getBoundingClientRect();
-		const imageRect = imageElement.getBoundingClientRect();
-
-		const scaleX = (containerRect.width - 40) / imageRect.width; // 40px padding
-		const scaleY = (containerRect.height - 40) / imageRect.height;
-		const scale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond original size
-
-		imageScale = scale;
-		imagePosition = { x: 0, y: 0 };
 	}
 
 	// --- PUBLIC API (for parent component) ---
@@ -258,7 +173,7 @@
 
 	const loadOlderMessages = () => {
 		// Store current scroll height before loading
-		previousScrollHeight = messagesContainer.scrollHeight;
+		previousScrollHeight = messagesContainer?.scrollHeight ?? 0;
 
 		// Find the oldest message currently loaded (first message in the list)
 		// Since messages are displayed oldest-first, the first message is the oldest
@@ -272,8 +187,8 @@
 		// console.log('[MessageList] Oldest message:', oldestMessage?.id, oldestMessage?.timestamp);
 
 		if (oldestMessage) {
-			// Dispatch Svelte event to parent component
-			dispatch('loadOlder', { lastMessage: oldestMessage });
+			// Call callback prop
+			onLoadOlder?.({ lastMessage: oldestMessage });
 		} else {
 			console.warn('[MessageList] No oldest message found to load older messages');
 		}
@@ -319,7 +234,7 @@
 <div class="relative flex-1">
 	<div
 		bind:this={messagesContainer}
-		on:scroll={handleScroll}
+		onscroll={handleScroll}
 		class="scrollable-content absolute inset-0 overflow-y-auto p-4"
 	>
 		{#if isLoading}
@@ -350,7 +265,7 @@
 
 				{#each groupedMessages as item (item.id)}
 					{#if item.type === 'date'}
-						<DateSeparator timestamp={item.data.timestamp} />
+						<DateSeparator timestamp={item.data.timestamp as string} />
 					{:else if item.type === 'message'}
 						{@const message = item.data as Message}
 						<!-- System Message -->
@@ -394,8 +309,8 @@
 												<div class="mb-2 space-y-2">
 													{#each message.images as imageSrc (imageSrc)}
 														<button
-															on:click={() => openImageModal(imageSrc)}
-															class="block max-w-xs overflow-hidden rounded-lg border border-slate-600 transition-opacity hover:opacity-90 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+															onclick={() => openImageModal(imageSrc)}
+															class="block w-full overflow-hidden rounded-lg border border-slate-600 transition-opacity hover:opacity-90 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
 															aria-label="View full size image"
 														>
 															<img src={imageSrc} alt="" class="h-auto w-full object-contain" />
@@ -406,91 +321,12 @@
 
 											<!-- Attachments -->
 											{#if message.attachments && message.attachments.length > 0}
-												<div class="mb-2 space-y-2">
+												<div class="mb-2 flex flex-wrap gap-2">
 													{#each message.attachments as attachment (attachment.filePath)}
-														<div
-															class="flex w-full max-w-full items-center gap-2 rounded-lg border border-slate-600/30 bg-slate-800/50 p-2 sm:gap-3 sm:p-3"
-														>
-															<div class="flex-shrink-0">
-																<div
-																	class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-700/50 text-lg sm:h-10 sm:w-10 sm:text-2xl"
-																>
-																	{getFileIcon(attachment.fileName)}
-																</div>
-															</div>
-															<div class="min-w-0 flex-1">
-																<div
-																	class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2"
-																>
-																	<span
-																		class="truncate text-xs font-medium text-slate-200"
-																		title={attachment.fileName}
-																		style="max-width: 100px;"
-																	>
-																		{attachment.fileName.length > 20
-																			? `${attachment.fileName.substring(0, 8)}...${attachment.fileName.substring(attachment.fileName.lastIndexOf('.'))}`
-																			: attachment.fileName}
-																	</span>
-																	<span class="text-xs text-slate-400" style="font-size: 10px;">
-																		{formatBytes(attachment.size)}
-																	</span>
-																</div>
-																<div class="mt-1">
-																	<span
-																		class={`inline-flex items-center rounded border px-1 py-0.5 text-xs font-medium sm:px-2 ${getFileTypeClasses(attachment.fileName)}`}
-																		style="font-size: 9px;"
-																	>
-																		{getFileTypeDescription(attachment.fileName)}
-																	</span>
-																</div>
-															</div>
-															<div class="flex-shrink-0">
-																{#if isViewableFile(attachment.fileName)}
-																	<a
-																		href={attachment.filePath}
-																		target="_blank"
-																		rel="noopener noreferrer"
-																		class="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-300 transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/20 sm:px-3 sm:py-1.5"
-																	>
-																		<svg
-																			class="h-3 w-3"
-																			fill="none"
-																			stroke="currentColor"
-																			viewBox="0 0 24 24"
-																		>
-																			<path
-																				stroke-linecap="round"
-																				stroke-linejoin="round"
-																				stroke-width="2"
-																				d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M14 4h6m0 0v6m0-6L10 14"
-																			/>
-																		</svg>
-																		View
-																	</a>
-																{:else}
-																	<a
-																		href={attachment.filePath}
-																		download={attachment.fileName}
-																		class="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300 transition-colors hover:border-blue-500/50 hover:bg-blue-500/20 sm:px-3 sm:py-1.5"
-																	>
-																		<svg
-																			class="h-3 w-3"
-																			fill="none"
-																			stroke="currentColor"
-																			viewBox="0 0 24 24"
-																		>
-																			<path
-																				stroke-linecap="round"
-																				stroke-linejoin="round"
-																				stroke-width="2"
-																				d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-																			/>
-																		</svg>
-																		Download
-																	</a>
-																{/if}
-															</div>
-														</div>
+														<FileAttachment
+															{attachment}
+															onView={(e) => handleViewFile(e.filePath, e.fileName)}
+														/>
 													{/each}
 												</div>
 											{/if}
@@ -522,7 +358,7 @@
 											<button
 												class="view-request-button group flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 shadow-lg transition-all duration-200 hover:scale-105 hover:border-emerald-400/50 hover:bg-slate-700 hover:shadow-lg hover:shadow-emerald-500/20"
 												aria-label="View request details"
-												on:click={() => handleUserMessageClick(message)}
+												onclick={() => handleUserMessageClick(message)}
 											>
 												<span>View request</span>
 												<svg
@@ -561,8 +397,8 @@
 												<div class="mb-2 space-y-2">
 													{#each message.images as imageSrc (imageSrc)}
 														<button
-															on:click={() => openImageModal(imageSrc)}
-															class="block max-w-xs overflow-hidden rounded-lg border border-slate-600 transition-opacity hover:opacity-90 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+															onclick={() => openImageModal(imageSrc)}
+															class="block w-full overflow-hidden rounded-lg border border-slate-600 transition-opacity hover:opacity-90 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
 															aria-label="View full size image"
 														>
 															<img src={imageSrc} alt="" class="h-auto w-full object-contain" />
@@ -573,91 +409,12 @@
 
 											<!-- Attachments -->
 											{#if message.attachments && message.attachments.length > 0}
-												<div class="mb-2 space-y-2">
+												<div class="mb-2 flex flex-wrap gap-2">
 													{#each message.attachments as attachment (attachment.filePath)}
-														<div
-															class="flex w-full max-w-full items-center gap-2 rounded-lg border border-slate-600/30 bg-slate-800/50 p-2 sm:gap-3 sm:p-3"
-														>
-															<div class="flex-shrink-0">
-																<div
-																	class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-700/50 text-lg sm:h-10 sm:w-10 sm:text-2xl"
-																>
-																	{getFileIcon(attachment.fileName)}
-																</div>
-															</div>
-															<div class="min-w-0 flex-1">
-																<div
-																	class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2"
-																>
-																	<span
-																		class="truncate text-xs font-medium text-slate-200"
-																		title={attachment.fileName}
-																		style="max-width: 100px;"
-																	>
-																		{attachment.fileName.length > 20
-																			? `${attachment.fileName.substring(0, 8)}...${attachment.fileName.substring(attachment.fileName.lastIndexOf('.'))}`
-																			: attachment.fileName}
-																	</span>
-																	<span class="text-xs text-slate-400" style="font-size: 10px;">
-																		{formatBytes(attachment.size)}
-																	</span>
-																</div>
-																<div class="mt-1">
-																	<span
-																		class={`inline-flex items-center rounded border px-1 py-0.5 text-xs font-medium sm:px-2 ${getFileTypeClasses(attachment.fileName)}`}
-																		style="font-size: 9px;"
-																	>
-																		{getFileTypeDescription(attachment.fileName)}
-																	</span>
-																</div>
-															</div>
-															<div class="flex-shrink-0">
-																{#if isViewableFile(attachment.fileName)}
-																	<a
-																		href={attachment.filePath}
-																		target="_blank"
-																		rel="noopener noreferrer"
-																		class="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-300 transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/20 sm:px-3 sm:py-1.5"
-																	>
-																		<svg
-																			class="h-3 w-3"
-																			fill="none"
-																			stroke="currentColor"
-																			viewBox="0 0 24 24"
-																		>
-																			<path
-																				stroke-linecap="round"
-																				stroke-linejoin="round"
-																				stroke-width="2"
-																				d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M14 4h6m0 0v6m0-6L10 14"
-																			/>
-																		</svg>
-																		View
-																	</a>
-																{:else}
-																	<a
-																		href={attachment.filePath}
-																		download={attachment.fileName}
-																		class="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300 transition-colors hover:border-blue-500/50 hover:bg-blue-500/20 sm:px-3 sm:py-1.5"
-																	>
-																		<svg
-																			class="h-3 w-3"
-																			fill="none"
-																			stroke="currentColor"
-																			viewBox="0 0 24 24"
-																		>
-																			<path
-																				stroke-linecap="round"
-																				stroke-linejoin="round"
-																				stroke-width="2"
-																				d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-																			/>
-																		</svg>
-																		Download
-																	</a>
-																{/if}
-															</div>
-														</div>
+														<FileAttachment
+															{attachment}
+															onView={(e) => handleViewFile(e.filePath, e.fileName)}
+														/>
 													{/each}
 												</div>
 											{/if}
@@ -695,7 +452,7 @@
 
 	{#if !isUserNearBottom}
 		<button
-			on:click={() => scrollToBottom('smooth')}
+			onclick={() => scrollToBottom('smooth')}
 			class="absolute right-4 bottom-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-slate-600/40 text-white backdrop-blur-sm transition-transform hover:scale-110"
 			aria-label="Scroll to bottom"
 		>
@@ -710,126 +467,15 @@
 	{/if}
 
 	<!-- Image Modal -->
-	{#if showImageModal}
-		<div
-			class="image-modal-container fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-			class:dragging={isDragging}
-			on:click={closeImageModal}
-			on:keydown={(e) => e.key === 'Escape' && closeImageModal()}
-			on:wheel={handleWheel}
-			on:mousemove={handleMouseMove}
-			on:mouseup={handleMouseUp}
-			on:touchmove={handleTouchMove}
-			on:touchend={handleTouchEnd}
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-		>
-			<!-- Image Container -->
-			<div
-				class="relative flex h-full w-full items-center justify-center overflow-hidden p-4"
-				role="button"
-				tabindex="0"
-				on:click={(e) => e.stopPropagation()}
-				on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
-			>
-				<!-- Image with zoom and pan -->
-				<div
-					class="relative flex items-center justify-center"
-					style="transform: scale({imageScale}) translate({imagePosition.x}px, {imagePosition.y}px); transition: {isDragging
-						? 'none'
-						: 'transform 0.2s ease-out'};"
-				>
-					<button
-						class="relative rounded-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-black focus:outline-none"
-						style="cursor: {imageScale > 1 ? 'grab' : 'zoom-in'};"
-						on:mousedown={handleMouseDown}
-						on:touchstart={handleTouchStart}
-						on:keydown={(e) => e.key === 'Enter' && e.preventDefault()}
-						aria-label="Image viewer - scroll to zoom, drag to pan"
-					>
-						<img
-							bind:this={imageElement}
-							src={modalImageSrc}
-							alt=""
-							class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
-							on:load={fitToScreen}
-						/>
-					</button>
-				</div>
-			</div>
+	<ImageModal show={showImageModal} imageSrc={modalImageSrc} onclose={closeImageModal} />
 
-			<!-- Control Buttons -->
-			<div class="absolute top-4 right-4 flex gap-2">
-				<!-- Fit to Screen Button -->
-				<button
-					on:click={(e) => {
-						e.stopPropagation();
-						fitToScreen();
-					}}
-					class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
-					aria-label="Fit to screen"
-					title="Fit to screen"
-				>
-					<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-						<path
-							fill-rule="evenodd"
-							d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z"
-							clip-rule="evenodd"
-						/>
-					</svg>
-				</button>
-
-				<!-- Reset Zoom Button -->
-				<button
-					on:click={(e) => {
-						e.stopPropagation();
-						resetZoom();
-					}}
-					class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
-					aria-label="Reset zoom"
-					title="Reset zoom (100%)"
-				>
-					<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-						<path
-							fill-rule="evenodd"
-							d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-							clip-rule="evenodd"
-						/>
-					</svg>
-				</button>
-
-				<!-- Close Button -->
-				<button
-					on:click={(e) => {
-						e.stopPropagation();
-						closeImageModal();
-					}}
-					class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
-					aria-label="Close image"
-					title="Close image"
-				>
-					<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-						<path
-							fill-rule="evenodd"
-							d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-							clip-rule="evenodd"
-						/>
-					</svg>
-				</button>
-			</div>
-
-			<!-- Zoom Level Indicator -->
-			<div class="absolute bottom-4 left-4 rounded-lg bg-black/50 px-3 py-2 text-sm text-white">
-				{Math.round(imageScale * 100)}%
-			</div>
-
-			<!-- Instructions -->
-			<div class="absolute right-4 bottom-4 rounded-lg bg-black/50 px-3 py-2 text-xs text-white">
-				<div>Scroll to zoom • Drag to pan</div>
-			</div>
-		</div>
-	{/if}
+	<!-- PDF Modal -->
+	<PDFModal
+		show={showPdfModal}
+		pdfSrc={modalPdfSrc}
+		fileName={modalPdfFileName}
+		onclose={closePdfModal}
+	/>
 </div>
 
 <style>
@@ -874,29 +520,5 @@
 	.view-request-button:hover {
 		transform: translateY(-1px);
 		box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
-	}
-
-	/* Image modal styles */
-	:global(.image-modal-container) {
-		user-select: none;
-		-webkit-user-select: none;
-		-moz-user-select: none;
-		-ms-user-select: none;
-	}
-
-	:global(.image-modal-container img) {
-		user-select: none;
-		-webkit-user-select: none;
-		-moz-user-select: none;
-		-ms-user-select: none;
-		pointer-events: auto;
-	}
-
-	:global(.image-modal-container.dragging) {
-		cursor: grabbing;
-	}
-
-	:global(.image-modal-container.dragging img) {
-		cursor: grabbing;
 	}
 </style>

@@ -26,7 +26,7 @@ const store: Writable<AuthState> = writable(initialAuthState);
 
 // Helper to parse JWT (client-side) to get basic info like expiry
 // WARNING: This does NOT validate the token's signature. Signature validation MUST happen on the server.
-function parseJwt(token: string): { exp?: number; [key: string]: any } | null {
+function parseJwt(token: string): { exp?: number; [key: string]: unknown } | null {
 	if (!token) return null;
 	try {
 		const base64Url = token.split('.')[1];
@@ -109,14 +109,14 @@ async function loadUserFromStorage() {
 
 				const freshUser = await apiClient.getMe();
 				await updateAuthData(token, freshUser); // This updates the store correctly with the fresh user AND signs into Firebase
-			} catch (apiError: any) {
+			} catch (apiError: unknown) {
 				console.warn(
 					'Token re-validation with /api/auth/me failed, logging out:',
-					apiError.message
+					(apiError as { message?: string }).message
 				);
 				let errorMessage = 'Session expired or invalid.';
-				if (apiError instanceof ApiError && apiError.data?.message) {
-					errorMessage = apiError.data.message;
+				if (apiError instanceof ApiError && (apiError as any).data?.message) {
+					errorMessage = (apiError as any).data.message;
 				}
 				updateAuthData(null, null, errorMessage);
 			}
@@ -131,7 +131,7 @@ async function loadUserFromStorage() {
 }
 
 // New: Firebase Sign-In Logic
-async function signInToFirebase(sessionToken: string) {
+async function signInToFirebase(_sessionToken: string) {
 	try {
 		console.log('[Firebase] Requesting custom token from backend...');
 		const response = await apiClient.getFirebaseToken(); // API client will use the sessionToken

@@ -1,32 +1,42 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
 	import type { Quote, WorkRequest, MaterialRequest } from '$lib/types';
 
-	// Props
-	export let requestId: string;
-	export let requestType: 'work' | 'material';
-	export let request: WorkRequest | MaterialRequest;
-	export let availableRequests: (WorkRequest | MaterialRequest)[] = [];
-	export let chatId: string | undefined = undefined; // Optional chat ID for chat-based submission
-	export let revisionQuoteId: string | undefined = undefined; // Quote ID for revision mode
-	export let existingQuote: Quote | undefined = undefined; // Existing quote data for revision
+	interface Props {
+		// Props
+		requestId: string;
+		requestType: 'work' | 'material';
+		request: WorkRequest | MaterialRequest;
+		availableRequests?: (WorkRequest | MaterialRequest)[];
+		chatId?: string | undefined; // Optional chat ID for chat-based submission
+		revisionQuoteId?: string | undefined; // Quote ID for revision mode
+		existingQuote?: Quote | undefined; // Existing quote data for revision
+		onQuoteSubmitted?: (quote: Quote) => void;
+		onClose?: () => void;
+	}
 
-	// Event dispatcher
-	const dispatch = createEventDispatcher<{
-		quoteSubmitted: Quote;
-		close: void;
-	}>();
+	let {
+		requestId,
+		requestType,
+		request,
+		availableRequests = [],
+		chatId = undefined,
+		revisionQuoteId = undefined,
+		existingQuote = undefined,
+		onQuoteSubmitted,
+		onClose
+	}: Props = $props();
 
 	// State
 	let currentUser = $authStore;
-	let selectedRequestId = requestId;
-	let title = '';
-	let description = '';
-	let amount = '';
-	let currency = 'INR';
-	let validityDays = 30;
+	let selectedRequestId = $state(requestId);
+	let title = $state('');
+	let description = $state('');
+	let amount = $state('');
+	let currency = $state('INR');
+	let validityDays = $state(30);
 	let additionalInfo = {
 		deliveryTime: '',
 		paymentTerms: '',
@@ -35,36 +45,37 @@
 	};
 
 	// File handling
-	let selectedFiles: File[] = [];
-	let fileInput: HTMLInputElement;
-	let isUploading = false;
-	let errorMessage = '';
-	let successMessage = '';
+	let selectedFiles: File[] = $state([]);
+	let fileInput: HTMLInputElement | undefined = $state();
+	let isUploading = $state(false);
+	let errorMessage = $state('');
+	let successMessage = $state('');
 
 	// Progressive disclosure state
-	let currentStep = requestId && requestId !== '' ? 2 : 1; // Skip request selection if requestId is provided
-	let showSmartQuestions = false;
-	let isRevision = !!revisionQuoteId; // Track if this is a revision based on prop
+	let currentStep = $state(requestId && requestId !== '' ? 2 : 1); // Skip request selection if requestId is provided
+	let showSmartQuestions = $state(false);
+	let isRevision = $state(!!revisionQuoteId); // Track if this is a revision based on prop
 	let smartQuestions: Array<{
 		id: string;
 		question: string;
 		field: string;
-		value: any;
+		value: number | string;
 		show: boolean;
-	}> = [];
-	let analyzedContent = '';
-	let isAnalyzing = false;
+	}> = $state([]);
+	let isAnalyzing = $state(false);
 
 	// Constants
 	const MAX_FILES = 10;
 	const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB
 
 	// Computed
-	$: filteredRequests = availableRequests.filter((req) =>
-		request ? req.customerId === request.customerId && req.id !== requestId : true
+	let filteredRequests = $derived(
+		availableRequests.filter((req) =>
+			request ? req.customerId === request.customerId && req.id !== requestId : true
+		)
 	);
 
-	$: canSubmit = title.trim() && selectedRequestId;
+	let canSubmit = $derived(title.trim() && selectedRequestId);
 
 	// Pre-fill form with existing quote data for revision
 	onMount(() => {
@@ -98,7 +109,7 @@
 			// User will need to re-upload files or we keep existing files on backend
 		}
 	});
-	$: canProceedToNext =
+	let canProceedToNext = $derived(
 		currentStep === 1
 			? selectedRequestId && selectedRequestId !== ''
 			: currentStep === 2
@@ -107,7 +118,8 @@
 					? title.trim()
 					: currentStep === 4
 						? true
-						: true;
+						: true
+	);
 
 	// Methods
 	async function checkForExistingQuote() {
@@ -369,7 +381,7 @@
 				successMessage = 'Quote submitted successfully!';
 			}
 
-			dispatch('quoteSubmitted', quote);
+			onQuoteSubmitted?.(quote);
 
 			// Reset form
 			title = '';
@@ -392,7 +404,7 @@
 	}
 
 	function handleClose() {
-		dispatch('close');
+		onClose?.();
 	}
 
 	// Smart analysis function
@@ -458,11 +470,12 @@
 			currentStep--;
 		}
 	}
-
+	/*
 	function skipSmartQuestions() {
 		showSmartQuestions = false;
 		currentStep = 5;
 	}
+	*/
 
 	function answerSmartQuestion(questionId: string, value: string) {
 		const question = smartQuestions.find((q) => q.id === questionId);
@@ -499,7 +512,7 @@
 					{isRevision ? 'Revise Quote' : 'Submit Quote'}
 				</h2>
 				<div class="mt-2 flex items-center gap-2">
-					{#each [1, 2, 3, 4, 5] as step}
+					{#each [1, 2, 3, 4, 5] as step (step)}
 						<div class="flex items-center">
 							<div
 								class="h-2 w-8 rounded-full {currentStep >= step
@@ -516,7 +529,7 @@
 				</div>
 			</div>
 			<button
-				on:click={handleClose}
+				onclick={() => onClose?.()}
 				class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
 				aria-label="Close quote submission form"
 			>
@@ -578,11 +591,11 @@
 						<select
 							id="request-select"
 							bind:value={selectedRequestId}
-							on:change={handleRequestSelection}
+							onchange={handleRequestSelection}
 							class="w-full rounded-lg border border-slate-600 bg-slate-700 px-4 py-3 text-slate-100 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 						>
 							<option value="">Choose a request...</option>
-							{#each availableRequests as req}
+							{#each availableRequests as req (req.id)}
 								<option value={req.id}>
 									{req.title} - {req.status} - {req.customerId}
 								</option>
@@ -644,7 +657,7 @@
 							type="file"
 							multiple
 							accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.dwg,.dxf"
-							on:change={handleFileSelected}
+							onchange={handleFileSelected}
 							class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
 						/>
 						<div
@@ -694,14 +707,14 @@
 								>
 								<button
 									type="button"
-									on:click={clearFiles}
+									onclick={clearFiles}
 									class="text-xs text-red-400 hover:text-red-300"
 								>
 									Clear All
 								</button>
 							</div>
 							<div class="scrollable-content max-h-32 space-y-1 overflow-y-auto">
-								{#each selectedFiles as file, index}
+								{#each selectedFiles as file, index (index)}
 									<div class="flex items-center gap-2 rounded-lg bg-slate-700/50 p-2">
 										<span class="text-lg">{getFileIcon(file.name)}</span>
 										<div class="min-w-0 flex-1">
@@ -710,7 +723,7 @@
 										</div>
 										<button
 											type="button"
-											on:click={() => removeFile(index)}
+											onclick={() => removeFile(index)}
 											class="rounded p-1 text-slate-400 hover:bg-slate-600 hover:text-slate-200"
 											aria-label="Remove {file.name}"
 										>
@@ -749,7 +762,7 @@
 							{#if request}
 								<option value={requestId}>{request.title} - {request.status}</option>
 							{/if}
-							{#each filteredRequests as req}
+							{#each filteredRequests as req (req.id)}
 								<option value={req.id}>{req.title} - {req.status}</option>
 							{/each}
 						</select>
@@ -823,14 +836,14 @@
 							</p>
 
 							<div class="space-y-4">
-								{#each smartQuestions as question}
+								{#each smartQuestions as question (question.id)}
 									<div class="rounded-lg border border-slate-600 bg-slate-700/50 p-4">
 										<p class="mb-3 text-sm text-slate-200">{question.question}</p>
 										{#if question.field === 'validityDays'}
 											<input
 												type="number"
 												bind:value={question.value}
-												on:input={(e) => handleSmartQuestionInput(e, question.id)}
+												oninput={(e) => handleSmartQuestionInput(e, question.id)}
 												placeholder="Enter validity in days"
 												min="1"
 												max="365"
@@ -849,7 +862,7 @@
 												<input
 													type="number"
 													bind:value={question.value}
-													on:input={(e) => handleSmartQuestionInput(e, question.id)}
+													oninput={(e) => handleSmartQuestionInput(e, question.id)}
 													placeholder="0.00"
 													step="0.01"
 													min="0"
@@ -860,7 +873,7 @@
 											<input
 												type="text"
 												bind:value={question.value}
-												on:input={(e) => handleSmartQuestionInput(e, question.id)}
+												oninput={(e) => handleSmartQuestionInput(e, question.id)}
 												placeholder="Enter your answer..."
 												class="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none"
 											/>
@@ -920,7 +933,7 @@
 									>Attachments ({selectedFiles.length})</span
 								>
 								<div class="mt-2 space-y-1">
-									{#each selectedFiles as file}
+									{#each selectedFiles as file (file.name)}
 										<div class="flex items-center gap-2 text-sm text-slate-300">
 											<span>{getFileIcon(file.name)}</span>
 											<span>{file.name}</span>
@@ -954,7 +967,7 @@
 				{#if currentStep > 1 && !(requestId && requestId !== '' && currentStep === 2)}
 					<button
 						type="button"
-						on:click={prevStep}
+						onclick={prevStep}
 						class="rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-slate-200 transition-colors hover:bg-slate-600"
 					>
 						Previous
@@ -963,7 +976,7 @@
 
 				<button
 					type="button"
-					on:click={handleClose}
+					onclick={handleClose}
 					class="rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-slate-200 transition-colors hover:bg-slate-600"
 				>
 					Cancel
@@ -972,7 +985,7 @@
 				{#if currentStep < 5}
 					<button
 						type="button"
-						on:click={nextStep}
+						onclick={nextStep}
 						disabled={!canProceedToNext}
 						class="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
 					>
@@ -989,7 +1002,7 @@
 				{:else}
 					<button
 						type="button"
-						on:click={handleSubmit}
+						onclick={handleSubmit}
 						disabled={!canSubmit || isUploading}
 						class="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
 					>

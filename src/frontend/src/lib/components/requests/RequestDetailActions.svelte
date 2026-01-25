@@ -1,30 +1,33 @@
 <!-- src/frontend/src/lib/components/requests/RequestDetailActions.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-	import type { WorkRequest, MaterialRequest, AuthUser } from '$lib/types';
+	import type { WorkRequest, MaterialRequest, AuthUser, Contract } from '$lib/types';
 
-	export let request: WorkRequest | MaterialRequest;
-	export let requestType: 'work' | 'material';
-	export let currentUser: AuthUser | null;
-	export let contractInfo: any = null;
-	export let chatId: string | null = null;
-	export let canEdit: boolean = false;
+	interface Props {
+		request: WorkRequest | MaterialRequest;
+		requestType: 'work' | 'material';
+		currentUser: AuthUser | null;
+		contractInfo?: Contract;
+		chatId?: string | null;
+		canEdit?: boolean;
+		onStatusUpdate?: (status: string) => void;
+		onEdit?: () => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let {
+		request,
+		requestType,
+		currentUser,
+		contractInfo,
+		chatId = null,
+		canEdit = false,
+		onStatusUpdate,
+		onEdit
+	}: Props = $props();
 
 	// Status update state
-	let isUpdatingStatus = false;
-	let selectedStatus = request.status;
-	let statusUpdateMessage: { type: 'success' | 'error'; text: string } | null = null;
-
-	$: isWorkRequest = requestType === 'work';
-	$: isMaterialRequest = requestType === 'material';
-	$: isCustomer = currentUser?.userType === 'customer';
-	$: isExpert = currentUser?.userType === 'expert';
-	$: isSupplier = currentUser?.userType === 'supplier';
-
-	// Status update options based on current status and user role
-	$: statusOptions = getStatusOptions(request.status, currentUser?.userType);
+	let isUpdatingStatus = $state(false);
+	let selectedStatus = $state(request.status);
+	let statusUpdateMessage: { type: 'success' | 'error'; text: string } | null = $state(null);
 
 	function getStatusOptions(currentStatus: string, userType?: string) {
 		const options: { value: string; label: string }[] = [];
@@ -115,17 +118,20 @@
 		statusUpdateMessage = null;
 
 		try {
-			dispatch('statusUpdate', selectedStatus);
+			onStatusUpdate?.(selectedStatus);
 			statusUpdateMessage = { type: 'success', text: 'Status updated successfully!' };
-		} catch (error: any) {
-			statusUpdateMessage = { type: 'error', text: error.message || 'Update failed.' };
+		} catch (error: unknown) {
+			statusUpdateMessage = {
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Update failed.'
+			};
 		} finally {
 			isUpdatingStatus = false;
 		}
 	}
 
 	function handleEdit() {
-		dispatch('edit');
+		onEdit?.();
 	}
 
 	function formatDate(dateString: string | undefined) {
@@ -152,10 +158,18 @@
 			awaiting_signatures: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50',
 			revision_requested: 'bg-orange-500/20 text-orange-300 border-orange-500/50',
 			cancelled: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
-			terminated: 'bg-slate-600/30 text-slate-400 border-slate-500/50'
+			terminated: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
+			closed: 'bg-slate-600/30 text-slate-400 border-slate-500/50'
 		};
 		return classes[status] || 'bg-slate-500/20 text-slate-300 border-slate-500/50';
 	}
+	let isWorkRequest = $derived(requestType === 'work');
+	let isMaterialRequest = $derived(requestType === 'material');
+	let isCustomer = $derived(currentUser?.userType === 'customer');
+	let isExpert = $derived(currentUser?.userType === 'expert');
+	let isSupplier = $derived(currentUser?.userType === 'supplier');
+	// Status update options based on current status and user role
+	let statusOptions = $derived(getStatusOptions(request.status, currentUser?.userType));
 </script>
 
 <div class="space-y-6">
@@ -288,14 +302,14 @@
 						class="w-full rounded-lg border border-slate-600/50 bg-slate-700/50 px-3 py-2.5 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 					>
 						<option value={request.status}>Current: {request.status.replace(/_/g, ' ')}</option>
-						{#each statusOptions as option}
+						{#each statusOptions as option, i (i)}
 							<option value={option.value}>{option.label}</option>
 						{/each}
 					</select>
 				</div>
 
 				<button
-					on:click={handleStatusUpdate}
+					onclick={handleStatusUpdate}
 					disabled={isUpdatingStatus || selectedStatus === request.status}
 					class="w-full rounded-lg bg-emerald-500 px-4 py-2.5 font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
 				>
@@ -373,7 +387,7 @@
 			<!-- Edit Button -->
 			{#if canEdit}
 				<button
-					on:click={handleEdit}
+					onclick={handleEdit}
 					class="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/20 px-4 py-3 font-semibold text-amber-300 transition-colors hover:bg-amber-500/30"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

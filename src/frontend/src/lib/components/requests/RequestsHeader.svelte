@@ -1,15 +1,18 @@
 <!-- src/frontend/src/lib/components/requests/RequestsHeader.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+
 	import type { AuthUser } from '$lib/stores/auth';
 
-	export let currentUser: AuthUser | null;
-	export let totalRequests: number;
+	interface Props {
+		currentUser: AuthUser | null;
+		totalRequests: number;
+		onCreateRequest?: () => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let { currentUser, totalRequests, onCreateRequest }: Props = $props();
 
 	function handleCreateRequest() {
-		dispatch('createRequest');
+		onCreateRequest?.();
 	}
 </script>
 
@@ -68,7 +71,7 @@
 		<div class="flex items-center gap-3">
 			{#if currentUser?.userType === 'customer'}
 				<button
-					on:click={handleCreateRequest}
+					onclick={handleCreateRequest}
 					class="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 font-semibold text-white shadow-md transition-all hover:bg-emerald-600 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

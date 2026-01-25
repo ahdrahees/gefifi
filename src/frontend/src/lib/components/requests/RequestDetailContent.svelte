@@ -4,29 +4,31 @@
 	import AttachmentList from '$lib/components/AttachmentList.svelte';
 	import UserProfile from '$lib/components/UserProfile.svelte';
 
-	export let request: WorkRequest | MaterialRequest;
-	export let requestType: 'work' | 'material';
-	export let currentUser: AuthUser | null;
-	export let chatMap: Map<string, string> = new Map();
+	interface Props {
+		request: WorkRequest | MaterialRequest;
+		requestType: 'work' | 'material';
+		currentUser: AuthUser | null;
+		chatMap?: Map<string, string>;
+	}
 
-	$: isWorkRequest = requestType === 'work';
-	$: isMaterialRequest = requestType === 'material';
-	$: isCustomer = currentUser && currentUser.id === request.customerId;
+	let { request, requestType, currentUser, chatMap = new Map() }: Props = $props();
+
+	let isWorkRequest = $derived(requestType === 'work');
+	let isMaterialRequest = $derived(requestType === 'material');
+	let isCustomer = $derived(currentUser && currentUser.id === request.customerId);
 
 	// Get interested and invited user IDs directly from request
-	$: interestedUserIds = isWorkRequest
-		? [
-				...((request as WorkRequest).interestedExperts || []),
-				...((request as WorkRequest).interestedSuppliers || [])
-			]
-		: (request as MaterialRequest).interestedSuppliers || [];
+	let interestedUserIds = $derived(
+		isWorkRequest
+			? [...((request as WorkRequest).interestedExperts || [])]
+			: (request as MaterialRequest).interestedSuppliers || []
+	);
 
-	$: invitedUserIds = isWorkRequest
-		? [
-				...((request as WorkRequest).invitedExperts || []),
-				...((request as WorkRequest).invitedSuppliers || [])
-			]
-		: (request as MaterialRequest).invitedSuppliers || [];
+	let invitedUserIds = $derived(
+		isWorkRequest
+			? [...((request as WorkRequest).invitedExperts || [])]
+			: (request as MaterialRequest).invitedSuppliers || []
+	);
 
 	function formatDate(dateString: string | undefined) {
 		if (!dateString) return 'Not specified';
@@ -153,7 +155,7 @@
 					<h2 class="text-lg font-bold text-purple-300">Project Images</h2>
 				</div>
 				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-					{#each workRequest.images as imageUrl, index}
+					{#each workRequest.images as imageUrl, index (index)}
 						<div class="group relative overflow-hidden rounded-lg bg-slate-700/50">
 							<img
 								src={imageUrl}
@@ -256,7 +258,7 @@
 			</div>
 
 			<div class="space-y-3">
-				{#each materialRequest.items as item, index}
+				{#each materialRequest.items as item, index (index)}
 					<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-4">
 						<div class="flex items-start justify-between">
 							<div class="flex-1">
@@ -326,7 +328,7 @@
 			</div>
 
 			<div class="grid gap-4 sm:grid-cols-2">
-				{#each interestedUserIds as userId}
+				{#each interestedUserIds as userId (userId)}
 					<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-4">
 						<UserProfile {userId} />
 						<div class="mt-3 flex gap-2">
@@ -393,7 +395,7 @@
 			</div>
 
 			<div class="grid gap-4 sm:grid-cols-2">
-				{#each invitedUserIds as userId}
+				{#each invitedUserIds as userId (userId)}
 					<div class="rounded-xl border border-slate-600/30 bg-slate-700/50 p-4">
 						<UserProfile {userId} />
 						<div class="mt-3 flex gap-2">

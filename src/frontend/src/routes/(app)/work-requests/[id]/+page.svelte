@@ -1,29 +1,30 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/work-requests/[id]/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
-	import { API_BASE_URL } from '$lib/config';
 	import UserProfile from '$lib/components/UserProfile.svelte';
 	import type { WorkRequest, Contract } from '$lib/types';
+	import type { Unsubscriber } from 'svelte/store';
+	import apiClient from '$lib/api';
 
-	let currentUser: AuthUser | null = null;
+	let currentUser = $state<AuthUser | null>(null);
 	let token: string | null = null;
-	let workRequest: WorkRequest | null = null;
-	let isLoading = true;
-	let errorMessage = '';
-	let workRequestId: string | null = null;
-	let existingContract: Contract | null = null;
-	let chatMap = new Map<string, string>();
+	let workRequest = $state<WorkRequest | null>(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let workRequestId = $state<string>();
+	let existingContract: Contract | null = $state(null);
+	let chatMap = $state(new Map<string, string>());
 
 	// For experts/suppliers to express interest
-	let isExpressingInterest = false;
-	let interestMessage = '';
+	let isExpressingInterest = $state(false);
+	let interestMessage = $state('');
 
 	// User profiles for invited users
-	let invitedExpertProfiles: any[] = [];
-	let invitedSupplierProfiles: any[] = [];
+	let invitedExpertProfiles: any[] = $state([]);
+	let invitedSupplierProfiles: any[] = $state([]);
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
@@ -40,24 +41,15 @@
 			return;
 		}
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/work-requests/${id}`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (!response.ok) {
-				const errorData = await response.json().catch(() => null);
-				throw new Error(
-					errorData?.message || `Failed to fetch work request: ${response.statusText}`
-				);
-			}
-			workRequest = await response.json();
+			workRequest = (await apiClient.getWorkRequestById(id)) as WorkRequest;
 
 			// If the current user is the customer, fetch additional data
 			if (currentUser && workRequest && currentUser.id === workRequest.customerId) {
 				await Promise.all([fetchChats(), fetchExistingContract(), fetchInvitedUserProfiles()]);
 			}
-		} catch (err: any) {
+		} catch (err) {
 			console.error('Fetch work request detail error:', err);
-			errorMessage = err.message;
+			errorMessage = err instanceof Error ? err.message : 'Failed to fetch work request details';
 		} finally {
 			isLoading = false;
 		}
@@ -66,20 +58,15 @@
 	async function fetchChats() {
 		if (!token) return;
 		try {
-			const chatsRes = await fetch(`${API_BASE_URL}/api/chat`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (chatsRes.ok) {
-				const chats = await chatsRes.json();
-				const newChatMap = new Map<string, string>();
-				for (const chat of chats) {
-					const otherParticipant = chat.participants.find((pId: string) => pId !== currentUser?.id);
-					if (otherParticipant) {
-						newChatMap.set(otherParticipant, chat.id);
-					}
+			const chats = await apiClient.getUserChats();
+			const newChatMap = new Map<string, string>();
+			for (const chat of chats) {
+				const otherParticipant = chat.participants.find((pId: string) => pId !== currentUser?.id);
+				if (otherParticipant) {
+					newChatMap.set(otherParticipant, chat.id);
 				}
-				chatMap = newChatMap;
 			}
+			chatMap = newChatMap;
 		} catch (error) {
 			console.error('Error fetching chats:', error);
 		}
@@ -88,14 +75,9 @@
 	async function fetchExistingContract() {
 		if (!token || !workRequest) return;
 		try {
-			const contractsRes = await fetch(`${API_BASE_URL}/api/contracts`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (contractsRes.ok) {
-				const contracts = await contractsRes.json();
-				existingContract =
-					contracts.find((c: Contract) => c.workRequestId === workRequest?.id) || null;
-			}
+			const contracts = await apiClient.getUserContracts();
+			existingContract =
+				contracts.find((c: Contract) => c.workRequestId === workRequest?.id) || null;
 		} catch (error) {
 			console.error('Error fetching contracts:', error);
 		}
@@ -108,12 +90,7 @@
 			if (workRequest.invitedExperts && workRequest.invitedExperts.length > 0) {
 				const expertPromises = workRequest.invitedExperts.map(async (userId: string) => {
 					try {
-						const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
-							headers: { Authorization: `Bearer ${token}` }
-						});
-						if (response.ok) {
-							return await response.json();
-						}
+						return await apiClient.getUserById(userId);
 					} catch (error) {
 						console.error(`Error fetching expert profile ${userId}:`, error);
 					}
@@ -121,25 +98,6 @@
 				});
 				const experts = await Promise.all(expertPromises);
 				invitedExpertProfiles = experts.filter(Boolean);
-			}
-
-			// Fetch invited suppliers
-			if (workRequest.invitedSuppliers && workRequest.invitedSuppliers.length > 0) {
-				const supplierPromises = workRequest.invitedSuppliers.map(async (userId: string) => {
-					try {
-						const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
-							headers: { Authorization: `Bearer ${token}` }
-						});
-						if (response.ok) {
-							return await response.json();
-						}
-					} catch (error) {
-						console.error(`Error fetching supplier profile ${userId}:`, error);
-					}
-					return null;
-				});
-				const suppliers = await Promise.all(supplierPromises);
-				invitedSupplierProfiles = suppliers.filter(Boolean);
 			}
 		} catch (error) {
 			console.error('Error fetching invited user profiles:', error);
@@ -155,32 +113,25 @@
 		interestMessage = '';
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/users/interest`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-				body: JSON.stringify({
-					targetUserId: workRequest.customerId,
-					workRequestId: workRequest.id,
-					initialMessageContent: 'I am interested in your work request.'
-				})
+			const result = await apiClient.sendInterest({
+				targetUserId: workRequest.customerId,
+				workRequestId: workRequest.id,
+				initialMessageContent: 'I am interested in your work request.'
 			});
-			const result = await response.json();
-			if (!response.ok) {
-				throw new Error(result.message || 'Failed to express interest.');
-			}
+
 			interestMessage = result.message || 'Interest expressed successfully!';
 			if (result.chatId) setTimeout(() => goto(`/chat/${result.chatId}`), 2000);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Express interest error:', error);
-			interestMessage = `Error: ${error.message}`;
+			interestMessage = `Error: ${error instanceof Error ? error.message : 'Failed to express interest'}`;
 		} finally {
 			isExpressingInterest = false;
 		}
 	}
 
 	onMount(() => {
-		workRequestId = $page.params.id;
-		let unsubscribe: any;
+		workRequestId = page.params.id;
+		let unsubscribe: Unsubscriber;
 		if (workRequestId) {
 			unsubscribe = authStore.subscribe((auth) => {
 				if (auth.token && auth.user && !auth.isLoading) {
@@ -218,33 +169,37 @@
 			in_progress: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50',
 			completed: 'bg-emerald-600/30 text-emerald-300 border-emerald-600/60',
 			cancelled: 'bg-red-500/20 text-red-300 border-red-500/50',
-			closed: 'bg-slate-600/30 text-slate-400 border-slate-500/50'
+			closed: 'bg-slate-600/30 text-slate-400 border-slate-500/50',
+			disputed: 'bg-orange-500/20 text-orange-300 border-orange-500/50'
 		};
 		return classes[status] || 'bg-gray-500/20 text-gray-300 border-gray-500/50';
 	}
 
 	// Reactive computed values
-	$: isCustomer = currentUser && workRequest && currentUser.id === workRequest.customerId;
-	$: isProfessional = currentUser && workRequest && currentUser.id !== workRequest.customerId;
-	$: canExpressInterest =
+	let isCustomer = $derived(
+		currentUser && workRequest && currentUser.id === workRequest.customerId
+	);
+	let isProfessional = $derived(
+		currentUser && workRequest && currentUser.id !== workRequest.customerId
+	);
+	let canExpressInterest = $derived(
 		isProfessional &&
-		workRequest &&
-		!workRequest.interestedExperts?.includes(currentUser?.id || '') &&
-		!workRequest.interestedSuppliers?.includes(currentUser?.id || '') &&
-		workRequest.status === 'open';
-	$: alreadyInterested =
-		isProfessional &&
-		workRequest &&
-		(workRequest.interestedExperts?.includes(currentUser?.id || '') ||
-			workRequest.interestedSuppliers?.includes(currentUser?.id || ''));
-	$: interestedProfessionals = workRequest
-		? [...(workRequest.interestedExperts || []), ...(workRequest.interestedSuppliers || [])]
-		: [];
-	$: canCreateContract =
+			workRequest &&
+			!workRequest.interestedExperts?.includes(currentUser?.id || '') &&
+			workRequest.status === 'open'
+	);
+	let alreadyInterested = $derived(
+		isProfessional && workRequest && workRequest.interestedExperts?.includes(currentUser?.id || '')
+	);
+	let interestedProfessionals = $derived(
+		workRequest ? [...(workRequest.interestedExperts || [])] : []
+	);
+	let canCreateContract = $derived(
 		isCustomer &&
-		workRequest &&
-		!existingContract &&
-		['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status);
+			workRequest &&
+			!existingContract &&
+			['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status)
+	);
 </script>
 
 <svelte:head>
@@ -291,7 +246,7 @@
 			<h2 class="mb-3 text-2xl font-bold text-red-300">Unable to Load Work Request</h2>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				on:click={() => goto('/work-requests')}
+				onclick={() => goto('/work-requests')}
 				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				← Back to Work Requests
@@ -510,7 +465,7 @@
 							<h2 class="text-xl font-bold text-purple-300">Project Images</h2>
 						</div>
 						<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-							{#each workRequest.images as image, index}
+							{#each workRequest.images as image, index (index)}
 								<div class="group relative overflow-hidden rounded-xl border border-slate-600/30">
 									<img
 										src={image}
@@ -523,7 +478,7 @@
 									>
 										<div class="absolute bottom-4 left-4">
 											<button
-												on:click={() => window.open(image, '_blank')}
+												onclick={() => window.open(image, '_blank')}
 												class="rounded-lg bg-white/20 px-3 py-1 text-sm text-white backdrop-blur-sm hover:bg-white/30"
 											>
 												View Full Size
@@ -567,7 +522,7 @@
 								Express your interest to start a conversation with the customer.
 							</p>
 							<button
-								on:click={handleExpressInterest}
+								onclick={handleExpressInterest}
 								disabled={isExpressingInterest}
 								class="w-full rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-emerald-600 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-slate-500"
 							>
@@ -856,8 +811,7 @@
 							<div class="flex items-center justify-between">
 								<span class="text-slate-400">Invited Experts</span>
 								<span class="font-medium text-amber-300"
-									>{(workRequest.invitedExperts?.length || 0) +
-										(workRequest.invitedSuppliers?.length || 0)}</span
+									>{workRequest.invitedExperts?.length || 0}</span
 								>
 							</div>
 							{#if existingContract}
@@ -927,7 +881,7 @@
 		<!-- Back Button -->
 		<div class="text-center">
 			<button
-				on:click={() => goto('/work-requests')}
+				onclick={() => goto('/home')}
 				class="inline-flex items-center gap-2 rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -938,7 +892,7 @@
 						d="M10 19l-7-7m0 0l7-7m-7 7h18"
 					/>
 				</svg>
-				Back to All Work Requests
+				Back to Home
 			</button>
 		</div>
 	{:else}
@@ -968,10 +922,10 @@
 				exist.
 			</p>
 			<button
-				on:click={() => goto('/work-requests')}
+				onclick={() => goto('/home')}
 				class="rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white hover:bg-emerald-600"
 			>
-				← Back to Work Requests
+				← Back to Home
 			</button>
 		</div>
 	{/if}

@@ -71,14 +71,15 @@ export type WorkRequest = {
 	| 'in_progress'
 	| 'completed'
 	| 'cancelled'
-	| 'closed';
+	| 'closed'
+	| 'disputed';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
 	interestedExperts?: string[]; // Users who showed interest
-	interestedSuppliers?: string[]; // Users who showed interest
+	// interestedSuppliers?: string[]; // Users who showed interest
 	invitedExperts?: string[]; // Users directly invited by customer
-	invitedSuppliers?: string[]; // Users directly invited by customer
+	// invitedSuppliers?: string[]; // Users directly invited by customer
 	quotes?: string[]; // Array of quote IDs
 };
 
@@ -393,3 +394,49 @@ export type Project = {
 	expert?: AuthUser;
 	supplier?: AuthUser;
 };
+
+/**
+ * For UI type in svelte
+ */
+export type RequestWithType = (WorkRequest | MaterialRequest) & {
+	contractInfo?: Contract;
+	chatId?: string;
+	requestType: 'work' | 'material';
+};
+
+/**
+ * For UI type in svelte
+ */
+export interface UserProfileUI {
+	id: string;
+	email: string;
+	userType: 'customer' | 'expert' | 'supplier' | string;
+	profile?: {
+		fullName?: string;
+		mainExpertise?: string;
+		mainMaterial?: string;
+		location?: string;
+		avatarUrl?: string;
+		experience?: string; // e.g., "5 years"
+		// --- Expert-Specific Fields ---
+		expertise?: string; // e.g., "Plumbing", "Electrical Work"
+		// --- Supplier-Specific Fields ---
+		companyName?: string; // e.g., "ABC Building Materials"
+		category?: string; // e.g., "Cement & Steel", "Paints & Finishes"
+	};
+}
+
+/**
+ * For UI type in svelte
+ */
+export type EnrichedChat = Chat & {
+	displayName: string;
+	avatarUrl?: string;
+	otherUserProfile?: UserProfileUI;
+	lastMessageSnippet: string;
+};
+
+/**
+ * Status tabs for requests
+ */
+export type StatusTab = 'active' | 'contracted' | 'completed' | 'on_hold' | 'cancelled';

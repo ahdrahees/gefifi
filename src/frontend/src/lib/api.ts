@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { authStore, type AuthUser } from './stores/auth'; // Assuming AuthUser is exported from the auth store
 import { API_BASE_URL } from './config';
-import type { Chat, Message, MessagesResponse, UserInterestResponse } from './types';
+import type { Chat, Message, MessagesResponse, UserInterestResponse, Contract } from './types';
 
 // Access VITE_API_URL (set in .env file at the root of the SvelteKit project, e.g., gefifi-2/frontend/.env or gefifi-2/.env)
 
@@ -13,7 +13,7 @@ if (!API_BASE_URL && browser) {
 }
 
 // Custom Error class for API errors
-interface ApiErrorData {
+export interface ApiErrorData {
 	message: string;
 	error?: any; // Can be more specific if backend provides consistent error shapes
 	// For example, if backend sends { message: "...", errors: { field: "message" } }
@@ -42,6 +42,8 @@ async function request<T = any>( // Default T to any if not specified by caller
 ): Promise<T> {
 	const headers: HeadersInit = {};
 
+	// Set Content-Type header to application/json for POST and PUT requests that have a body
+	// but exclude FormData requests since they set their own Content-Type with boundary
 	if (!isFormData && body && (method === 'POST' || method === 'PUT')) {
 		headers['Content-Type'] = 'application/json';
 	}
@@ -138,7 +140,7 @@ export interface WorkRequestResponse {
 	[key: string]: any;
 }
 
-interface MaterialRequestData {
+export interface MaterialRequestData {
 	title: string;
 	description: string;
 	deliveryLocation: string;
@@ -158,7 +160,7 @@ export interface MaterialRequestResponse {
 	[key: string]: any;
 }
 
-interface UserInterestData {
+export interface UserInterestData {
 	targetUserId: string;
 	workRequestId?: string;
 	materialRequestId?: string;
@@ -185,7 +187,7 @@ interface ChatMessageData {
 	messageId?: string;
 }
 
-interface ContractData {
+export interface ContractData {
 	// Required fields
 	customerId: string;
 	expertSupplierId: string;
@@ -212,21 +214,36 @@ interface ContractData {
 	termsAndConditions?: string;
 	warrantyPeriod?: string;
 	cancellationPolicy?: string;
+
+	// Attachment Management (for updates)
+	attachmentManagement?: {
+		keepExisting: Array<{
+			fileName: string;
+			filePath: string;
+			fileType: string;
+			size: number;
+		}>;
+		removeExisting: string[];
+		hasNewAttachments: boolean;
+		newAttachments?: Array<{
+			fileName: string;
+			filePath: string;
+			fileType: string;
+			size: number;
+		}>;
+	};
 }
-interface ContractResponse {
-	/* Define based on backend Contract interface */ id: string;
-	[key: string]: any;
-}
+type ContractResponse = Contract;
 type ContractStatusUpdatePayload = {
 	status:
-	| 'draft'
-	| 'awaiting_signatures'
-	| 'signed'
-	| 'in_progress'
-	| 'completed'
-	| 'disputed'
-	| 'cancelled'
-	| 'terminated';
+		| 'draft'
+		| 'awaiting_signatures'
+		| 'signed'
+		| 'in_progress'
+		| 'completed'
+		| 'disputed'
+		| 'cancelled'
+		| 'terminated';
 };
 
 interface UserProfileUpdateData {
@@ -264,7 +281,7 @@ const apiClient = {
 	// --- File Upload ---
 	uploadFile: (
 		formData: FormData
-	): Promise<{ filePath: string; fileName: string; message?: string;[key: string]: any }> => {
+	): Promise<{ filePath: string; fileName: string; message?: string; [key: string]: any }> => {
 		// Note: The backend /api/upload is currently NOT authenticated.
 		// If it were, requiresAuth would be true.
 		return request('/upload', 'POST', formData, false, true);
@@ -274,7 +291,17 @@ const apiClient = {
 	uploadChatFile: (
 		chatId: string,
 		formData: FormData
-	): Promise<{ filePath: string; fileName: string; uniqueFilename: string; messageId: string; originalName: string; mimeType: string; size: number; message?: string;[key: string]: any }> => {
+	): Promise<{
+		filePath: string;
+		fileName: string;
+		uniqueFilename: string;
+		messageId: string;
+		originalName: string;
+		mimeType: string;
+		size: number;
+		message?: string;
+		[key: string]: any;
+	}> => {
 		return request(`/chat/${chatId}/upload-file`, 'POST', formData, true, true);
 	},
 
@@ -390,7 +417,12 @@ const apiClient = {
 		return request<Chat>(`/chat/${chatId}`, 'GET', undefined, true);
 	},
 	findChatBetweenUsers: (userId1: string, userId2: string): Promise<{ chat: Chat | null }> => {
-		return request<{ chat: Chat | null }>(`/chat/find?user1=${userId1}&user2=${userId2}`, 'GET', undefined, true);
+		return request<{ chat: Chat | null }>(
+			`/chat/find?user1=${userId1}&user2=${userId2}`,
+			'GET',
+			undefined,
+			true
+		);
 	},
 	getChatMessages: (chatId: string): Promise<MessagesResponse> => {
 		return request<MessagesResponse>(`/chat/${chatId}/messages`, 'GET', undefined, true);
@@ -464,10 +496,7 @@ const apiClient = {
 			true
 		);
 	},
-	unlinkContract: (
-		contractId: string,
-		linkedContractId: string
-	): Promise<{ message: string }> => {
+	unlinkContract: (contractId: string, linkedContractId: string): Promise<{ message: string }> => {
 		return request<{ message: string }>(
 			`/contracts/${contractId}/link/${linkedContractId}`,
 			'DELETE',
@@ -643,8 +672,16 @@ const apiClient = {
 	submitQuote: (formData: FormData): Promise<any> => {
 		return request('/quotes', 'POST', formData, true, true);
 	},
-	getQuotesForRequest: (requestId: string, requestType: 'work' | 'material'): Promise<{ quotes: any[] }> => {
-		return request<{ quotes: any[] }>(`/quotes/request/${requestId}?requestType=${requestType}`, 'GET', undefined, true);
+	getQuotesForRequest: (
+		requestId: string,
+		requestType: 'work' | 'material'
+	): Promise<{ quotes: any[] }> => {
+		return request<{ quotes: any[] }>(
+			`/quotes/request/${requestId}?requestType=${requestType}`,
+			'GET',
+			undefined,
+			true
+		);
 	},
 	updateQuote: (quoteId: string, data: any): Promise<any> => {
 		return request(`/quotes/${quoteId}`, 'PUT', data, true);

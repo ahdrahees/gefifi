@@ -1,39 +1,40 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/contracts/create/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
 	import UserProfile from '$lib/components/UserProfile.svelte';
 	import ContractForm from '$lib/components/contracts/ContractForm.svelte';
-	import type { Unsubscriber } from 'svelte/store';
-	import type { WorkRequest, MaterialRequest } from '$lib/types';
+	import type { WorkRequest, MaterialRequest, Contract } from '$lib/types';
 
 	let currentUser: AuthUser | null = null;
-	let workRequest: WorkRequest | null = null;
-	let materialRequest: MaterialRequest | null = null;
-	let professional: any = null;
-	let isLoading = true;
-	let errorMessage = '';
+	let workRequest = $state<WorkRequest | null>(null);
+	let materialRequest = $state<MaterialRequest | null>(null);
+	let professional = $state<AuthUser | null>(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 
 	// URL parameters
-	let workRequestId: string | null = null;
-	let materialRequestId: string | null = null;
-	let customerId: string | null = null;
-	let expertSupplierId: string | null = null;
+	let workRequestId = $state<string | null>(null);
+	let materialRequestId = $state<string | null>(null);
+	let customerId = $state<string | null>(null);
+	let expertSupplierId = $state<string | null>(null);
 
 	// Determine contract type
-	$: contractType = workRequestId ? 'Expert Contract' : 'Material Contract';
-	$: requestData = workRequestId ? workRequest : materialRequest;
-	$: requestTypeLabel = workRequestId ? 'Work Request' : 'Material Request';
+	let contractType = $derived(workRequestId ? 'Expert Contract' : 'Material Contract');
+	let requestData = $derived<WorkRequest | MaterialRequest | null>(
+		workRequestId ? workRequest : materialRequest
+	);
+	let requestTypeLabel = $derived(workRequestId ? 'Work Request' : 'Material Request');
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
 	});
 
 	onMount(() => {
-		const urlParams = new URLSearchParams($page.url.search);
+		const urlParams = new URLSearchParams(page.url.search);
 
 		// Get request IDs
 		workRequestId = urlParams.get('workRequestId');
@@ -199,16 +200,16 @@
 					);
 				}
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error fetching contract creation data:', error);
-			errorMessage = error.message || 'Failed to load contract creation data.';
+			errorMessage =
+				error instanceof Error ? error.message : 'Failed to load contract creation data.';
 		} finally {
 			isLoading = false;
 		}
 	}
 
-	function handleContractCreated(event: CustomEvent) {
-		const contract = event.detail;
+	function handleContractCreated(contract: Contract) {
 		console.log('Contract created:', contract);
 
 		// Navigate to the created contract
@@ -259,7 +260,7 @@
 			<h2 class="mb-3 text-2xl font-semibold text-red-300">Error</h2>
 			<p class="mb-4 text-red-400">{errorMessage}</p>
 			<button
-				on:click={handleGoBack}
+				onclick={handleGoBack}
 				class="rounded-lg bg-sky-500 px-6 py-2 font-medium text-white transition-colors hover:bg-sky-600"
 			>
 				Go Back
@@ -330,7 +331,7 @@
 					materialRequestId={materialRequestId || undefined}
 					customerId={customerId!}
 					expertSupplierId={expertSupplierId!}
-					on:contractCreated={handleContractCreated}
+					onContractCreated={handleContractCreated}
 				/>
 			</div>
 		</div>
@@ -339,7 +340,7 @@
 			<h2 class="mb-3 text-2xl font-semibold text-yellow-300">Loading Issue</h2>
 			<p class="mb-4 text-yellow-400">Unable to load request or professional data.</p>
 			<button
-				on:click={handleGoBack}
+				onclick={handleGoBack}
 				class="rounded-lg bg-sky-500 px-6 py-2 font-medium text-white transition-colors hover:bg-sky-600"
 			>
 				Go Back

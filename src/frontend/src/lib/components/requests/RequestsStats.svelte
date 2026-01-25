@@ -1,18 +1,22 @@
 <!-- src/frontend/src/lib/components/requests/RequestsStats.svelte -->
 <script lang="ts">
-	export let tabStats: {
+	interface Props {
+		tabStats: {
 		active: number;
 		contracted: number;
 		completed: number;
 		on_hold: number;
 		cancelled: number;
 	};
+	}
 
-	$: totalActive = tabStats.active + tabStats.contracted;
-	$: completionRate =
-		tabStats.completed > 0
+	let { tabStats }: Props = $props();
+
+	let totalActive = $derived(tabStats.active + tabStats.contracted);
+	let completionRate =
+		$derived(tabStats.completed > 0
 			? Math.round((tabStats.completed / (tabStats.completed + tabStats.cancelled)) * 100)
-			: 0;
+			: 0);
 </script>
 
 <section

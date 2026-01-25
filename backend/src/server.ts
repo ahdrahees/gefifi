@@ -101,7 +101,7 @@ const corsOptions = {
 			productionOrigins.push(...envOrigins);
 		}
 
-		const allowedOrigins = [...developmentOrigins, ...productionOrigins];
+		const allowedOrigins = process.env.NODE_ENV === 'production' ? productionOrigins : [...developmentOrigins, ...productionOrigins];
 
 		// Check if origin is allowed
 		if (allowedOrigins.includes(origin)) {

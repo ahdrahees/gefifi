@@ -2,28 +2,26 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { writable } from 'svelte/store';
 	import { authStore } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
-	import type { WorkRequest } from '$lib/types';
-	import type { WorkRequestResponse } from '$lib/api';
+	import type { MaterialRequestData, WorkRequestResponse } from '$lib/api';
 	import FileUpload from '$lib/components/FileUpload.svelte';
 
-	let title = '';
-	let description = '';
-	let deliveryLocation = '';
-	let deliveryDate = '';
-	let linkedWorkRequestId: string | undefined = undefined;
+	let title = $state('');
+	let description = $state('');
+	let deliveryLocation = $state('');
+	let deliveryDate = $state('');
+	let linkedWorkRequestId: string | undefined = $state(undefined);
 
-	let items = [{ itemName: '', quantity: '', notes: '' }];
+	let items = $state([{ itemName: '', quantity: '', notes: '' }]);
 
-	let customerWorkRequests: WorkRequestResponse[] = [];
-	let isLoading = false;
-	let errorMessage = '';
+	let customerWorkRequests: WorkRequestResponse[] = $state([]);
+	let isLoading = $state(false);
+	let errorMessage = $state('');
 
 	// File attachment handling
-	let selectedFiles = writable<File[]>([]);
-	let isUploadingFiles = false;
+	let selectedFiles = $state<File[]>([]);
+	let isUploadingFiles = $state(false);
 
 	onMount(async () => {
 		const user = $authStore.user;
@@ -56,7 +54,7 @@
 	}
 
 	async function uploadAttachments(materialRequestId: string): Promise<void> {
-		const files = $selectedFiles;
+		const files = selectedFiles;
 		if (!files || files.length === 0) {
 			return;
 		}
@@ -69,15 +67,16 @@
 			});
 
 			await apiClient.uploadEntityAttachments('material-requests', materialRequestId, formData);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to upload attachments:', error);
-			throw new Error(error.data?.message || 'Failed to upload attachments.');
+			throw new Error(error instanceof Error ? error?.message : 'Failed to upload attachments.');
 		} finally {
 			isUploadingFiles = false;
 		}
 	}
 
-	async function handleSubmit() {
+	async function handleSubmit(event?: Event) {
+		if (event) event.preventDefault();
 		isLoading = true;
 		errorMessage = '';
 
@@ -88,7 +87,7 @@
 		}
 
 		// Validate file count
-		if ($selectedFiles.length > 10) {
+		if (selectedFiles.length > 10) {
 			errorMessage = 'Too many files selected. Maximum 10 files allowed for material requests.';
 			isLoading = false;
 			return;
@@ -97,7 +96,7 @@
 		try {
 			// Step 1: Create the material request
 			// Construct the request data, only including defined values (Firestore-safe)
-			const requestData: any = {
+			const requestData: MaterialRequestData = {
 				title,
 				description,
 				deliveryLocation,
@@ -115,7 +114,7 @@
 			const newMaterialRequest = await apiClient.createMaterialRequest(requestData);
 
 			// Step 2: Upload attachments if any files are selected
-			if ($selectedFiles.length > 0) {
+			if (selectedFiles.length > 0) {
 				try {
 					await uploadAttachments(newMaterialRequest.id);
 				} catch (attachmentError: any) {
@@ -131,8 +130,8 @@
 
 			// Step 3: Navigate to the new material request's detail page
 			goto(`/material-requests/${newMaterialRequest.id}`);
-		} catch (error: any) {
-			errorMessage = error.data?.message || 'Failed to create material request.';
+		} catch (error: unknown) {
+			errorMessage = error instanceof Error ? error?.message : 'Failed to create material request.';
 			console.error(error);
 		} finally {
 			isLoading = false;
@@ -150,7 +149,7 @@
 	</header>
 
 	<form
-		on:submit|preventDefault={handleSubmit}
+		onsubmit={handleSubmit}
 		class="flex-grow space-y-6 rounded-xl bg-slate-700/60 p-8 shadow-lg"
 	>
 		<!-- Request Details -->
@@ -269,7 +268,7 @@
 
 						<button
 							type="button"
-							on:click={() => removeItem(i)}
+							onclick={() => removeItem(i)}
 							disabled={items.length <= 1}
 							class="h-9 w-full rounded-md bg-red-600/80 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
 						>
@@ -280,7 +279,7 @@
 			{/each}
 			<button
 				type="button"
-				on:click={addItem}
+				onclick={addItem}
 				class="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-sky-500"
 			>
 				+ Add Another Item

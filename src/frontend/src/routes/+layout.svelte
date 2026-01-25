@@ -2,7 +2,6 @@
 <script lang="ts">
 	import '../app.css'; // Import global styles, including Tailwind base
 	import { onMount } from 'svelte';
-	// import { page } from '$app/stores'; // To get current path information
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/auth';

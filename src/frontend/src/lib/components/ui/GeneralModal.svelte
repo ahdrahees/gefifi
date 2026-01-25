@@ -1,16 +1,29 @@
 <!-- gefifi-2/src/frontend/src/lib/components/ui/GeneralModal.svelte -->
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
-	export let show: boolean = false;
-	export let title: string | undefined = undefined;
-	export let maxWidthClass: string = 'max-w-lg'; // Default max width, can be overridden
-	export let closeButton: boolean = true; // Prop to control visibility of the top-right close button
+	interface Props {
+		show?: boolean;
+		title?: string | undefined;
+		maxWidthClass?: string; // Default max width, can be overridden
+		closeButton?: boolean; // Prop to control visibility of the top-right close button
+		children?: import('svelte').Snippet;
+		footer?: import('svelte').Snippet;
+		onClose?: () => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let {
+		show = $bindable(false),
+		title = undefined,
+		maxWidthClass = 'max-w-lg',
+		closeButton = true,
+		children,
+		footer,
+		onClose
+	}: Props = $props();
 
 	function closeModal() {
-		dispatch('close');
+		onClose?.();
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -19,7 +32,13 @@
 		}
 	}
 
-	let listening = false;
+	function handleBackdropClick(event: MouseEvent) {
+		if (event.target === event.currentTarget) {
+			closeModal();
+		}
+	}
+
+	let listening = $state(false);
 
 	function setupListener() {
 		if (typeof window !== 'undefined' && !listening) {
@@ -46,20 +65,23 @@
 	});
 
 	// Reactive statement to add/remove listener when `show` prop changes
-	$: if (typeof window !== 'undefined') {
-		// Ensure window exists (client-side)
-		if (show && !listening) {
-			setupListener();
-		} else if (!show && listening) {
-			cleanupListener();
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			// Ensure window exists (client-side)
+			if (show && !listening) {
+				setupListener();
+			} else if (!show && listening) {
+				cleanupListener();
+			}
 		}
-	}
+	});
 </script>
 
 {#if show}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-md"
-		on:click|self={closeModal}
+		onclick={handleBackdropClick}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby={title ? 'general-modal-title' : undefined}
@@ -82,7 +104,7 @@
 					{/if}
 					{#if closeButton}
 						<button
-							on:click={closeModal}
+							onclick={closeModal}
 							class="-mr-1 rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
 							aria-label="Close modal"
 						>
@@ -102,12 +124,12 @@
 			{/if}
 
 			<div class="modal-content-area scrollable-content flex-grow overflow-y-auto p-4 sm:p-6">
-				<slot />
+				{@render children?.()}
 				<!-- Modal content goes here -->
 			</div>
 
 			<!-- Optional: Slot for modal actions/footer -->
-			<slot name="footer"></slot>
+			{@render footer?.()}
 		</div>
 	</div>
 {/if}

@@ -1,32 +1,30 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/AudioRecordingForm.svelte -->
 <script lang="ts">
-	import { onMount, onDestroy, createEventDispatcher } from 'svelte';
-	import { page } from '$app/stores';
+	import { onMount, onDestroy } from 'svelte';
+	import { page } from '$app/state';
 	import { authStore } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 	import WaveSurfer from 'wavesurfer.js';
 	import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js';
 
-	export let isSending = false;
+	interface Props {
+		isSending?: boolean;
+		onCancel?: () => void;
+		onSend?: (data: { audioUrl: string; audioDuration: number }) => void;
+	}
 
-	const dispatch = createEventDispatcher<{
-		cancel: void;
-		send: { audioUrl: string; audioDuration: number };
-	}>();
+	let { isSending = $bindable(false), onCancel, onSend }: Props = $props();
 
 	let waveSurfer: WaveSurfer | null = null;
 	let record: RecordPlugin | null = null;
-	let waveformEl: HTMLElement;
-	let statusMessage = 'Initializing...';
-	let isPaused = false;
-	let duration = 0;
+	let waveformEl: HTMLElement | undefined = $state();
+	let statusMessage = $state('Initializing...');
+	let isPaused = $state(false);
+	let duration = $state(0);
 	let pauseAudioBlob: Blob | null = null;
 
-	let token: string | null;
-	let chatId: string;
-
-	authStore.subscribe((auth) => (token = auth.token));
-	page.subscribe((p) => (chatId = p.params.chatId));
+	let token = $derived($authStore.token);
+	let chatId = $derived(page.params.chatId);
 
 	function getCompatibleMimeType() {
 		const isFirefox = navigator.userAgent.includes('Firefox');
@@ -119,7 +117,7 @@
 	}
 
 	function handleCancel() {
-		dispatch('cancel');
+		onCancel?.();
 	}
 
 	function handleSend() {
@@ -159,7 +157,7 @@
 
 			const result = await response.json();
 
-			dispatch('send', {
+			onSend?.({
 				audioUrl: result.filePath, // This is the private GCS path
 				audioDuration: duration
 			});
@@ -168,7 +166,7 @@
 			alert(
 				`Error sending voice message: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
-			dispatch('cancel'); // Go back to the message form on failure
+			onCancel?.(); // Go back to the message form on failure
 		} finally {
 			isSending = false;
 		}
@@ -192,7 +190,7 @@
 	{:else}
 		<!-- Cancel Button -->
 		<button
-			on:click={handleCancel}
+			onclick={handleCancel}
 			class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-700 hover:text-red-400"
 			aria-label="Cancel recording"
 		>
@@ -203,7 +201,7 @@
 
 		<!-- Pause/Play Button -->
 		<button
-			on:click={togglePause}
+			onclick={togglePause}
 			class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-slate-200 transition-colors hover:bg-slate-700"
 			aria-label={isPaused ? 'Resume recording' : 'Pause recording'}
 		>
@@ -228,7 +226,7 @@
 
 		<!-- Send Button -->
 		<button
-			on:click={handleSend}
+			onclick={handleSend}
 			class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md transition-transform hover:scale-110 hover:bg-emerald-500"
 			aria-label="Send voice message"
 		>

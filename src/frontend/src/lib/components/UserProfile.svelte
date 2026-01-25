@@ -4,7 +4,11 @@
 	import { authStore } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
 
-	export let userId: string;
+	interface Props {
+		userId: string;
+	}
+
+	let { userId }: Props = $props();
 
 	type UserProfileData = {
 		id: string;
@@ -18,9 +22,9 @@
 		};
 	};
 
-	let user: UserProfileData | null = null;
-	let isLoading = true;
-	let errorMessage = '';
+	let user: UserProfileData | null = $state(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 	let token: string | null = null;
 
 	const unsubscribe = authStore.subscribe((auth) => {
@@ -61,8 +65,8 @@
 			}
 
 			user = await response.json();
-		} catch (err: any) {
-			errorMessage = err.message || 'An unknown error occurred.';
+		} catch (err: unknown) {
+			errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
 			console.error(`Failed to fetch profile for user ${userId}:`, err);
 		} finally {
 			isLoading = false;

@@ -5,13 +5,13 @@
 	import apiClient from '$lib/api';
 	import { onMount } from 'svelte';
 
-	let currentUser: AuthUser | null = null;
-	let isLoading = false;
-	let errorMessage = '';
+	let currentUser = $state<AuthUser | null>(null);
+	let isLoading = $state(false);
+	let errorMessage = $state('');
 
 	// --- Form State ---
 	// We use one object to hold all possible fields for simplicity.
-	let profileData = {
+	let profileData = $state({
 		// Common
 		fullName: '',
 		phoneNumber: '',
@@ -23,7 +23,7 @@
 		companyName: '',
 		category: ''
 		// 'experience' is shared with expert
-	};
+	});
 
 	onMount(() => {
 		const auth = get(authStore);
@@ -53,8 +53,8 @@
 			}));
 			// Redirect to the main home page
 			goto('/home');
-		} catch (error: any) {
-			errorMessage = error.data?.message || error.message || 'An unknown error occurred.';
+		} catch (error: unknown) {
+			errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
 			console.error('Profile completion error:', error);
 		} finally {
 			isLoading = false;
@@ -84,7 +84,13 @@
 
 		<div class="rounded-xl bg-slate-800/70 p-6 shadow-2xl sm:p-8">
 			{#if currentUser}
-				<form class="space-y-6" on:submit|preventDefault={handleSubmit}>
+				<form
+					class="space-y-6"
+					onsubmit={(e) => {
+						e.preventDefault();
+						handleSubmit();
+					}}
+				>
 					<!-- Customer and Expert Fields -->
 					{#if currentUser.userType === 'customer' || currentUser.userType === 'expert'}
 						<div>

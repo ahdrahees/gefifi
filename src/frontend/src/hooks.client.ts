@@ -9,36 +9,36 @@ import type { HandleClientError, NavigationEvent } from '@sveltejs/kit';
  * @type {import('@sveltejs/kit').HandleClientError}
  */
 export const handleError: HandleClientError = ({ error, event }) => {
-	console.error('[GEFIFI Client Error Hook] An error occurred:', {
-		error,
-		routeId: event.route.id,
-		url: event.url.pathname
-	});
+  console.error('[GEFIFI Client Error Hook] An error occurred:', {
+    error,
+    routeId: event.route.id,
+    url: event.url.pathname
+  });
 
-	// You can customize the error object returned to your $error.svelte page
-	const status = (error as any)?.status || 500;
-	let message = 'An unexpected error occurred. Please try refreshing the page.';
+  // You can customize the error object returned to your $error.svelte page
+  const status = (error as any)?.status || 500;
+  let message = 'An unexpected error occurred. Please try refreshing the page.';
 
-	if (error instanceof Error) {
-		// For specific known errors, you might want custom messages
-		// For example, if it's an ApiError from your API client
-		if ((error as any).name === 'ApiError') {
-			message = (error as any).data?.message || error.message || 'An API error occurred.';
-		} else {
-			message = error.message;
-		}
-	} else if (typeof error === 'string') {
-		message = error;
-	}
+  if (error instanceof Error) {
+    // For specific known errors, you might want custom messages
+    // For example, if it's an ApiError from your API client
+    if ((error as any).name === 'ApiError') {
+      message = (error as any).data?.message || error.message || 'An API error occurred.';
+    } else {
+      message = error.message;
+    }
+  } else if (typeof error === 'string') {
+    message = error;
+  }
 
-	// Example: Send to an error tracking service
-	// Sentry.captureException(error, { extra: { event } });
+  // Example: Send to an error tracking service
+  // Sentry.captureException(error, { extra: { event } });
 
-	return {
-		message: `Oops! ${message}`,
-		status,
-		errorId: 'CLIENT_HOOK_ERROR'
-	};
+  return {
+    message: `Oops! ${message}`,
+    status,
+    errorId: 'CLIENT_HOOK_ERROR'
+  };
 };
 
 /*
@@ -81,7 +81,7 @@ export const handleError: HandleClientError = ({ error, event }) => {
 <script lang="ts">
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
-  import { page } from '$app/stores'; // To get current path/route information
+  import { page } from '$app/state'; // To get current path/route information
   import { goto } from '$app/navigation';
   import { authStore } from '$lib/stores/auth';
 
@@ -94,12 +94,12 @@ export const handleError: HandleClientError = ({ error, event }) => {
           return;
         }
 
-        const currentPath = $page.url.pathname;
-        const currentRouteId = $page.route.id;
+        const currentPath = page.url.pathname;
+        const currentRouteId = page.route.id;
 
         // Determine if the current route is an "app" route (needs protection)
         // This assumes your protected routes are under a group like (app)
-        // or you have another way to identify them (e.g., from $page.data)
+        // or you have another way to identify them (e.g., from page.data)
         const isAppRoute = currentRouteId?.includes('(app)'); // Adjust based on your route grouping
 
         // Auth pages that logged-in users should be redirected away from

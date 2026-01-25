@@ -19,7 +19,7 @@
 	<div class="grid flex-grow grid-cols-1 gap-8 md:grid-cols-2">
 		<!-- Work Request Card -->
 		<button
-			on:click={() => goto('/customer/create-work-request')}
+			onclick={() => goto('/customer/create-work-request')}
 			class="flex h-full flex-col items-center justify-center rounded-xl bg-slate-700/60 p-8 text-center shadow-lg transition-all duration-300 ease-in-out hover:bg-slate-700 hover:ring-2 hover:ring-sky-500"
 		>
 			{@html icons.work}
@@ -31,7 +31,7 @@
 
 		<!-- Material Request Card -->
 		<button
-			on:click={() => goto('/customer/create-material-request')}
+			onclick={() => goto('/customer/create-material-request')}
 			class="flex h-full flex-col items-center justify-center rounded-xl bg-slate-700/60 p-8 text-center shadow-lg transition-all duration-300 ease-in-out hover:bg-slate-700 hover:ring-2 hover:ring-amber-500"
 		>
 			{@html icons.material}

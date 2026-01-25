@@ -1,16 +1,22 @@
 <!-- gefifi-2/src/frontend/src/lib/components/ui/ProfessionalCard.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-	import { page } from '$app/stores';
+
+	import { page } from '$app/state';
 	import type { AuthUser } from '$lib/types';
+	import { assert } from '$lib/utils/assert';
 
-	export let professional: AuthUser;
+	interface Props {
+		professional: AuthUser;
+		onSendInterest?: (detail: { userId: string; userName: string; userType:  'expert' | 'supplier' }) => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let { professional, onSendInterest }: Props = $props();
+
+
 
 	// Determine if this is an invitation context (from a specific request)
-	$: isInvitationContext = !!$page.url.searchParams.get('request-id');
-	$: buttonText = isInvitationContext ? `Send Invitation` : 'Send Interest';
+	let isInvitationContext = $derived(!!page.url.searchParams.get('request-id'));
+	let buttonText = $derived(isInvitationContext ? `Send Invitation` : 'Send Interest');
 
 	function getProfessionalName(prof: AuthUser): string {
 		if (prof.userType === 'supplier') {
@@ -20,7 +26,8 @@
 	}
 
 	function handleSendInterestClick() {
-		dispatch('sendInterest', {
+		assert(professional.userType === 'expert' || professional.userType === 'supplier', 'Professional must be either expert or supplier');
+		onSendInterest?.({
 			userId: professional.id,
 			userName: getProfessionalName(professional),
 			userType: professional.userType
@@ -41,7 +48,7 @@
 			<img
 				src={avatarUrl}
 				alt="Profile of {getProfessionalName(professional)}"
-				class="h-20 w-20 flex-shrink-0 rounded-full border-2 border-emerald-600 object-cover p-1 shadow-md"
+				class="h-20 w-20 shrink-0 rounded-full border-2 border-emerald-600 object-cover p-1 shadow-md"
 				loading="lazy"
 			/>
 			<div class="overflow-hidden">
@@ -92,7 +99,7 @@
 
 	<div class="mt-5 border-t border-slate-600/70 pt-4">
 		<button
-			on:click={handleSendInterestClick}
+			onclick={handleSendInterestClick}
 			class="w-full rounded-lg {isInvitationContext
 				? 'bg-emerald-500 hover:bg-emerald-600'
 				: 'bg-emerald-500 hover:bg-emerald-600'} px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors duration-150 ease-in-out focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"

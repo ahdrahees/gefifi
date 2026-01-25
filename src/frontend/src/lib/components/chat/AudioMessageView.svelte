@@ -7,15 +7,19 @@
 	// Correctly import the initialized 'functions' service
 	import { functions } from '$lib/firebase';
 
-	export let message: Message;
+	interface Props {
+		message: Message;
+	}
 
-	let waveformEl: HTMLElement;
+	let { message }: Props = $props();
+
+	let waveformEl: HTMLElement | undefined = $state();
 	let waveSurfer: WaveSurfer | null = null;
-	let isPlaying = false;
-	let isLoading = true;
-	let errorMessage = '';
-	let currentTime = '0:00';
-	let totalDuration = '0:00';
+	let isPlaying = $state(false);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let currentTime = $state('0:00');
+	let totalDuration = $state('0:00');
 
 	onMount(async () => {
 		if (!message.audioUrl) {
@@ -35,7 +39,7 @@
 
 			signedUrl = (result.data as { url: string }).url;
 			console.log(`[AudioMessageView] Successfully received signed URL.`);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('[AudioMessageView] Failed to get signed URL:', error);
 			if (error.code === 'functions/permission-denied') {
 				errorMessage = 'Permission denied.';
@@ -105,7 +109,7 @@
 
 <div class="flex max-w-sm min-w-[280px] items-center gap-3 p-0 pt-1">
 	<button
-		on:click={togglePlay}
+		onclick={togglePlay}
 		disabled={isLoading || !!errorMessage}
 		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white transition-all duration-200 hover:bg-emerald-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
 		aria-label={isPlaying ? 'Pause audio' : 'Play audio'}

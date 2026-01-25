@@ -1,13 +1,12 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import apiClient from '$lib/api';
-	import type { MaterialRequest } from '$lib/types';
+	import type { Chat, Contract, MaterialRequest } from '$lib/types';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import AttachmentList from '$lib/components/AttachmentList.svelte';
 	import UserProfile from '$lib/components/UserProfile.svelte';
-	import { API_BASE_URL } from '$lib/config';
 
 	// Define UserProfile type
 	type UserProfile = {
@@ -24,42 +23,45 @@
 		};
 	};
 
-	let currentUser: AuthUser | null = null;
+	let currentUser = $state<AuthUser | null>(null);
 	let token: string | null = null;
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
 		token = auth.token;
 	});
 
-	let request: MaterialRequest | null = null;
-	let isLoading = true;
-	let errorMessage = '';
+	let request = $state<MaterialRequest | null>(null);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 
 	// For supplier interest
-	let isExpressingInterest = false;
-	let interestMessage = '';
+	let isExpressingInterest = $state(false);
+	let interestMessage = $state('');
 
 	// Supplier management state
-	let invitedSupplierProfiles: UserProfile[] = [];
-	let chatMap = new Map<string, string>();
-	let existingContract: any = null;
+	let invitedSupplierProfiles: UserProfile[] = $state([]);
+	let chatMap = $state(new Map<string, string>());
+	let existingContract = $state<Contract>();
 
 	// Reactive computed values
-	$: isCustomer = currentUser && request && currentUser.id === request.customerId;
-	$: isSupplier = currentUser && request && currentUser.id !== request.customerId;
-	$: canExpressInterest =
+	let isCustomer = $derived(currentUser && request && currentUser.id === request.customerId);
+	let isSupplier = $derived(currentUser && request && currentUser.id !== request.customerId);
+	let canExpressInterest = $derived(
 		isSupplier &&
-		request &&
-		!request.interestedSuppliers?.includes(currentUser?.id || '') &&
-		request.status === 'open';
-	$: alreadyInterested =
-		isSupplier && request && request.interestedSuppliers?.includes(currentUser?.id || '');
-	$: interestedSuppliers = request ? request.interestedSuppliers || [] : [];
-	$: canCreateContract =
-		isCustomer && request && !existingContract && ['open', 'quoting'].includes(request.status);
+			request &&
+			!request.interestedSuppliers?.includes(currentUser?.id || '') &&
+			request.status === 'open'
+	);
+	let alreadyInterested = $derived(
+		isSupplier && request && request.interestedSuppliers?.includes(currentUser?.id || '')
+	);
+	let interestedSuppliers = $derived(request ? request.interestedSuppliers || [] : []);
+	let canCreateContract = $derived(
+		isCustomer && request && !existingContract && ['open', 'quoting'].includes(request.status)
+	);
 
 	onMount(async () => {
-		const requestId = $page.params.id;
+		const requestId = page.params.id;
 		if (!requestId) {
 			errorMessage = 'No request ID found in the URL.';
 			isLoading = false;
@@ -75,9 +77,10 @@
 					fetchExistingContract()
 				]);
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to fetch material request:', error);
-			errorMessage = error.data?.message || 'Could not load the material request.';
+			errorMessage =
+				error instanceof Error ? error.message : 'Could not load the material request.';
 		} finally {
 			isLoading = false;
 		}
@@ -88,15 +91,7 @@
 
 		try {
 			const profiles = await Promise.all(
-				request.invitedSuppliers.map(async (supplierId) => {
-					const response = await fetch(`${API_BASE_URL}/api/users/${supplierId}`, {
-						headers: { Authorization: `Bearer ${token}` }
-					});
-					if (response.ok) {
-						return await response.json();
-					}
-					return null;
-				})
+				request.invitedSuppliers.map((supplierId) => apiClient.getUserById(supplierId))
 			);
 			invitedSupplierProfiles = profiles.filter(Boolean);
 		} catch (error) {
@@ -108,22 +103,16 @@
 		if (!request || !token) return;
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/chat`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (response.ok) {
-				const chats = await response.json();
+			const chats = await apiClient.getUserChats();
 
-				console.log('chats', chats);
-				const newChatMap = new Map();
-				chats.forEach((chat: any) => {
-					const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
-					if (otherParticipant) {
-						newChatMap.set(otherParticipant, chat.id);
-					}
-				});
-				chatMap = newChatMap;
-			}
+			const newChatMap = new Map<string, string>();
+			chats.forEach((chat: Chat) => {
+				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
+				if (otherParticipant) {
+					newChatMap.set(otherParticipant, chat.id);
+				}
+			});
+			chatMap = newChatMap;
 		} catch (error) {
 			console.error('Failed to fetch chat mappings:', error);
 		}
@@ -133,15 +122,10 @@
 		if (!request || !token) return;
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/api/contracts`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (response.ok) {
-				const contracts = await response.json();
-				existingContract = contracts.find(
-					(contract: any) => request && contract.materialRequestId === request.id
-				);
-			}
+			const contracts = await apiClient.getUserContracts();
+			existingContract = contracts.find(
+				(contract: Contract) => request && contract.materialRequestId === request.id
+			);
 		} catch (error) {
 			console.error('Failed to fetch existing contracts:', error);
 		}
@@ -163,8 +147,8 @@
 			setTimeout(() => {
 				goto(`/chat/${result.chatId}`);
 			}, 2000);
-		} catch (error: any) {
-			interestMessage = error.data?.message || 'Failed to send interest.';
+		} catch (error: unknown) {
+			interestMessage = error instanceof Error ? error.message : 'Failed to send interest.';
 		} finally {
 			isExpressingInterest = false;
 		}
@@ -173,9 +157,10 @@
 	async function fetchRequestDetails(id: string) {
 		try {
 			request = (await apiClient.getMaterialRequestById(id)) as MaterialRequest;
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to fetch material request:', error);
-			errorMessage = error.data?.message || 'Could not load the material request.';
+			errorMessage =
+				error instanceof Error ? error.message : 'Could not load the material request.';
 		}
 	}
 
@@ -188,10 +173,10 @@
 		});
 	}
 
-	function formatCurrency(amount?: number) {
-		if (!amount && amount !== 0) return 'Not specified';
-		return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
-	}
+	// function formatCurrency(amount?: number) {
+	// 	if (!amount && amount !== 0) return 'Not specified';
+	// 	return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
+	// }
 
 	function getStatusClasses(status: string) {
 		const classes = {
@@ -252,7 +237,7 @@
 			<h2 class="mb-3 text-2xl font-bold text-red-300">Unable to Load Material Request</h2>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				on:click={() => goto('/material-requests')}
+				onclick={() => goto('/material-requests')}
 				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
 				← Back to Material Requests
@@ -533,7 +518,7 @@
 								for this request.
 							</p>
 							<button
-								on:click={handleExpressInterest}
+								onclick={handleExpressInterest}
 								disabled={isExpressingInterest}
 								class="w-full rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:bg-emerald-600 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-slate-500"
 							>
@@ -800,6 +785,22 @@
 					</section>
 				{/if}
 			</div>
+		</div>
+		<div class="mt-8 text-center">
+			<button
+				onclick={() => goto('/home')}
+				class="inline-flex items-center gap-2 rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
+			>
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M10 19l-7-7m0 0l7-7m-7 7h18"
+					/>
+				</svg>
+				Back to Home
+			</button>
 		</div>
 	{/if}
 </div>

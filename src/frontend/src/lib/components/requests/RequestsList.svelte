@@ -1,22 +1,23 @@
 <!-- src/frontend/src/lib/components/requests/RequestsList.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import type { AuthUser } from '$lib/stores/auth';
+	import type { RequestWithType } from '$lib/types';
 	import RequestCard from './RequestCard.svelte';
 
-	export let requests: any[];
-	export let currentUser: AuthUser | null;
-	export let isLoading: boolean;
-	export let errorMessage: string;
-
-	const dispatch = createEventDispatcher();
-
-	function handleStatusUpdate(event: CustomEvent) {
-		dispatch('statusUpdate', event.detail);
+	interface Props {
+		requests: RequestWithType[];
+		currentUser: AuthUser | null;
+		isLoading: boolean;
+		errorMessage: string;
+		onStatusUpdate?: (detail: any) => void;
+		onRefresh?: () => void;
 	}
 
+	let { requests, currentUser, isLoading, errorMessage, onStatusUpdate, onRefresh }: Props =
+		$props();
+
 	function handleRefresh() {
-		dispatch('refresh');
+		onRefresh?.();
 	}
 </script>
 
@@ -58,7 +59,7 @@
 			<h3 class="mb-3 text-xl font-bold text-red-300">Error Loading Requests</h3>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				on:click={handleRefresh}
+				onclick={handleRefresh}
 				class="rounded-xl bg-red-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-red-700"
 			>
 				Try Again
@@ -101,7 +102,7 @@
 					{requests.length} Request{requests.length !== 1 ? 's' : ''}
 				</h3>
 				<button
-					on:click={handleRefresh}
+					onclick={handleRefresh}
 					class="flex items-center gap-2 rounded-lg border border-slate-600/50 bg-slate-700/50 px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-600/50"
 					aria-label="Refresh requests"
 				>
@@ -119,7 +120,7 @@
 
 			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 				{#each requests as request (request.id)}
-					<RequestCard {request} {currentUser} on:statusUpdate={handleStatusUpdate} />
+					<RequestCard {request} {currentUser} {onStatusUpdate} />
 				{/each}
 			</div>
 		</div>

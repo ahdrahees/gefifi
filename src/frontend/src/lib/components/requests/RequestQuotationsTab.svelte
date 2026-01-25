@@ -2,33 +2,25 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import apiClient from '$lib/api';
-	import { API_BASE_URL } from '$lib/config';
 	import GeneralModal from '$lib/components/ui/GeneralModal.svelte';
 	import QuoteSubmissionForm from '$lib/components/quotes/QuoteSubmissionForm.svelte';
-	import type { WorkRequest, MaterialRequest, AuthUser, Quote } from '$lib/types';
+	import type { WorkRequest, MaterialRequest, AuthUser, Quote, Chat } from '$lib/types';
 
-	// Props
-	export let request: WorkRequest | MaterialRequest;
-	export let requestType: 'work' | 'material';
-	export let currentUser: AuthUser | null;
+	interface Props {
+		// Props
+		request: WorkRequest | MaterialRequest;
+		requestType: 'work' | 'material';
+		currentUser: AuthUser | null;
+	}
+
+	let { request, requestType, currentUser }: Props = $props();
 
 	// State
-	let quotes: Quote[] = [];
-	let isLoading = true;
-	let errorMessage = '';
-	let chatMap = new Map<string, string>();
-	let showQuoteSubmissionModal = false;
-
-	// Computed
-	$: canSubmitQuote = checkCanSubmitQuote();
-	$: isCustomer = currentUser && currentUser.id === request.customerId;
-	$: isContracted = request.status === 'contracted';
-	$: displayQuotes = getDisplayQuotes(quotes, isCustomer, isContracted);
-
-	// Reactive fetch when request changes
-	$: if (request && request.id) {
-		fetchQuotes();
-	}
+	let quotes: Quote[] = $state([]);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let chatMap = $state(new Map<string, string>());
+	let showQuoteSubmissionModal = $state(false);
 
 	function checkCanSubmitQuote(): boolean {
 		if (!currentUser || currentUser.userType === 'customer') return false;
@@ -54,7 +46,7 @@
 
 	function getDisplayQuotes(
 		quotesArray: Quote[],
-		customerStatus: boolean,
+		customerStatus: boolean | null,
 		contractedStatus: boolean
 	): Quote[] {
 		if (customerStatus && contractedStatus) {
@@ -105,21 +97,15 @@
 		if (!currentUser) return;
 
 		try {
-			const token = localStorage.getItem('token');
-			const response = await fetch(`${API_BASE_URL}/api/chat`, {
-				headers: { Authorization: `Bearer ${token}` }
+			const chats = await apiClient.getUserChats();
+			const newChatMap = new Map<string, string>();
+			chats.forEach((chat: Chat) => {
+				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
+				if (otherParticipant) {
+					newChatMap.set(otherParticipant, chat.id);
+				}
 			});
-			if (response.ok) {
-				const chats = await response.json();
-				const newChatMap = new Map();
-				chats.forEach((chat: any) => {
-					const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
-					if (otherParticipant) {
-						newChatMap.set(otherParticipant, chat.id);
-					}
-				});
-				chatMap = newChatMap;
-			}
+			chatMap = newChatMap;
 		} catch (error) {
 			console.error('Failed to fetch chat mappings:', error);
 		}
@@ -185,6 +171,17 @@
 		// TODO: Implement when contractedExpertId/contractedSupplierId fields are available
 		return false;
 	}
+	// Computed
+	let canSubmitQuote = $derived(checkCanSubmitQuote());
+	let isCustomer = $derived(currentUser && currentUser.id === request.customerId);
+	let isContracted = $derived(request.status === 'contracted');
+	let displayQuotes = $derived(getDisplayQuotes(quotes, isCustomer, isContracted));
+	// Reactive fetch when request changes
+	$effect(() => {
+		if (request && request.id) {
+			fetchQuotes();
+		}
+	});
 </script>
 
 <!-- Quotations Tab - Simplified to redirect to dedicated quote page -->
@@ -209,7 +206,7 @@
 
 		{#if canSubmitQuote}
 			<button
-				on:click={handleSubmitQuote}
+				onclick={handleSubmitQuote}
 				class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -283,7 +280,7 @@
 
 			{#if canSubmitQuote}
 				<button
-					on:click={handleSubmitQuote}
+					onclick={handleSubmitQuote}
 					class="rounded-lg bg-emerald-600 px-6 py-3 font-medium text-white transition-colors hover:bg-emerald-700"
 				>
 					Submit First Quote
@@ -372,7 +369,7 @@
 									</div>
 									{#if chatMap.has(quote.expertSupplierId)}
 										<button
-											on:click={() => goToChat(quote.expertSupplierId)}
+											onclick={() => goToChat(quote.expertSupplierId)}
 											class="rounded-lg bg-blue-500/20 p-1.5 text-blue-400 transition-colors hover:bg-blue-500/30"
 											aria-label="Chat with {requestType === 'work' ? 'Expert' : 'Supplier'}"
 										>
@@ -461,7 +458,7 @@
 			<!-- View More Button -->
 			<div class="flex justify-center pt-2">
 				<button
-					on:click={handleViewQuotes}
+					onclick={handleViewQuotes}
 					class="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-700"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -489,15 +486,15 @@
 {#if showQuoteSubmissionModal && request}
 	<GeneralModal
 		bind:show={showQuoteSubmissionModal}
-		on:close={() => (showQuoteSubmissionModal = false)}
+		onClose={() => (showQuoteSubmissionModal = false)}
 	>
 		<QuoteSubmissionForm
 			requestId={request.id}
 			{requestType}
 			{request}
 			availableRequests={[request]}
-			on:quoteSubmitted={handleQuoteSubmitted}
-			on:close={() => (showQuoteSubmissionModal = false)}
+			onQuoteSubmitted={handleQuoteSubmitted}
+			onClose={() => (showQuoteSubmissionModal = false)}
 		/>
 	</GeneralModal>
 {/if}

@@ -1,23 +1,30 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { Quote } from '$lib/types';
-	import { fade, slide } from 'svelte/transition';
+	import type { AuthUser, Quote } from '$lib/types';
+	import { slide } from 'svelte/transition';
 	import apiClient from '$lib/api';
+	import { assertNonNullish } from '$lib/utils/assert';
 
-	// Props
-	export let quotes: Quote[] = [];
-	export let currentUser: any;
-	export let showActions = true;
+	interface Props {
+		// Props
+		quotes?: Quote[];
+		currentUser: AuthUser | null;
+		showActions?: boolean;
+		onQuoteSelected?: (quote: Quote) => void;
+		onQuoteRevised?: (quote: Quote) => void;
+	}
+
+	let {
+		quotes = [],
+		currentUser,
+		showActions = true,
+		onQuoteSelected,
+		onQuoteRevised
+	}: Props = $props();
 
 	// State for expanded history
-	let expandedHistory: { [key: string]: boolean } = {};
 
-	// Event dispatcher
-	const dispatch = createEventDispatcher<{
-		quoteSelected: Quote;
-		quoteRevised: Quote;
-	}>();
+	let expandedHistory: { [key: string]: boolean } = $state({});
 
 	// Methods
 	function formatCurrency(amount: number, currency: string): string {
@@ -70,7 +77,7 @@
 	}
 
 	function handleQuoteClick(quote: Quote) {
-		dispatch('quoteSelected', quote);
+		onQuoteSelected?.(quote);
 		// TODO: Open quote detail modal
 		console.log('Quote clicked:', quote);
 	}
@@ -81,7 +88,7 @@
 			const customerId = quote.customerId;
 
 			console.log('Finding chat between users:', currentUser?.id, 'and', customerId);
-
+			assertNonNullish(currentUser, 'Current user is null or undefined');
 			const { chat } = await apiClient.findChatBetweenUsers(currentUser?.id, customerId);
 
 			console.log('Found chat:', chat);
@@ -102,7 +109,7 @@
 
 	function handleRevise(quote: Quote, event: Event) {
 		event.stopPropagation();
-		dispatch('quoteRevised', quote);
+		onQuoteRevised?.(quote);
 	}
 
 	function toggleHistory(quoteId: string) {
@@ -181,8 +188,8 @@
 					<div class="flex items-start justify-between">
 						<div
 							class="min-w-0 flex-1 cursor-pointer"
-							on:click={() => handleQuoteClick(quote)}
-							on:keydown={(e) => e.key === 'Enter' && handleQuoteClick(quote)}
+							onclick={() => handleQuoteClick(quote)}
+							onkeydown={(e) => e.key === 'Enter' && handleQuoteClick(quote)}
 							role="button"
 							tabindex="0"
 						>
@@ -227,7 +234,7 @@
 								{#if hasHistory(quote)}
 									<button
 										aria-label="{expandedHistory[quote.id] ? 'Hide' : 'Show'} history"
-										on:click={(e) => {
+										onclick={(e) => {
 											e.stopPropagation();
 											toggleHistory(quote.id);
 										}}
@@ -253,7 +260,7 @@
 								{/if}
 								{#if quote.status === 'submitted' || quote.status === 'under_review' || quote.status === 'rejected'}
 									<button
-										on:click={(e) => handleRevise(quote, e)}
+										onclick={(e) => handleRevise(quote, e)}
 										class="cursor-pointer rounded-lg bg-blue-600 px-3 py-1 text-xs text-white transition-colors hover:bg-blue-700"
 									>
 										Revise
@@ -283,7 +290,7 @@
 						<!-- Chat button for experts/suppliers -->
 						{#if currentUser?.id === quote.expertSupplierId}
 							<button
-								on:click={(e) => {
+								onclick={(e) => {
 									e.stopPropagation();
 									goToChat(quote);
 								}}
@@ -346,7 +353,7 @@
 												{/if}
 											</div>
 											<button
-												on:click={() => handleQuoteClick(historyQuote)}
+												onclick={() => handleQuoteClick(historyQuote)}
 												class="text-xs text-blue-400 hover:text-blue-300"
 											>
 												View

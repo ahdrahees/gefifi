@@ -4,21 +4,21 @@
 	import { authStore } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
 	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-	let selectedUserType: 'customer' | 'expert' | 'supplier' | null = null;
+	let selectedUserType: 'customer' | 'expert' | 'supplier' | null = $state(null);
 
 	// Form State
-	let email = '';
-	let password = '';
-	let confirmPassword = '';
+	let email = $state('');
+	let password = $state('');
+	let confirmPassword = $state('');
 
-	let isLoading = false;
-	let errorMessage: string | null = null;
+	let isLoading = $state(false);
+	let errorMessage: string | null = $state(null);
 	let googleIsLoading = false;
-	let isAlreadySelected = false;
+	let isAlreadySelected = $state(false);
 
 	const userTypes = [
 		{
@@ -66,8 +66,11 @@
 				profile: {} // Profile is now collected on the complete-profile page
 			});
 			goto('/home');
-		} catch (error: any) {
-			errorMessage = error.message || 'An unexpected error occurred during registration.';
+		} catch (error: unknown) {
+			errorMessage =
+				error instanceof Error
+					? error.message
+					: 'An unexpected error occurred during registration.';
 		} finally {
 			isLoading = false;
 		}
@@ -95,8 +98,8 @@
 			} else {
 				goto('/home', { replaceState: true });
 			}
-		} catch (error: any) {
-			errorMessage = error.message || 'An unexpected error occurred.';
+		} catch (error: unknown) {
+			errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
 		} finally {
 			googleIsLoading = false;
 		}
@@ -116,7 +119,7 @@
 
 		// get user type from URL query parameter
 		selectedUserType =
-			($page.url.searchParams.get('type') as 'customer' | 'expert' | 'supplier') || null;
+			(page.url.searchParams.get('type') as 'customer' | 'expert' | 'supplier') || null;
 
 		// if user type is already selected from the landing page and sent via URL query parameter, hide the user type selection
 		if (selectedUserType !== null) {
@@ -149,9 +152,6 @@
 			if (unsubscribeAuth) unsubscribeAuth();
 		};
 	});
-
-	let bgstyle =
-		"background-image: url('data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e'); background-position: right 0.5rem center; background-size: 1.5em 1.5em;";
 </script>
 
 <div
@@ -188,7 +188,7 @@
 					<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 						{#each userTypes as type (type.value)}
 							<button
-								on:click={() => selectUserType(type.value)}
+								onclick={() => selectUserType(type.value)}
 								class="flex flex-col items-center rounded-lg border-2 p-4 text-center transition-all duration-200 ease-in-out {selectedUserType ===
 								type.value
 									? 'border-emerald-500 bg-emerald-500/20 shadow-lg'
@@ -212,7 +212,13 @@
 					<p class="mx-4 text-center text-sm font-semibold">OR</p>
 				</div>
 
-				<form class="space-y-6" on:submit|preventDefault={handleRegister}>
+				<form
+					class="space-y-6"
+					onsubmit={(e) => {
+						e.preventDefault();
+						handleRegister();
+					}}
+				>
 					<div>
 						<label for="email" class="block text-sm leading-6 font-medium text-slate-300"
 							>Email address</label

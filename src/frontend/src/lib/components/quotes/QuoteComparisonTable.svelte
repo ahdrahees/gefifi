@@ -1,24 +1,31 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { Quote } from '$lib/types';
-	import { fade, slide } from 'svelte/transition';
+	import type { AuthUser, Quote } from '$lib/types';
+	import { fade } from 'svelte/transition';
 	import apiClient from '$lib/api';
+	import { assertNonNullish } from '$lib/utils/assert';
 
-	// Props
-	export let quotes: Quote[] = [];
-	export let requestType: 'work' | 'material' = 'work';
-	export let currentUser: any;
+	interface Props {
+		// Props
+		quotes?: Quote[];
+		requestType?: 'work' | 'material';
+		currentUser: AuthUser | null;
+		onQuoteView?: (detail: { quoteId: string }) => void;
+		onQuoteAccept?: (detail: { quoteId: string }) => void;
+		onQuoteReject?: (detail: { quoteId: string }) => void;
+	}
+
+	let {
+		quotes = [],
+		requestType = 'work',
+		currentUser,
+		onQuoteView,
+		onQuoteAccept,
+		onQuoteReject
+	}: Props = $props();
 
 	// State for expanded history
-	let expandedHistory: { [key: string]: boolean } = {};
-
-	// Event dispatcher
-	const dispatch = createEventDispatcher<{
-		quoteView: { quoteId: string };
-		quoteAccept: { quoteId: string };
-		quoteReject: { quoteId: string };
-	}>();
+	let expandedHistory: { [key: string]: boolean } = $state({});
 
 	// Methods
 	function formatCurrency(amount: number, currency: string): string {
@@ -71,15 +78,15 @@
 	}
 
 	function handleViewQuote(quoteId: string) {
-		dispatch('quoteView', { quoteId });
+		onQuoteView?.({ quoteId });
 	}
 
 	function handleAcceptQuote(quoteId: string) {
-		dispatch('quoteAccept', { quoteId });
+		onQuoteAccept?.({ quoteId });
 	}
 
 	function handleRejectQuote(quoteId: string) {
-		dispatch('quoteReject', { quoteId });
+		onQuoteReject?.({ quoteId });
 	}
 
 	async function goToChat(quote: Quote) {
@@ -88,7 +95,7 @@
 			const expertSupplierId = quote.expertSupplierId;
 
 			console.log('Finding chat between users:', currentUser?.id, 'and', expertSupplierId);
-
+			assertNonNullish(currentUser, 'Current user is null or undefined');
 			const { chat } = await apiClient.findChatBetweenUsers(currentUser?.id, expertSupplierId);
 
 			console.log('Found chat:', chat);
@@ -229,7 +236,7 @@
 							</div>
 
 							<button
-								on:click={() => goToChat(quote)}
+								onclick={() => goToChat(quote)}
 								class="rounded-lg bg-blue-500/20 p-1.5 text-blue-400 transition-colors hover:bg-blue-500/30"
 								aria-label="Chat with {requestType === 'work' ? 'Expert' : 'Supplier'}"
 							>
@@ -275,7 +282,7 @@
 						<div class="flex gap-2">
 							{#if hasHistory(quote)}
 								<button
-									on:click={() => toggleHistory(quote.id)}
+									onclick={() => toggleHistory(quote.id)}
 									class="flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-700/50 px-3 py-1 text-xs text-slate-300 transition-all ease-out hover:bg-slate-700"
 									aria-label="{expandedHistory[quote.id] ? 'Hide' : 'Show'} history"
 								>
@@ -298,20 +305,20 @@
 								</button>
 							{/if}
 							<button
-								on:click={() => handleViewQuote(quote.id)}
+								onclick={() => handleViewQuote(quote.id)}
 								class="rounded-lg bg-blue-600 px-3 py-1 text-xs text-white transition-colors hover:bg-blue-700"
 							>
 								View
 							</button>
 							{#if quote.status === 'submitted' || quote.status === 'under_review'}
 								<button
-									on:click={() => handleAcceptQuote(quote.id)}
+									onclick={() => handleAcceptQuote(quote.id)}
 									class="rounded-lg bg-emerald-600 px-3 py-1 text-xs text-white transition-colors hover:bg-emerald-700"
 								>
 									Accept
 								</button>
 								<button
-									on:click={() => handleRejectQuote(quote.id)}
+									onclick={() => handleRejectQuote(quote.id)}
 									class="rounded-lg bg-red-600 px-3 py-1 text-xs text-white transition-colors hover:bg-red-700"
 								>
 									Reject
@@ -369,7 +376,7 @@
 														{/if}
 													</div>
 													<button
-														on:click={() => handleViewQuote(historyQuote.id)}
+														onclick={() => handleViewQuote(historyQuote.id)}
 														class="text-xs text-blue-400 hover:text-blue-300"
 													>
 														View

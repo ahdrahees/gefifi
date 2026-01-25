@@ -1,25 +1,44 @@
 <!-- src/frontend/src/lib/components/ui/DropdownMenu.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { clickOutside } from '$lib/utils/clickOutside';
 
-	const dispatch = createEventDispatcher();
+	interface Props {
+		// Props
+		isOpen?: boolean;
+		position?: 'left' | 'right';
+		placement?: 'top' | 'bottom';
+		autoPosition?: boolean; // Automatically adjust position based on viewport
+		debug?: boolean; // Debug mode for positioning
+		trigger?: import('svelte').Snippet;
+		children?: import('svelte').Snippet<[any]>;
+		onOpen?: () => void;
+		onClose?: () => void;
+	}
 
-	// Props
-	export let isOpen = false;
-	export let position: 'left' | 'right' = 'right';
-	export let placement: 'top' | 'bottom' = 'bottom';
-	export let autoPosition = true; // Automatically adjust position based on viewport
-	export let debug = false; // Debug mode for positioning
+	let {
+		isOpen = $bindable(false),
+		position = 'right',
+		placement = 'bottom',
+		autoPosition = true,
+		debug = false,
+		trigger,
+		children,
+		onOpen,
+		onClose
+	}: Props = $props();
 
 	// State for dynamic positioning
-	let dropdownElement: HTMLDivElement;
-	let actualPosition = position;
-	let actualPlacement = placement;
+	let dropdownElement: HTMLDivElement | undefined = $state();
+	let actualPosition = $derived(position);
+	let actualPlacement = $derived(placement);
 
 	// Reactive statements
-	$: actualPosition = position;
-	$: actualPlacement = placement;
+	$effect(() => {
+		actualPosition = position;
+	});
+	$effect(() => {
+		actualPlacement = placement;
+	});
 
 	// Calculate optimal position
 	function calculatePosition() {
@@ -27,7 +46,7 @@
 
 		// Use a small delay to ensure the element is rendered
 		setTimeout(() => {
-			const rect = dropdownElement.getBoundingClientRect();
+			const rect = dropdownElement?.getBoundingClientRect();
 			const viewportWidth = window.innerWidth;
 			const viewportHeight = window.innerHeight;
 
@@ -46,24 +65,24 @@
 			actualPlacement = placement;
 
 			// Check if dropdown would go off-screen horizontally
-			if (position === 'right' && rect.right > viewportWidth - 10) {
+			if (position === 'right' && rect && rect.right > viewportWidth - 10) {
 				actualPosition = 'left';
 				if (debug) console.log('Switching to left position - would go off right edge');
-			} else if (position === 'left' && rect.left < 10) {
+			} else if (position === 'left' && rect && rect.left < 10) {
 				actualPosition = 'right';
 				if (debug) console.log('Switching to right position - would go off left edge');
 			}
 
 			// Check if dropdown would go off-screen vertically
-			if (placement === 'bottom' && rect.bottom > viewportHeight - 10) {
+			if (placement === 'bottom' && rect && rect.bottom > viewportHeight - 10) {
 				actualPlacement = 'top';
 				if (debug) console.log('Switching to top placement');
-			} else if (placement === 'top' && rect.top < 10) {
+			} else if (placement === 'top' && rect && rect.top < 10) {
 				actualPlacement = 'bottom';
 				if (debug) console.log('Switching to bottom placement');
 			}
 
-			if (debug) {
+			if (debug && rect) {
 				console.log('Final positioning:', {
 					actualPosition,
 					actualPlacement,
@@ -75,7 +94,7 @@
 						right: rect.right,
 						bottom: rect.bottom
 					},
-					classes: dropdownElement.className
+					classes: dropdownElement?.className
 				});
 			}
 		}, 10);
@@ -89,9 +108,9 @@
 			setTimeout(() => {
 				calculatePosition();
 			}, 0);
-			dispatch('open');
+			onOpen?.();
 		} else {
-			dispatch('close');
+			onClose?.();
 		}
 	}
 
@@ -99,7 +118,7 @@
 	function closeDropdown() {
 		if (isOpen) {
 			isOpen = false;
-			dispatch('close');
+			onClose?.();
 		}
 	}
 
@@ -123,13 +142,13 @@
 	}
 </script>
 
-<svelte:window on:keydown={handleKeydown} on:resize={handleResize} />
+<svelte:window onkeydown={handleKeydown} onresize={handleResize} />
 
 <div class="relative">
 	<!-- Trigger Button -->
 	<button
 		type="button"
-		on:click={toggleDropdown}
+		onclick={toggleDropdown}
 		class="group flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-all duration-200 hover:bg-slate-700/60 hover:text-slate-200 focus:ring-2 focus:ring-emerald-500/50 focus:outline-none {isOpen
 			? 'bg-slate-700/60 text-slate-200 shadow-lg'
 			: ''}"
@@ -137,7 +156,7 @@
 		aria-haspopup="true"
 		title="More options"
 	>
-		<slot name="trigger">
+		{#if trigger}{@render trigger()}{:else}
 			<!-- Default trigger: vertical ellipsis with rotation animation -->
 			<svg
 				class="h-4 w-4 transition-transform duration-200 {isOpen ? 'rotate-90' : ''}"
@@ -148,7 +167,7 @@
 					d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"
 				/>
 			</svg>
-		</slot>
+		{/if}
 	</button>
 
 	<!-- Dropdown Menu -->
@@ -166,7 +185,7 @@
 			aria-orientation="vertical"
 		>
 			<div class="dropdown-menu">
-				<slot {closeDropdown} />
+				{@render children?.({ closeDropdown })}
 			</div>
 		</div>
 	{/if}

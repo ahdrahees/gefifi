@@ -1,32 +1,43 @@
 <!-- src/frontend/src/lib/components/ContractComments.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import type { Contract, ContractComment } from '$lib/types';
 	import AttachmentList from './AttachmentList.svelte';
 	import Avatar from './Avatar.svelte';
 	import FileUpload from './FileUpload.svelte';
 	import type { AuthUser } from '$lib/stores/auth';
-	import { writable } from 'svelte/store';
 
-	export let contract: Contract;
-	export let currentUser: AuthUser | null = null;
-	export let customerProfile: AuthUser | null = null;
-	export let expertSupplierProfile: AuthUser | null = null;
+	interface Props {
+		contract: Contract;
+		currentUser?: AuthUser | null;
+		customerProfile?: AuthUser | null;
+		expertSupplierProfile?: AuthUser | null;
+		onAddComment?: (detail: {
+			comment: string;
+			type: ContractComment['type'];
+			files: File[];
+		}) => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let {
+		contract,
+		currentUser = null,
+		customerProfile = null,
+		expertSupplierProfile = null,
+		onAddComment
+	}: Props = $props();
 
-	let showAddCommentModal = false;
-	let commentText = '';
-	let commentType: ContractComment['type'] = 'general';
-	let commentFiles = writable<File[]>([]);
+	let showAddCommentModal = $state(false);
+	let commentText = $state('');
+	let commentType: ContractComment['type'] = $state('general');
+	let commentFiles = $state<File[]>([]);
 	let isSubmitting = false;
 
 	// Validation state
-	let commentError = '';
-	let isCommentValid = false;
+	let commentError = $state('');
+	let isCommentValid = $state(false);
 
 	// Reactive statement to validate comment and remove leading spaces
-	$: {
+	$effect(() => {
 		// Remove leading spaces
 		if (commentText && commentText !== commentText.trimStart()) {
 			commentText = commentText.trimStart();
@@ -41,7 +52,7 @@
 			commentError = '';
 			isCommentValid = true;
 		}
-	}
+	});
 
 	function formatDate(dateStr: string) {
 		return new Date(dateStr).toLocaleString('en-GB', {
@@ -80,7 +91,7 @@
 		showAddCommentModal = true;
 		commentText = '';
 		commentType = 'general';
-		commentFiles.set([]);
+		commentFiles = [];
 		commentError = '';
 		isCommentValid = false;
 	}
@@ -92,10 +103,10 @@
 	function handleAddComment() {
 		if (!isCommentValid) return;
 
-		dispatch('addComment', {
+		onAddComment?.({
 			comment: commentText.trim(),
 			type: commentType,
-			files: $commentFiles
+			files: commentFiles
 		});
 
 		closeAddCommentModal();
@@ -163,7 +174,7 @@
 		</div>
 		{#if canAddComment()}
 			<button
-				on:click={openAddCommentModal}
+				onclick={openAddCommentModal}
 				class="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/30"
 			>
 				Add Comment
@@ -289,7 +300,9 @@
 {#if showAddCommentModal}
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm"
-		on:click|self={closeAddCommentModal}
+		onclick={(e) => {
+			if (e.target === e.currentTarget) closeAddCommentModal();
+		}}
 	>
 		<div
 			class="w-full max-w-2xl rounded-2xl border border-slate-600/30 bg-slate-800/90 p-6 shadow-2xl backdrop-blur-sm"
@@ -297,7 +310,7 @@
 			<div class="mb-6 flex items-center justify-between">
 				<h3 class="text-xl font-bold text-slate-200">Add Comment</h3>
 				<button
-					on:click={closeAddCommentModal}
+					onclick={closeAddCommentModal}
 					class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-300"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -311,7 +324,13 @@
 				</button>
 			</div>
 
-			<form on:submit|preventDefault={handleAddComment} class="space-y-4">
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleAddComment();
+				}}
+				class="space-y-4"
+			>
 				<!-- Comment Type -->
 				<div>
 					<label for="comment-type" class="mb-2 block text-sm font-medium text-slate-400">
@@ -379,7 +398,7 @@
 				<div class="flex justify-end gap-3 pt-4">
 					<button
 						type="button"
-						on:click={closeAddCommentModal}
+						onclick={closeAddCommentModal}
 						class="rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500"
 					>
 						Cancel

@@ -1,14 +1,19 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/+layout.svelte -->
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
 	import PWAInstallPrompt from '$lib/components/ui/PWAInstallPrompt.svelte';
+	interface Props {
+		children?: import('svelte').Snippet;
+	}
+
+	let { children }: Props = $props();
 
 	console.log('[Debug] (app)/+layout.svelte script is executing.');
 
-	$: currentAuth = $authStore;
+	let currentAuth = $derived($authStore);
 
 	interface NavLink {
 		href: string;
@@ -34,6 +39,7 @@
 		},
 		{ href: '/chat', label: 'Chat', iconKey: 'chat', types: ['all'] },
 		{ href: '/contracts', label: 'Contracts', iconKey: 'contracts', types: ['all'] },
+		{ href: '/agent', label: 'Agent', iconKey: 'agent', types: ['customer'] },
 		{ href: '/help', label: 'Help', iconKey: 'help', types: ['all'] }
 	];
 
@@ -45,11 +51,11 @@
 		goto('/auth/login', { replaceState: true });
 	}
 
-	let sidebarOpen: boolean = true;
+	let sidebarOpen: boolean = $state(true);
 
 	onMount(() => {
 		console.log('[Debug] (app)/+layout.svelte has mounted.');
-		sidebarOpen = window.innerWidth >= 768;
+		sidebarOpen = window.innerWidth >= 1024;
 	});
 
 	const icons = {
@@ -62,26 +68,28 @@
 		logout: `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-5 h-5'><path stroke-linecap='round' stroke-linejoin='round' d='M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75' /></svg>`,
 		menu: `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'><path stroke-linecap='round' stroke-linejoin='round' d='M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5' /></svg>`,
 		close: `<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'><path stroke-linecap='round' stroke-linejoin='round' d='M6 18L18 6M6 6l12 12' /></svg>`,
-		help: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark-icon lucide-circle-question-mark"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>`
+		help: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark-icon lucide-circle-question-mark"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>`,
+		agent: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-brain-icon lucide-brain"><path d="M12 18V5"/><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/><path d="M18 18a4 4 0 0 0 2-7.464"/><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/><path d="M6 18a4 4 0 0 1-2-7.464"/><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/></svg>`
 	};
 
 	// More direct computation of navItemsToRender
-	$: navItemsToRender =
+	let navItemsToRender = $derived(
 		$authStore.isAuthenticated && $authStore.user
 			? navLinks.filter(
 					(link) => link.types.includes('all') || link.types.includes($authStore.user!.userType)
 				)
-			: [];
+			: []
+	);
 </script>
 
-<svelte:window on:resize={() => (sidebarOpen = window.innerWidth >= 768)} />
+<svelte:window onresize={() => (sidebarOpen = window.innerWidth >= 1024)} />
 
 <div class="flex h-screen bg-slate-800 font-sans text-gray-100">
 	<!-- Sidebar -->
 	<aside
 		class:translate-x-0={sidebarOpen}
 		class:!-translate-x-full={!sidebarOpen}
-		class="fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col bg-slate-900 shadow-lg transition-transform duration-300 ease-in-out md:static md:inset-auto md:translate-x-0"
+		class="fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col bg-slate-900 shadow-lg transition-transform duration-300 ease-in-out lg:static lg:inset-auto lg:translate-x-0"
 	>
 		<div class="flex h-20 shrink-0 items-center justify-center border-b border-slate-700/50 px-4">
 			<a href="/home">
@@ -91,7 +99,7 @@
 
 		<nav class="flex-grow space-y-2 overflow-y-auto p-4">
 			{#if currentAuth.isLoading}
-				{#each Array(4) as _}
+				{#each Array(4) as _, id (id)}
 					<div class="h-10 animate-pulse rounded-lg bg-slate-700/50"></div>
 				{/each}
 			{:else if currentAuth.isAuthenticated}
@@ -99,12 +107,11 @@
 					<a
 						href={link.href}
 						class="group flex items-center space-x-3 rounded-lg px-3 py-2.5 transition-colors duration-150
-						{$page.url.pathname.startsWith(link.href) &&
-						(link.href !== '/home' || $page.url.pathname === '/home')
+						{page.url.pathname.startsWith(link.href) && (link.href !== '/home' || page.url.pathname === '/home')
 							? 'bg-emerald-600 text-white shadow-md'
 							: 'text-slate-300 hover:bg-slate-700/50 hover:text-emerald-300'}"
-						on:click={() => {
-							if (window.innerWidth < 768) sidebarOpen = false;
+						onclick={() => {
+							if (window.innerWidth < 1024) sidebarOpen = false;
 						}}
 						title={link.label}
 					>
@@ -149,7 +156,7 @@
 					</div>
 				</a>
 				<button
-					on:click={handleLogout}
+					onclick={handleLogout}
 					class="flex w-full items-center justify-center space-x-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
 				>
 					{@html icons.logout}
@@ -170,13 +177,13 @@
 	<!-- Main Content -->
 	<div class="flex flex-1 flex-col overflow-hidden">
 		<header
-			class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between bg-slate-900 p-4 shadow-md md:hidden"
+			class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between bg-slate-900 p-4 shadow-md lg:hidden"
 		>
 			<a href="/home">
 				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-9 w-auto" />
 			</a>
 			<button
-				on:click={() => (sidebarOpen = !sidebarOpen)}
+				onclick={() => (sidebarOpen = !sidebarOpen)}
 				class="p-2 text-slate-300 hover:text-emerald-400"
 			>
 				{@html sidebarOpen ? icons.close : icons.menu}
@@ -203,7 +210,7 @@
 					<span class="ml-3 text-slate-300">Loading application...</span>
 				</div>
 			{:else if currentAuth.isAuthenticated}
-				<slot />
+				{@render children?.()}
 			{:else}
 				<div class="flex h-full flex-col items-center justify-center text-center">
 					<h2 class="mb-3 text-2xl font-semibold text-sky-300">Access Denied</h2>

@@ -36,18 +36,20 @@
 		requestTitle?: string; // Fetched from request by requestId
 	};
 
+	// Filter and search state
+	let searchQuery = $state('');
+	let statusFilter = $state('all');
+	let contractTypeFilter = $state('all');
+	let sortBy = $state('newest');
+
 	let currentUser: AuthUser | null = null;
 	let token: string | null = null;
-	let allContracts: EnhancedContract[] = [];
-	let filteredContracts: EnhancedContract[] = [];
-	let isLoading = true;
-	let errorMessage = '';
-
-	// Filter and search state
-	let searchQuery = '';
-	let statusFilter = 'all';
-	let contractTypeFilter = 'all';
-	let sortBy = 'newest';
+	let allContracts: EnhancedContract[] = $state([]);
+	let filteredContracts = $derived(
+		applyFiltersAndReturn(allContracts, searchQuery, statusFilter, contractTypeFilter, sortBy)
+	);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 
 	// Available filter options
 	const statusOptions = [
@@ -190,9 +192,10 @@
 			);
 
 			allContracts = enrichedContracts;
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error('Contracts fetch error:', err);
-			errorMessage = err.message || 'An error occurred while loading contracts.';
+			errorMessage =
+				err instanceof Error ? err.message : 'An error occurred while loading contracts.';
 		} finally {
 			isLoading = false;
 		}
@@ -254,15 +257,6 @@
 		return contractType === 'expert_contract' ? 'Expert' : 'Material';
 	}
 
-	// Reactive statements for filtering - explicitly watch all filter variables
-	$: filteredContracts = applyFiltersAndReturn(
-		allContracts,
-		searchQuery,
-		statusFilter,
-		contractTypeFilter,
-		sortBy
-	);
-
 	function applyFiltersAndReturn(
 		contracts: EnhancedContract[],
 		search: string,
@@ -316,12 +310,12 @@
 	}
 
 	// Stats for display
-	$: totalContracts = allContracts.length;
-	$: activeContracts = allContracts.filter((c) =>
-		['signed', 'in_progress'].includes(c.status)
-	).length;
-	$: completedContracts = allContracts.filter((c) => c.status === 'completed').length;
-	$: totalValue = allContracts.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+	let totalContracts = $derived(allContracts.length);
+	let activeContracts = $derived(
+		allContracts.filter((c) => ['signed', 'in_progress'].includes(c.status)).length
+	);
+	let completedContracts = $derived(allContracts.filter((c) => c.status === 'completed').length);
+	let totalValue = $derived(allContracts.reduce((sum, c) => sum + (c.totalAmount || 0), 0));
 </script>
 
 <svelte:head>
@@ -403,7 +397,7 @@
 				/>
 				{#if searchQuery}
 					<button
-						on:click={() => {
+						onclick={() => {
 							searchQuery = '';
 						}}
 						class="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-200"
@@ -433,7 +427,7 @@
 							bind:value={statusFilter}
 							class="rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 						>
-							{#each statusOptions as option}
+							{#each statusOptions as option (option.value)}
 								<option value={option.value}>{option.label}</option>
 							{/each}
 						</select>
@@ -447,7 +441,7 @@
 							bind:value={contractTypeFilter}
 							class="rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 						>
-							{#each contractTypeOptions as option}
+							{#each contractTypeOptions as option (option.value)}
 								<option value={option.value}>{option.label}</option>
 							{/each}
 						</select>
@@ -461,7 +455,7 @@
 							bind:value={sortBy}
 							class="rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-2 text-slate-200 transition-colors focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
 						>
-							{#each sortOptions as option}
+							{#each sortOptions as option (option.value)}
 								<option value={option.value}>{option.label}</option>
 							{/each}
 						</select>
@@ -471,7 +465,7 @@
 				<!-- Clear Filters Button -->
 				<div class="flex items-end">
 					<button
-						on:click={clearFilters}
+						onclick={clearFilters}
 						class="flex items-center gap-2 rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-500"
 					>
 						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -540,7 +534,7 @@
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
 				class="rounded-xl bg-red-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-red-700"
-				on:click={fetchContracts}
+				onclick={fetchContracts}
 			>
 				Try Again
 			</button>
@@ -577,7 +571,7 @@
 			</p>
 			{#if totalContracts > 0}
 				<button
-					on:click={clearFilters}
+					onclick={clearFilters}
 					class="mt-4 rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white transition-colors hover:bg-emerald-600"
 				>
 					Clear Filters
@@ -683,7 +677,8 @@
 							<!-- Related Request Link -->
 							{#if contract.workRequestId || contract.materialRequestId}
 								<button
-									on:click|stopPropagation={() => {
+									onclick={(e) => {
+										e.stopPropagation();
 										const url = contract.workRequestId
 											? `/work-requests/${contract.workRequestId}`
 											: `/material-requests/${contract.materialRequestId}`;

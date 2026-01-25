@@ -3,12 +3,12 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
-	import apiClient, { ApiError } from '$lib/api';
+	import apiClient from '$lib/api';
 	import type { Message, Chat } from '$lib/types';
 	import { realtimeChatService } from '$lib/services/realtimeChat';
 	import type { Unsubscribe } from 'firebase/firestore';
 	import { auth } from '$lib/firebase';
-	import { onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+	import { onAuthStateChanged } from 'firebase/auth';
 
 	// Import the new modular components
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
@@ -16,83 +16,59 @@
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import AudioRecordingForm from '$lib/components/chat/AudioRecordingForm.svelte';
 	import PermissionModal from '$lib/components/chat/PermissionModal.svelte';
-	import { onMount, onDestroy } from 'svelte';
-	// import ContractModal from '$lib/components/contracts/ContractModal.svelte'; // No longer needed
+	import { assertNonNullish } from '$lib/utils/assert';
+	import type { JsonObject } from '$lib/types/json';
 
 	// --- Component Instances ---
 	let messageListComponent: MessageList;
 
-	// --- Core State ---
-	let currentUser: AuthUser | null = null;
-	let messages: Message[] = [];
-	let isLoading = true;
-	let errorMessage = '';
-	let isSendingMessage = false;
-	let hasInitiatedLoad = false;
+	// --- Svelte 5 State ---
+	let messages = $state<Message[]>([]);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
+	let isSendingMessage = $state(false);
 
 	// --- Real-time State ---
 	let messagesUnsubscribe: Unsubscribe | null = null;
-	let isLoadingOlder = false;
-	let hasMoreMessages = true;
-	let infiniteScrollEnabled = false; // Prevent infinite scroll on initial load
+	let isLoadingOlder = $state(false);
+	let hasMoreMessages = $state(true);
+	let infiniteScrollEnabled = $state(false);
 	let typingUnsubscribe: Unsubscribe | null = null;
-	let typingUsers: Array<{ userId: string; userName: string }> = [];
+	let typingUsers = $state<Array<{ userId: string; userName: string }>>([]);
 
 	// --- Chat & Participant State ---
-	let chatId: string;
-	let currentChatDetails: Chat | null = null;
-	let otherParticipantProfile: AuthUser | null = null;
+	let currentChatDetails = $state<Chat | null>(null);
+	let otherParticipantProfile = $state<AuthUser | null>(null);
 
 	// --- UI & Interaction State ---
-	let chatPageTitle = 'Chat';
-	let newMessageContent = ''; // Bound to the ChatInput component
+	let newMessageContent = $state(''); // Bound to the ChatInput component
 
 	// --- Voice Recording State ---
-	let isRecording = false;
-	let permissionState: 'prompt' | 'granted' | 'denied' = 'prompt';
+	let isRecording = $state(false);
+	let permissionState = $state<'prompt' | 'granted' | 'denied'>('prompt');
 
 	// --- File Upload State ---
-	let selectedFiles: File[] = [];
-	let isUploadingFiles = false;
+	let selectedFiles = $state<File[]>([]);
+	let isUploadingFiles = $state(false);
 
-	// --- Contract Modal State ---
-	// let showContractModal = false; // No longer needed with page-based contract creation
+	// --- Firebase Auth state tracking ---
+	let firebaseAuthReady = $state(false);
 
-	// --- SvelteKit Lifecycle & Reactive Data ---
-	$: chatId = $page.params.chatId;
-	$: ({ user: currentUser } = $authStore);
+	// --- SvelteKit Lifecycle & Reactive Data (Svelte 5 Runes) ---
+	const chatId = $derived($page.params.chatId);
+	const currentUser = $derived($authStore.user);
 
-	// Key reactive statement for robust data loading
-	$: if (chatId && currentUser && !hasInitiatedLoad) {
-		hasInitiatedLoad = true;
-		loadChatAndParticipantDetails(chatId);
-	}
-
-	// Firebase Auth state tracking
-	let firebaseAuthReady = false;
-	let authUnsubscribe: (() => void) | null = null;
-
-	// Set up Firebase Auth listener
-	onMount(() => {
-		authUnsubscribe = onAuthStateChanged(auth, (user) => {
-			firebaseAuthReady = !!user;
-
-			// Set up presence when both conditions are met
-			if (firebaseAuthReady && currentUser?.id) {
-				realtimeChatService.setUserOnline(currentUser.id);
-			}
-		});
-	});
-
-	// Set up presence when user is available and Firebase Auth is ready
-	$: if (currentUser?.id && firebaseAuthReady) {
-		realtimeChatService.setUserOnline(currentUser.id);
-	}
+	const chatPageTitle = $derived(
+		otherParticipantProfile
+			? otherParticipantProfile.userType === 'supplier'
+				? otherParticipantProfile.profile?.companyName || 'User'
+				: otherParticipantProfile.profile?.fullName || 'User'
+			: 'Chat'
+	);
 
 	// --- Date Grouping Logic (WhatsApp Style) ---
-	let groupedMessages: Array<{ type: 'date' | 'message'; id: string; data: any }> = [];
-	$: {
-		const groups: typeof groupedMessages = [];
+	const groupedMessages = $derived.by(() => {
+		const groups: Array<{ type: 'date' | 'message'; id: string; data: JsonObject }> = [];
 		let lastDate: string | null = null;
 		for (const message of messages) {
 			const messageDate = new Date(message.timestamp).toDateString();
@@ -102,8 +78,62 @@
 			}
 			groups.push({ type: 'message', id: message.id, data: message });
 		}
-		groupedMessages = groups;
-	}
+		return groups;
+	});
+
+	// --- Effects for Lifecycle Management ---
+
+	// Set up Firebase Auth listener
+	$effect(() => {
+		const authUnsubscribe = onAuthStateChanged(auth, (user) => {
+			firebaseAuthReady = !!user;
+		});
+		return () => authUnsubscribe();
+	});
+
+	// Set up presence and handle user online/offline status
+	$effect(() => {
+		if (currentUser?.id && firebaseAuthReady) {
+			realtimeChatService.setUserOnline(currentUser.id);
+			// Return cleanup function to set user offline
+			return () => {
+				if (currentUser?.id) {
+					// Re-check as user might have logged out
+					realtimeChatService.setUserOffline(currentUser.id);
+				}
+			};
+		}
+	});
+
+	// Main effect for loading chat data and managing real-time subscriptions
+	$effect(() => {
+		const currentChatId = chatId;
+		if (currentChatId && currentUser) {
+			// Reset state when chat ID changes
+			messages = [];
+			currentChatDetails = null;
+			otherParticipantProfile = null;
+			isLoading = true;
+			errorMessage = '';
+			infiniteScrollEnabled = false;
+			hasMoreMessages = true;
+			typingUsers = [];
+
+			loadChatAndParticipantDetails(currentChatId);
+		}
+
+		// Cleanup subscriptions when the effect re-runs or component is destroyed
+		return () => {
+			if (messagesUnsubscribe) {
+				messagesUnsubscribe();
+				messagesUnsubscribe = null;
+			}
+			if (typingUnsubscribe) {
+				typingUnsubscribe();
+				typingUnsubscribe = null;
+			}
+		};
+	});
 
 	// --- Data Loading ---
 	async function loadChatAndParticipantDetails(cId: string) {
@@ -117,11 +147,7 @@
 			const otherId = chatData.participants.find((p) => p !== currentUser?.id);
 			if (otherId) {
 				otherParticipantProfile = await apiClient.getUserById(otherId);
-
-				chatPageTitle =
-					otherParticipantProfile.userType === 'supplier'
-						? otherParticipantProfile.profile?.companyName || 'User'
-						: otherParticipantProfile.profile?.fullName || 'User';
+				// chatPageTitle is now a derived value, no need to set it here.
 			}
 
 			// Set up real-time message listener
@@ -129,8 +155,8 @@
 
 			// Set up typing indicators
 			setupTypingIndicators(cId);
-		} catch (err: any) {
-			errorMessage = err.message || 'Could not load chat information.';
+		} catch (err: unknown) {
+			errorMessage = err instanceof Error ? err.message : 'Could not load chat information.';
 			isLoading = false;
 		}
 	}
@@ -210,8 +236,8 @@
 		}
 	}
 
-	async function loadOlderMessages(event: CustomEvent<{ lastMessage: Message }>) {
-		console.log('[Chat] loadOlderMessages called with:', event.detail);
+	async function loadOlderMessages(detail: { lastMessage: Message }) {
+		console.log('[Chat] loadOlderMessages called with:', detail);
 		console.log('[Chat] Current state:', {
 			infiniteScrollEnabled,
 			isLoadingOlder,
@@ -226,11 +252,12 @@
 		}
 
 		isLoadingOlder = true;
-		const { lastMessage } = event.detail;
+		const { lastMessage } = detail;
 
 		console.log('[Chat] Loading older messages before:', lastMessage.id, lastMessage.timestamp);
 
 		try {
+			assertNonNullish(chatId, 'chatId is null or undefined');
 			await realtimeChatService.loadOlderMessages(
 				chatId,
 				lastMessage,
@@ -266,6 +293,7 @@
 
 		// Clear typing indicator when sending message
 		if (currentUser?.id) {
+			assertNonNullish(chatId, 'chatId is null or undefined');
 			realtimeChatService.clearTyping(chatId, currentUser.id);
 		}
 
@@ -280,6 +308,8 @@
 			}> = [];
 			let messageId: string | null = null;
 
+			assertNonNullish(chatId, 'chatId is null or undefined');
+
 			if (selectedFiles.length > 0) {
 				// Upload each file
 				for (const file of selectedFiles) {
@@ -292,7 +322,6 @@
 					} else {
 						console.log('🔍 [DEBUG] No messageId provided, backend will generate one');
 					}
-
 					const result = await apiClient.uploadChatFile(chatId, formData);
 					console.log('🔍 [DEBUG] Upload result:', {
 						messageId: result.messageId,
@@ -320,7 +349,7 @@
 			}
 
 			// Prepare message payload
-			const payload: any = {
+			const payload: JsonObject = {
 				content: newMessageContent.trim()
 			};
 
@@ -351,17 +380,16 @@
 		}
 	};
 
-	const handleSendVoiceMessage = async (
-		event: CustomEvent<{ audioUrl: string; audioDuration: number }>
-	) => {
+	const handleSendVoiceMessage = async (detail: { audioUrl: string; audioDuration: number }) => {
 		isRecording = false;
 		isSendingMessage = true;
 		try {
+			assertNonNullish(chatId, 'chatId is null or undefined');
 			// Send voice message via API (real-time listener will handle the update)
 			await apiClient.sendChatMessage(chatId, {
 				audioType: 'voice',
-				audioUrl: event.detail.audioUrl,
-				audioDuration: event.detail.audioDuration
+				audioUrl: detail.audioUrl,
+				audioDuration: detail.audioDuration
 			});
 		} catch (err) {
 			console.error('Send voice message error:', err);
@@ -371,12 +399,12 @@
 	};
 
 	// --- File Upload Logic ---
-	const handleSelectFiles = (event: CustomEvent<{ files: File[] }>) => {
-		selectedFiles = event.detail.files;
+	const handleSelectFiles = (detail: { files: File[] }) => {
+		selectedFiles = detail.files;
 	};
 
-	const handleRemoveFile = (event: CustomEvent<{ index: number }>) => {
-		selectedFiles = selectedFiles.filter((_, i) => i !== event.detail.index);
+	const handleRemoveFile = (detail: { index: number }) => {
+		selectedFiles = selectedFiles.filter((_, i) => i !== detail.index);
 	};
 
 	const handleClearFiles = () => {
@@ -386,7 +414,7 @@
 	// --- Voice Recording Logic ---
 	const handleStartRecording = async () => {
 		try {
-			const result = await navigator.permissions.query({ name: 'microphone' as any });
+			const result = await navigator.permissions.query({ name: 'microphone' });
 			if (result.state === 'granted') {
 				permissionState = 'granted';
 				isRecording = true;
@@ -397,32 +425,11 @@
 			} else {
 				permissionState = 'denied';
 			}
-		} catch (error) {
+		} catch (error: unknown) {
+			console.error('Start recording error:', error);
 			permissionState = 'denied';
 		}
 	};
-
-	// --- Lifecycle ---
-	onDestroy(() => {
-		// Clean up subscriptions
-		if (messagesUnsubscribe) {
-			messagesUnsubscribe();
-		}
-
-		if (typingUnsubscribe) {
-			typingUnsubscribe();
-		}
-
-		// Clean up Firebase Auth listener
-		if (authUnsubscribe) {
-			authUnsubscribe();
-		}
-
-		// Set user offline
-		if (currentUser?.id) {
-			realtimeChatService.setUserOffline(currentUser.id);
-		}
-	});
 </script>
 
 <div class="flex h-full flex-col bg-slate-900">
@@ -432,7 +439,7 @@
 		{otherParticipantProfile}
 		workRequestId={currentChatDetails?.workRequestId}
 		materialRequestId={currentChatDetails?.materialRequestId}
-		on:navigateBack={() => goto('/chat')}
+		onNavigateBack={() => goto('/chat')}
 	/>
 
 	<MessageList
@@ -446,7 +453,7 @@
 		{hasMoreMessages}
 		{infiniteScrollEnabled}
 		{typingUsers}
-		on:loadOlder={loadOlderMessages}
+		onLoadOlder={loadOlderMessages}
 	/>
 
 	<!-- Input Area: Switches between recording and text input -->
@@ -454,8 +461,8 @@
 		{#if isRecording}
 			<AudioRecordingForm
 				bind:isSending={isSendingMessage}
-				on:cancel={() => (isRecording = false)}
-				on:send={handleSendVoiceMessage}
+				onCancel={() => (isRecording = false)}
+				onSend={handleSendVoiceMessage}
 			/>
 		{:else}
 			<ChatInput
@@ -467,11 +474,11 @@
 				currentUserId={currentUser?.id || ''}
 				{currentUser}
 				chatDetails={currentChatDetails}
-				on:sendMessage={handleSendMessage}
-				on:startRecording={handleStartRecording}
-				on:selectFiles={handleSelectFiles}
-				on:removeFile={handleRemoveFile}
-				on:clearFiles={handleClearFiles}
+				onSendMessage={handleSendMessage}
+				onStartRecording={handleStartRecording}
+				onSelectFiles={handleSelectFiles}
+				onRemoveFile={handleRemoveFile}
+				onClearFiles={handleClearFiles}
 			/>
 		{/if}
 	</div>
@@ -481,44 +488,8 @@
 <!-- Contract creation now handled via dedicated page, modal code kept for backward compatibility if needed -->
 
 {#if permissionState === 'denied'}
-	<PermissionModal on:close={() => (permissionState = 'prompt')} />
+	<PermissionModal onClose={() => (permissionState = 'prompt')} />
 {/if}
 
 <style>
-	/* Beautiful custom scrollbar matching your dark theme */
-	.scrollable-content::-webkit-scrollbar {
-		width: 8px;
-		height: 8px;
-		background-color: transparent;
-	}
-	.scrollable-content::-webkit-scrollbar-track {
-		background: rgba(30, 41, 59, 0.6); /* slate-800/60 */
-		border-radius: 9999px;
-		margin: 4px;
-	}
-	.scrollable-content::-webkit-scrollbar-thumb {
-		background: linear-gradient(
-			135deg,
-			rgba(16, 185, 129, 0.6),
-			rgba(5, 150, 105, 0.8)
-		); /* emerald gradient */
-		border-radius: 9999px;
-		border: 1px solid rgba(16, 185, 129, 0.2);
-		transition: all 0.2s ease;
-	}
-	.scrollable-content::-webkit-scrollbar-thumb:hover {
-		background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
-		border-color: rgba(16, 185, 129, 0.4);
-		transform: scale(1.1);
-	}
-	.scrollable-content::-webkit-scrollbar-corner {
-		background: transparent;
-	}
-
-	/* Firefox */
-	.scrollable-content {
-		scrollbar-width: thin;
-		scrollbar-color: rgba(16, 185, 129, 0.6) rgba(30, 41, 59, 0.6);
-		color-scheme: dark;
-	}
 </style>

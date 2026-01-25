@@ -1,35 +1,33 @@
 <!-- src/frontend/src/routes/(app)/my-requests/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import apiClient from '$lib/api';
-	import type { WorkRequest, MaterialRequest } from '$lib/types';
+	import type {
+		Contract,
+		Chat,
+		RequestWithType,
+		WorkRequest,
+		MaterialRequest,
+		StatusTab
+	} from '$lib/types';
 	import RequestsTabNavigation from '$lib/components/requests/RequestsTabNavigation.svelte';
 	import RequestsList from '$lib/components/requests/RequestsList.svelte';
 	import RequestsHeader from '$lib/components/requests/RequestsHeader.svelte';
 	import RequestsStats from '$lib/components/requests/RequestsStats.svelte';
 
-	// Types
-	type RequestWithType = (WorkRequest | MaterialRequest) & {
-		requestType: 'work' | 'material';
-		contractInfo?: any;
-		chatId?: string;
-	};
-
-	type StatusTab = 'active' | 'contracted' | 'completed' | 'on_hold' | 'cancelled';
-
 	// State
-	let currentUser: AuthUser | null = null;
-	let allRequests: RequestWithType[] = [];
-	let isLoading = true;
-	let errorMessage = '';
+	let currentUser: AuthUser | null = $state(null);
+	let allRequests: RequestWithType[] = $state([]);
+	let isLoading = $state(true);
+	let errorMessage = $state('');
 
 	// Filters and search
-	let activeTab: StatusTab = 'active';
-	let requestTypeFilter: 'all' | 'work' | 'material' = 'all';
-	let searchQuery = '';
+	let activeTab: StatusTab = $state('active');
+	let requestTypeFilter: 'all' | 'work' | 'material' = $state('all');
+	let searchQuery = $state('');
 
 	// Current user will be set in onMount
 
@@ -43,44 +41,46 @@
 	};
 
 	// Reactive filtered requests
-	$: filteredRequests = allRequests
-		.filter((req) => {
-			// Filter by status tab
-			const statusMatch = statusCategories[activeTab].includes(req.status);
-			if (!statusMatch) return false;
+	let filteredRequests = $derived(
+		allRequests
+			.filter((req) => {
+				// Filter by status tab
+				const statusMatch = statusCategories[activeTab].includes(req.status);
+				if (!statusMatch) return false;
 
-			// Filter by request type (for customers)
-			if (currentUser?.userType === 'customer' && requestTypeFilter !== 'all') {
-				if (requestTypeFilter !== req.requestType) return false;
-			}
+				// Filter by request type (for customers)
+				if (currentUser?.userType === 'customer' && requestTypeFilter !== 'all') {
+					if (requestTypeFilter !== req.requestType) return false;
+				}
 
-			// Filter by search query
-			if (searchQuery.trim()) {
-				const query = searchQuery.toLowerCase();
-				const titleMatch = req.title.toLowerCase().includes(query);
-				const descMatch = req.description.toLowerCase().includes(query);
-				const locationMatch = ('location' in req ? req.location : req.deliveryLocation)
-					.toLowerCase()
-					.includes(query);
-				return titleMatch || descMatch || locationMatch;
-			}
+				// Filter by search query
+				if (searchQuery.trim()) {
+					const query = searchQuery.toLowerCase();
+					const titleMatch = req.title.toLowerCase().includes(query);
+					const descMatch = req.description.toLowerCase().includes(query);
+					const locationMatch = ('location' in req ? req.location : req.deliveryLocation)
+						.toLowerCase()
+						.includes(query);
+					return titleMatch || descMatch || locationMatch;
+				}
 
-			return true;
-		})
-		.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+				return true;
+			})
+			.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+	);
 
 	// Stats for each tab
-	$: tabStats = {
+	let tabStats = $derived({
 		active: allRequests.filter((r) => statusCategories.active.includes(r.status)).length,
 		contracted: allRequests.filter((r) => statusCategories.contracted.includes(r.status)).length,
 		completed: allRequests.filter((r) => statusCategories.completed.includes(r.status)).length,
 		on_hold: allRequests.filter((r) => statusCategories.on_hold.includes(r.status)).length,
 		cancelled: allRequests.filter((r) => statusCategories.cancelled.includes(r.status)).length
-	};
+	});
 
 	onMount(() => {
 		// Get tab from URL params
-		const tab = $page.url.searchParams.get('tab') as StatusTab;
+		const tab = page.url.searchParams.get('tab') as StatusTab;
 		if (tab && Object.keys(statusCategories).includes(tab)) {
 			activeTab = tab;
 		}
@@ -108,31 +108,31 @@
 		errorMessage = '';
 
 		try {
-			let workRequests: any[] = [];
-			let materialRequests: any[] = [];
+			let workRequests: WorkRequest[] = [];
+			let materialRequests: MaterialRequest[] = [];
 
 			if (currentUser.userType === 'customer') {
 				// Customers see all their requests
-				[workRequests, materialRequests] = await Promise.all([
+				[workRequests, materialRequests] = (await Promise.all([
 					apiClient.getWorkRequestsByCustomerId(currentUser.id),
 					apiClient.getMaterialRequestsByCustomerId(currentUser.id)
-				]);
-			} else if (currentUser.userType === 'expert') {
+				])) as [WorkRequest[], MaterialRequest[]];
+			} else if (currentUser && currentUser.userType === 'expert') {
 				// Experts see only work requests they're associated with
-				const allWorkRequests = await apiClient.getWorkRequests();
+				const allWorkRequests = (await apiClient.getWorkRequests()) as WorkRequest[];
 				workRequests = allWorkRequests.filter(
 					(req) =>
-						req.interestedExperts?.includes(currentUser?.id) ||
-						req.invitedExperts?.includes(currentUser?.id) ||
+						req.interestedExperts?.includes(currentUser!.id) ||
+						req.invitedExperts?.includes(currentUser!.id) ||
 						req.status === 'contracted' // TODO: Add logic to check if they have a contract
 				);
 			} else if (currentUser.userType === 'supplier') {
 				// Suppliers see only material requests they're associated with
-				const allMaterialRequests = await apiClient.getMaterialRequests();
+				const allMaterialRequests = (await apiClient.getMaterialRequests()) as MaterialRequest[];
 				materialRequests = allMaterialRequests.filter(
 					(req) =>
-						req.interestedSuppliers?.includes(currentUser?.id) ||
-						req.invitedSuppliers?.includes(currentUser?.id) ||
+						req.interestedSuppliers?.includes(currentUser!.id) ||
+						req.invitedSuppliers?.includes(currentUser!.id) ||
 						req.status === 'contracted' // TODO: Add logic to check if they have a contract
 				);
 			}
@@ -145,9 +145,9 @@
 
 			// TODO: Fetch contract and chat information for each request
 			await enrichRequestsWithContractInfo();
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to fetch requests:', error);
-			errorMessage = error.data?.message || 'Failed to load requests';
+			errorMessage = error instanceof Error ? error.message : 'Failed to load requests';
 		} finally {
 			isLoading = false;
 		}
@@ -164,11 +164,11 @@
 			]);
 
 			// Create maps for quick lookup
-			const contractMap = new Map();
-			const chatMap = new Map();
+			const contractMap = new Map<string, Contract>();
+			const chatMap = new Map<string, string>();
 
 			// Map contracts by request ID
-			contracts.forEach((contract: any) => {
+			contracts.forEach((contract: Contract) => {
 				if (contract.workRequestId) {
 					contractMap.set(contract.workRequestId, contract);
 				}
@@ -178,8 +178,8 @@
 			});
 
 			// Map chats by participants (simplified approach)
-			chats.forEach((chat: any) => {
-				const otherParticipant = chat.participants.find((p: string) => p !== currentUser.id);
+			chats.forEach((chat: Chat) => {
+				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
 				if (otherParticipant) {
 					chatMap.set(otherParticipant, chat.id);
 				}
@@ -188,21 +188,23 @@
 			// Enrich requests with contract and chat info
 			allRequests = allRequests.map((request) => {
 				const contractInfo = contractMap.get(request.id);
-				let chatId = null;
+				let chatId: string | undefined;
 
 				// Find chat ID based on contract or interested users
 				if (contractInfo) {
 					const otherPartyId =
-						contractInfo.customerId === currentUser.id
+						contractInfo.customerId === currentUser?.id
 							? contractInfo.expertSupplierId
 							: contractInfo.customerId;
 					chatId = chatMap.get(otherPartyId);
-				} else if (currentUser.userType === 'customer') {
+				} else if (currentUser?.userType === 'customer') {
 					// For customers, find chat with interested users
 					const interestedUsers =
-						request.requestType === 'work'
+						'interestedExperts' in request || 'invitedExperts' in request
 							? [...(request.interestedExperts || []), ...(request.invitedExperts || [])]
-							: [...(request.interestedSuppliers || []), ...(request.invitedSuppliers || [])];
+							: 'interestedSuppliers' in request || 'invitedSuppliers' in request
+								? [...(request.interestedSuppliers || []), ...(request.invitedSuppliers || [])]
+								: [];
 
 					for (const userId of interestedUsers) {
 						if (chatMap.has(userId)) {
@@ -214,11 +216,15 @@
 					// For experts/suppliers, find chat with customer
 					chatId = chatMap.get(request.customerId);
 				}
-
+				const requestType: 'work' | 'material' =
+					'location' in request || 'interestedExperts' in request || 'invitedExperts' in request
+						? 'work'
+						: 'material';
 				return {
 					...request,
 					contractInfo,
-					chatId
+					chatId,
+					requestType
 				};
 			});
 		} catch (error) {
@@ -260,7 +266,7 @@
 
 			// Refresh requests after successful update
 			await fetchRequests();
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Failed to update request status:', error);
 			// You could show a toast notification here
 		}
@@ -276,7 +282,7 @@
 	<RequestsHeader
 		{currentUser}
 		totalRequests={allRequests.length}
-		on:createRequest={() => goto('/customer/create-request')}
+		onCreateRequest={() => goto('/customer/create-request')}
 	/>
 
 	<!-- Stats -->
@@ -289,9 +295,9 @@
 		{currentUser}
 		{requestTypeFilter}
 		{searchQuery}
-		on:tabChange={(e) => handleTabChange(e.detail)}
-		on:typeFilterChange={(e) => handleRequestTypeChange(e.detail)}
-		on:search={(e) => handleSearch(e.detail)}
+		onTabChange={(e) => handleTabChange(e)}
+		onTypeFilterChange={(e) => handleRequestTypeChange(e as 'all' | 'work' | 'material')}
+		onSearch={(e) => handleSearch(e)}
 	/>
 
 	<!-- Requests List -->
@@ -300,7 +306,7 @@
 		{currentUser}
 		{isLoading}
 		{errorMessage}
-		on:statusUpdate={(e) => handleStatusUpdate(e.detail.requestId, e.detail.newStatus)}
-		on:refresh={fetchRequests}
+		onStatusUpdate={(detail) => handleStatusUpdate(detail.requestId, detail.newStatus)}
+		onRefresh={fetchRequests}
 	/>
 </div>

@@ -1,24 +1,27 @@
 <!-- src/frontend/src/lib/components/requests/RequestCard.svelte -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { AuthUser } from '$lib/stores/auth';
+	import type { RequestWithType } from '$lib/types';
 
-	export let request: any;
-	export let currentUser: AuthUser | null;
+	interface Props {
+		request: RequestWithType;
+		currentUser: AuthUser | null;
+		onStatusUpdate?: (detail: { requestId: string; newStatus: string }) => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let { request, currentUser, onStatusUpdate }: Props = $props();
 
-	$: isWorkRequest = request.requestType === 'work';
-	$: isMaterialRequest = request.requestType === 'material';
-	$: isCustomer = currentUser?.userType === 'customer';
+	let isWorkRequest = $derived(request.requestType === 'work');
+	let isMaterialRequest = $derived(request.requestType === 'material');
+	let isCustomer = $derived(currentUser?.userType === 'customer');
 
 	function handleCardClick() {
 		goto(`/my-requests/${request.id}`);
 	}
 
 	function handleStatusUpdate(newStatus: string) {
-		dispatch('statusUpdate', {
+		onStatusUpdate?.({
 			requestId: request.id,
 			newStatus
 		});
@@ -61,8 +64,8 @@
 
 <div
 	class="group relative cursor-pointer rounded-xl border border-slate-600/30 bg-slate-700/50 p-5 shadow-lg transition-all duration-200 hover:bg-slate-600/50 hover:shadow-xl"
-	on:click={handleCardClick}
-	on:keypress={(e) => e.key === 'Enter' && handleCardClick()}
+	onclick={handleCardClick}
+	onkeypress={(e) => e.key === 'Enter' && handleCardClick()}
 	role="button"
 	tabindex="0"
 >
@@ -92,7 +95,7 @@
 		<div class="opacity-0 transition-opacity group-hover:opacity-100">
 			<button
 				class="rounded-lg border border-slate-600/50 bg-slate-700/80 p-1.5 text-slate-400 hover:text-slate-200"
-				on:click|stopPropagation={() => {}}
+				onclick={(e) => e.stopPropagation()}
 				aria-label="More actions"
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -130,7 +133,7 @@
 					d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
 				/>
 			</svg>
-			{isWorkRequest ? request.location : request.deliveryLocation}
+			{'location' in request ? request.location : request.deliveryLocation}
 		</p>
 	</div>
 
@@ -142,11 +145,11 @@
 	</div>
 
 	<!-- Material Items Preview (for material requests) -->
-	{#if isMaterialRequest && request.items && request.items.length > 0}
+	{#if isMaterialRequest && 'items' in request && request.items.length > 0}
 		<div class="mb-4">
 			<p class="mb-2 text-xs font-semibold text-amber-300">Items:</p>
 			<div class="space-y-1">
-				{#each request.items.slice(0, 2) as item}
+				{#each request.items.slice(0, 2) as item (item.itemName)}
 					<div class="flex justify-between text-xs">
 						<span class="text-slate-300">{truncateText(item.itemName, 20)}</span>
 						<span class="font-medium text-emerald-400">{item.quantity}</span>
@@ -174,7 +177,7 @@
 			{#if request.contractInfo}
 				<a
 					href="/contracts/{request.contractInfo.id}"
-					on:click|stopPropagation
+					onclick={(e) => e.stopPropagation()}
 					class="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
 					title="View contract"
 				>
@@ -194,7 +197,7 @@
 			{#if request.chatId}
 				<a
 					href="/chat/{request.chatId}"
-					on:click|stopPropagation
+					onclick={(e) => e.stopPropagation()}
 					class="flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/20 px-2 py-1 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-500/30"
 					title="Open chat"
 				>
@@ -214,7 +217,7 @@
 			{#if isCustomer && request.status === 'open'}
 				<a
 					href="/customer/edit-request/{request.id}"
-					on:click|stopPropagation
+					onclick={(e) => e.stopPropagation()}
 					class="flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/20 px-2 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/30"
 					title="Edit request"
 				>
