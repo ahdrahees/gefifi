@@ -19,7 +19,7 @@ steps:
       - '--allow-unauthenticated' # This makes your API public
       - '--platform=managed'
       - '--service-account=591968131600-compute@developer.gserviceaccount.com'
-      - '--set-secrets=JWT_SECRET=JWT_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,GCP_PROJECT_ID=GCP_PROJECT_ID:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,GCS_AUDIO_BUCKET_NAME=GCS_AUDIO_BUCKET_NAME:latest'
+      - '--set-secrets=JWT_SECRET=JWT_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,GCP_PROJECT_ID=GCP_PROJECT_ID:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,GCS_AUDIO_BUCKET_NAME=GCS_AUDIO_BUCKET_NAME:latest,ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest'
 images:
   - 'gcr.io/$PROJECT_ID/gefifi-backend:$COMMIT_SHA'
 options:
