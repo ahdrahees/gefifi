@@ -1,5 +1,4 @@
 <script lang="ts">
-	import AgentLogo from '$lib/components/agent/AgentLogo.svelte';
 	import { authStore } from '$lib/stores/auth';
 </script>
 
@@ -19,7 +18,13 @@
 		<div
 			class="relative flex h-32 w-32 items-center justify-center rounded-3xl border border-slate-700/30 bg-slate-800/30 p-6 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl transition-transform duration-500 hover:scale-105 hover:bg-slate-800/50"
 		>
-			<AgentLogo class="h-full w-full object-contain drop-shadow-lg" />
+			<!-- Agent Logo -->
+			<img
+				class="h-full w-full object-contain mix-blend-lighten drop-shadow-lg transition-opacity"
+				src="/agent/logo/agent-logo-with-bg.png"
+				alt="Agent Logo 1"
+			/>
+
 			<!-- Inner Glow -->
 			<div class="absolute inset-0 -z-10 rounded-3xl bg-emerald-500/20 blur-xl"></div>
 		</div>
