@@ -1,4 +1,9 @@
+// @ts-nocheck
+/// <reference lib="webworker" />
 // GEFIFI Service Worker
+/** @type {ServiceWorkerGlobalScope} */
+const sw = /** @type {any} */ (self);
+
 const CACHE_NAME = 'gefifi-v1';
 const STATIC_CACHE_URLS = [
 	'/',
@@ -10,7 +15,7 @@ const STATIC_CACHE_URLS = [
 ];
 
 // Install event - cache static assets
-self.addEventListener('install', (event) => {
+sw.addEventListener('install', (/** @type {ExtendableEvent} */ event) => {
 	console.log('[SW] Installing service worker');
 	event.waitUntil(
 		caches
@@ -23,11 +28,11 @@ self.addEventListener('install', (event) => {
 				console.error('[SW] Failed to cache static assets:', error);
 			})
 	);
-	self.skipWaiting();
+	sw.skipWaiting();
 });
 
 // Activate event - clean up old caches
-self.addEventListener('activate', (event) => {
+sw.addEventListener('activate', (/** @type {ExtendableEvent} */ event) => {
 	console.log('[SW] Activating service worker');
 	event.waitUntil(
 		caches.keys().then((cacheNames) => {
@@ -41,17 +46,17 @@ self.addEventListener('activate', (event) => {
 			);
 		})
 	);
-	self.clients.claim();
+	sw.clients.claim();
 });
 
-// Fetch event - serve from cache when offline
-self.addEventListener('fetch', (event) => {
+// Fetch event - serve from cache with improved strategies
+sw.addEventListener('fetch', (/** @type {FetchEvent} */ event) => {
 	// Skip non-GET requests and API requests
 	if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
 		return;
 	}
 
-	// Skip Firebase, external API requests, and localhost API requests
+	// Skip external services and development endpoints
 	if (
 		event.request.url.includes('firebaseapp.com') ||
 		event.request.url.includes('googleapis.com') ||
@@ -63,42 +68,62 @@ self.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	event.respondWith(
-		caches.match(event.request).then((response) => {
-			// Return cached version if available
-			if (response) {
-				return response;
-			}
-
-			// Otherwise, fetch from network
-			return fetch(event.request)
+	// Network First for navigation requests (HTML pages)
+	// This ensures users always get the latest version on refresh if online
+	if (event.request.mode === 'navigate') {
+		event.respondWith(
+			fetch(event.request)
 				.then((response) => {
-					// Don't cache non-successful responses
-					if (!response || response.status !== 200 || response.type !== 'basic') {
-						return response;
-					}
-
-					// Clone the response for caching
+					// Update cache with the latest version
 					const responseToCache = response.clone();
-
 					caches.open(CACHE_NAME).then((cache) => {
 						cache.put(event.request, responseToCache);
 					});
-
 					return response;
 				})
-				.catch(() => {
-					// Return offline page for navigation requests
-					if (event.request.mode === 'navigate') {
-						return caches.match('/offline.html');
+				.catch(async () => {
+					// Fallback to cache if offline
+					const cachedResponse = await caches.match(event.request);
+					if (cachedResponse) return cachedResponse;
+					const offlinePage = await caches.match('/offline.html');
+					return offlinePage || new Response('Offline', { status: 503 });
+				})
+		);
+		return;
+	}
+
+	// Stale-While-Revalidate for other static assets
+	// Serve immediately from cache, update cache from network in background
+	event.respondWith(
+		caches.match(event.request).then((cachedResponse) => {
+			const fetchedResponse = fetch(event.request)
+				.then((networkResponse) => {
+					// Only cache successful basic responses
+					if (
+						networkResponse &&
+						networkResponse.status === 200 &&
+						networkResponse.type === 'basic'
+					) {
+						const responseToCache = networkResponse.clone();
+						caches.open(CACHE_NAME).then((cache) => {
+							cache.put(event.request, responseToCache);
+						});
 					}
+					return networkResponse;
+				})
+				.catch((err) => {
+					console.error('[SW] Fetch failed for:', event.request.url, err);
+					// If fetch fails and there's no cache, we must return a Response
+					return new Response('Network Error', { status: 408 });
 				});
+
+			return cachedResponse || fetchedResponse;
 		})
 	);
 });
 
 // Handle background sync for offline actions
-self.addEventListener('sync', (event) => {
+sw.addEventListener('sync', (/** @type {any} */ event) => {
 	console.log('[SW] Background sync:', event.tag);
 
 	if (event.tag === 'background-sync') {
