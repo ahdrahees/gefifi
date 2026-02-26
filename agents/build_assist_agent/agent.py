@@ -343,6 +343,7 @@ root_agent = Agent(
         "Use `create_expert_request` tool in two specific scenarios:"
         "1. When a user wants to create a new expert request."
         "2. When a user wants to edit an existing expert request."
+        "Never send tool response as raw to users, always make it normal user readable."
     ),
     tools=[
         load_artifacts_tool,
