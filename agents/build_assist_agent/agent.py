@@ -54,12 +54,11 @@ MODEL_GEMINI_2_5_PRO: str = "gemini-2.5-pro"
 OPENROUTER_MODEL_DEEPSEEK: str = "openrouter/deepseek/deepseek-chat-v3.1:free"
 OPENROUTER_MODEL_Nova_2_Lite: str = "openrouter/amazon/nova-2-lite-v1:free"
 OPENROUTER_MODEL_GPT_OSS_120B: str = "openrouter/openai/gpt-oss-120b:free"
-
 OPENROUTER_MODEL_POLARIS_ALPHA: str = "openrouter/z-ai/glm-4.5-air:free"
-
 GROQ_QWEN3_32B: str = "groq/qwen/qwen3-32b"
-
 OPENROUTER_XIAOMI = "openrouter/xiaomi/mimo-v2-flash:free"
+
+MODEL_ENV_PASSED =  os.getenv("LLM_MODEL", "gemini/gemini-2.0-flash")
 
 AGENT_ENV: str = os.getenv("AGENT_ENV", "development")
 DEV_MODE: bool = AGENT_ENV == "development"
@@ -332,7 +331,7 @@ root_agent = Agent(
     # - OpenAI: "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"
     # - Claude: "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"
     # - Local: "ollama/llama3", "ollama/mistral"
-    model=LiteLlm(model=OPENROUTER_XIAOMI),
+    model=LiteLlm(model=MODEL_ENV_PASSED),
     description=(
         "help customer to create and edit expert/work request, material request, contract. "
         "Specialized assistant for CUSTOMERS on the GEFIFI construction platform. "
