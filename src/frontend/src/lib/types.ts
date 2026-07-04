@@ -39,7 +39,8 @@ export type UserProfile = {
  */
 export type AuthUser = {
 	id: string;
-	email: string;
+	email?: string;
+	phoneNumber?: string;
 	userType: 'customer' | 'expert' | 'supplier';
 	profile: UserProfile;
 	createdAt: string;
@@ -409,7 +410,8 @@ export type RequestWithType = (WorkRequest | MaterialRequest) & {
  */
 export interface UserProfileUI {
 	id: string;
-	email: string;
+	email?: string;
+	phoneNumber?: string;
 	userType: 'customer' | 'expert' | 'supplier' | string;
 	profile?: {
 		fullName?: string;

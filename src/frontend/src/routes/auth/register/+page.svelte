@@ -11,14 +11,25 @@
 	let selectedUserType: 'customer' | 'expert' | 'supplier' | null = $state(null);
 
 	// Form State
-	let email = $state('');
-	let password = $state('');
-	let confirmPassword = $state('');
+	let phoneNumber = $state('');
+	let otpCode = $state('');
+	let otpSent = $state(false);
+	let cooldownSeconds = $state(0);
+	let timerInterval: any = null;
 
 	let isLoading = $state(false);
 	let errorMessage: string | null = $state(null);
 	let googleIsLoading = false;
 	let isAlreadySelected = $state(false);
+
+	// Sanitize phone number and OTP inputs reactively
+	$effect(() => {
+		phoneNumber = phoneNumber.replace(/[^\d+]/g, '');
+	});
+
+	$effect(() => {
+		otpCode = otpCode.replace(/\D/g, '').slice(0, 6);
+	});
 
 	const userTypes = [
 		{
@@ -43,7 +54,33 @@
 		errorMessage = null; // Clear error when a selection is made
 	}
 
-	async function handleRegister() {
+	function startCooldown(seconds: number = 60) {
+		cooldownSeconds = seconds;
+		if (timerInterval) clearInterval(timerInterval);
+		timerInterval = setInterval(() => {
+			if (cooldownSeconds > 0) {
+				cooldownSeconds--;
+			} else {
+				clearInterval(timerInterval);
+			}
+		}, 1000);
+	}
+
+	function formatPhoneNumber(input: string): string {
+		const cleaned = input.trim().replace(/[^\d+]/g, '');
+		if (cleaned.startsWith('+')) {
+			return cleaned;
+		}
+		if (cleaned.startsWith('91') && cleaned.length === 12) {
+			return '+' + cleaned;
+		}
+		if (cleaned.length === 10) {
+			return '+91' + cleaned;
+		}
+		return '+91' + cleaned;
+	}
+
+	async function handleSendOtp() {
 		isLoading = true;
 		errorMessage = null;
 
@@ -52,25 +89,59 @@
 			isLoading = false;
 			return;
 		}
-		if (password !== confirmPassword) {
-			errorMessage = 'Passwords do not match.';
+
+		phoneNumber = formatPhoneNumber(phoneNumber);
+
+		const PHONE_REGEX = /^\+[1-9]\d{1,14}$/;
+		if (!PHONE_REGEX.test(phoneNumber)) {
+			errorMessage = 'Please enter a valid E.164 phone number (e.g. +919999999999). If using another country code, prepend it with + (e.g. +1).';
 			isLoading = false;
 			return;
 		}
 
 		try {
-			await authStore.register({
-				email,
-				password,
-				userType: selectedUserType,
-				profile: {} // Profile is now collected on the complete-profile page
-			});
-			goto('/home');
-		} catch (error: unknown) {
-			errorMessage =
-				error instanceof Error
-					? error.message
-					: 'An unexpected error occurred during registration.';
+			const res = await authStore.sendOtp(phoneNumber);
+			if (res.success) {
+				otpSent = true;
+				startCooldown(60);
+			} else {
+				errorMessage = res.message;
+				if (res.cooldownRemaining) {
+					startCooldown(res.cooldownRemaining);
+				}
+			}
+		} catch (error: any) {
+			errorMessage = error.message || 'Failed to send OTP.';
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	async function handleVerifyAndRegister() {
+		isLoading = true;
+		errorMessage = null;
+
+		if (!otpCode || otpCode.length !== 6) {
+			errorMessage = 'Please enter a valid 6-digit OTP code.';
+			isLoading = false;
+			return;
+		}
+
+		if (!selectedUserType) {
+			errorMessage = 'Please select a user type to continue.';
+			isLoading = false;
+			return;
+		}
+
+		try {
+			const result = await authStore.verifyOtp(phoneNumber, otpCode, selectedUserType);
+			if (result.isNewUser) {
+				goto('/auth/complete-profile', { replaceState: true });
+			} else {
+				goto('/home', { replaceState: true });
+			}
+		} catch (error: any) {
+			errorMessage = error.message || 'Verification failed. Please try again.';
 		} finally {
 			isLoading = false;
 		}
@@ -150,6 +221,7 @@
 
 		return () => {
 			if (unsubscribeAuth) unsubscribeAuth();
+			if (timerInterval) clearInterval(timerInterval);
 		};
 	});
 </script>
@@ -216,71 +288,102 @@
 					class="space-y-6"
 					onsubmit={(e) => {
 						e.preventDefault();
-						handleRegister();
+						if (otpSent) {
+							handleVerifyAndRegister();
+						} else {
+							handleSendOtp();
+						}
 					}}
 				>
 					<div>
-						<label for="email" class="block text-sm leading-6 font-medium text-slate-300"
-							>Email address</label
+						<label for="phoneNumber" class="block text-sm leading-6 font-medium text-slate-300"
+							>Phone Number</label
 						>
-						<div class="mt-2">
+						<div class="mt-2 flex gap-2">
 							<input
-								id="email"
-								name="email"
-								type="email"
-								autocomplete="email"
+								id="phoneNumber"
+								name="phoneNumber"
+								type="tel"
+								autocomplete="tel"
 								required
-								bind:value={email}
-								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
+								placeholder="e.g. +919999999999"
+								disabled={otpSent || isLoading}
+								bind:value={phoneNumber}
+								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 px-3 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset disabled:opacity-60"
 							/>
-						</div>
-					</div>
-					<div>
-						<label for="password" class="block text-sm leading-6 font-medium text-slate-300"
-							>Password</label
-						>
-						<div class="mt-2">
-							<input
-								id="password"
-								name="password"
-								type="password"
-								autocomplete="new-password"
-								required
-								minlength="6"
-								bind:value={password}
-								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
-							/>
-						</div>
-					</div>
-					<div>
-						<label for="confirmPassword" class="block text-sm leading-6 font-medium text-slate-300"
-							>Confirm Password</label
-						>
-						<div class="mt-2">
-							<input
-								id="confirmPassword"
-								name="confirmPassword"
-								type="password"
-								autocomplete="new-password"
-								required
-								bind:value={confirmPassword}
-								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
-							/>
+							{#if otpSent}
+								<button
+									type="button"
+									onclick={() => { otpSent = false; otpCode = ''; }}
+									class="rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-600"
+								>
+									Change
+								</button>
+							{/if}
 						</div>
 					</div>
 
+					{#if otpSent}
+						<div>
+							<label for="otpCode" class="block text-sm leading-6 font-medium text-slate-300"
+								>One-Time Password (OTP)</label
+							>
+							<div class="mt-2">
+								<input
+									id="otpCode"
+									name="otpCode"
+									type="text"
+									inputmode="numeric"
+									required
+									placeholder="Enter 6-digit code"
+									disabled={isLoading}
+									bind:value={otpCode}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 px-3 text-center text-lg font-mono tracking-widest text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
+								/>
+							</div>
+							<p class="mt-2 text-xs text-slate-400">
+								{#if cooldownSeconds > 0}
+									Resend OTP in {cooldownSeconds}s
+								{:else}
+									<button
+										type="button"
+										onclick={handleSendOtp}
+										class="text-emerald-400 underline hover:text-emerald-300"
+									>
+										Resend OTP
+									</button>
+								{/if}
+							</p>
+						</div>
+					{/if}
+
 					<div class="pt-4">
-						<button
-							type="submit"
-							disabled={isLoading}
-							class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:opacity-50"
-						>
-							{#if isLoading}
-								<span>Creating Account...</span>
-							{:else}
-								Create Account & Continue
-							{/if}
-						</button>
+						{#if !otpSent}
+							<button
+								type="button"
+								onclick={handleSendOtp}
+								disabled={isLoading || !phoneNumber}
+								class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:opacity-50"
+							>
+								{#if isLoading}
+									<span>Sending OTP...</span>
+								{:else}
+									Send Verification Code
+								{/if}
+							</button>
+						{:else}
+							<button
+								type="submit"
+								disabled={isLoading || !otpCode}
+								class="flex w-full justify-center rounded-lg bg-emerald-600 px-3 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:opacity-50"
+							>
+								{#if isLoading}
+									<span>Verifying...</span>
+								{:else}
+									Verify & Create Account
+								{/if}
+							</button>
+						{/if}
 					</div>
 				</form>
 			</div>

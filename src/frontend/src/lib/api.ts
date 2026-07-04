@@ -15,6 +15,7 @@ if (!API_BASE_URL && browser) {
 // Custom Error class for API errors
 export interface ApiErrorData {
 	message: string;
+	cooldownRemaining?: number;
 	error?: any; // Can be more specific if backend provides consistent error shapes
 	// For example, if backend sends { message: "...", errors: { field: "message" } }
 	// errors?: Record<string, string>;
@@ -119,7 +120,7 @@ interface GoogleAuthResponse extends AuthResponse {
 interface GoogleLoginPayload {
 	mockGoogleUser?: any;
 	googleTokenId?: string;
-	userTypeForNewGoogleUser?: string;
+	userTypeForNewUser?: string;
 	profileForNewGoogleUser?: any;
 }
 
@@ -249,6 +250,7 @@ type ContractStatusUpdatePayload = {
 interface UserProfileUpdateData {
 	fullName?: string;
 	phoneNumber?: string;
+	email?: string; // Top-level email (when signing up via phone)
 	location?: string;
 	expertise?: string;
 	experience?: string;
@@ -262,14 +264,26 @@ interface UpdateProfileResponse {
 	message: string;
 }
 
+interface SendOtpResponse {
+	message: string;
+	cooldownRemaining?: number;
+}
+
+interface VerifyOtpResponse {
+	user: AuthUser;
+	token: string;
+	isNewUser: boolean;
+	message?: string;
+}
+
 // API client object
 const apiClient = {
 	// --- Authentication ---
-	login: (credentials: LoginCredentials): Promise<AuthResponse> => {
-		return request<AuthResponse>('/auth/login', 'POST', credentials);
+	sendOtp: (phoneNumber: string): Promise<SendOtpResponse> => {
+		return request<SendOtpResponse>('/auth/send-otp', 'POST', { phoneNumber });
 	},
-	register: (userData: RegisterUserData): Promise<AuthResponse> => {
-		return request<AuthResponse>('/auth/register', 'POST', userData);
+	verifyOtp: (phoneNumber: string, otpCode: string, userTypeForNewUser?: string): Promise<VerifyOtpResponse> => {
+		return request<VerifyOtpResponse>('/auth/verify-otp', 'POST', { phoneNumber, otpCode, userTypeForNewUser });
 	},
 	getMe: (): Promise<AuthUser> => {
 		return request<AuthUser>('/auth/me', 'GET', undefined, true);

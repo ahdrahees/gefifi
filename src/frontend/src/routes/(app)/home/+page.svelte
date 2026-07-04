@@ -66,10 +66,10 @@
 		}
 
 		if (otherUser.userType === 'supplier') {
-			return otherUser.profile?.companyName || otherUser.email.split('@')[0] || 'Supplier';
+			return otherUser.profile?.companyName || otherUser.email?.split('@')[0] || otherUser.phoneNumber || 'Supplier';
 		}
 		// Default for 'customer', 'expert', and others
-		return otherUser.profile?.fullName || otherUser.email.split('@')[0] || 'User';
+		return otherUser.profile?.fullName || otherUser.email?.split('@')[0] || otherUser.phoneNumber || 'User';
 	}
 
 	async function fetchData() {

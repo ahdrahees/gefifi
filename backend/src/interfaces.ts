@@ -34,14 +34,29 @@ export interface UserProfile {
  * Represents a user in the system. This is the main user object.
  */
 export interface User extends Identifiable {
-	email: string; // Unique, used for login
-	password?: string; // Hashed password, for email/password auth
+	email?: string; // Optional (e.g. if signed up via phone number)
+	phoneNumber?: string; // Top-level phone number for OTP verification
+	password?: string; // Hashed password (unused/deprecated with OTP but kept for compatibility)
 	googleId?: string; // Unique ID from Google Sign-In
 	userType: 'customer' | 'expert' | 'supplier';
 	profile: UserProfile;
 	createdAt: string; // ISO 8601 date string
 	updatedAt: string; // ISO 8601 date string
 	isActive?: boolean; // For soft deletes or deactivation
+}
+
+/**
+ * Represents an OTP session for phone login/registration.
+ */
+export interface OtpSession extends Identifiable {
+	phoneNumber: string; // E.164 formatted phone number
+	createdAt: string; // ISO timestamp when OTP session was created
+	expiresAt: string; // ISO timestamp when current OTP expires
+	lastSentAt: string; // ISO timestamp when OTP was last sent (for cooldown checks)
+	attempts: number; // Verification attempts count
+	resendCount: number; // Resends count
+	twilioVerificationSid?: string; // Twilio Verify verification SID for cancellation/tracking
+	twilioStatus?: string; // Last known Twilio Verify verification status
 }
 
 // --- Core Application Data Types ---

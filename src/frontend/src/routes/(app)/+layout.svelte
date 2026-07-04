@@ -151,7 +151,9 @@
 								currentAuth.user.profile?.fullName ||
 								'User'}
 						</p>
-						<p class="truncate text-xs text-slate-400">{currentAuth.user.email}</p>
+						<p class="truncate text-xs text-slate-400">
+							{currentAuth.user.email || currentAuth.user.phoneNumber || ''}
+						</p>
 						<p class="text-xs text-amber-400 capitalize">{currentAuth.user.userType}</p>
 					</div>
 				</a>

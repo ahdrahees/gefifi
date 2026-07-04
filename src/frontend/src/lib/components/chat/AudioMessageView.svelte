@@ -41,9 +41,13 @@
 			console.log(`[AudioMessageView] Successfully received signed URL.`);
 		} catch (error: unknown) {
 			console.error('[AudioMessageView] Failed to get signed URL:', error);
-			if (error.code === 'functions/permission-denied') {
+			const errorCode =
+				typeof error === 'object' && error !== null && 'code' in error
+					? (error as { code?: string }).code
+					: undefined;
+			if (errorCode === 'functions/permission-denied') {
 				errorMessage = 'Permission denied.';
-			} else if (error.code === 'functions/not-found') {
+			} else if (errorCode === 'functions/not-found') {
 				errorMessage = 'Audio file not found.';
 			} else {
 				errorMessage = 'Could not load audio.';

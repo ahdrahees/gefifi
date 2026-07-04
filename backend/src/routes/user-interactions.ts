@@ -75,7 +75,7 @@ router.post(
 				if (predefinedMessageKey === 'CUSTOMER_INTEREST_IN_PROVIDER') {
 					// Ensure targetUser is defined before accessing profile
 					const targetName =
-						targetUser?.profile?.fullName || targetUser?.email.split('@')[0] || 'User';
+						targetUser?.profile?.fullName || targetUser?.email?.split('@')[0] || 'User';
 					finalMessageContent = `Hi ${targetName}, I'm interested in your services.`;
 				} else if (predefinedMessageKey === 'PROVIDER_INTEREST_IN_WORK_REQUEST') {
 					if (!workRequest) {

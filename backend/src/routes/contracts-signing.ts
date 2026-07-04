@@ -77,7 +77,7 @@ router.put(
                             // Get user profile for display name
                             const userProfile = await usersDB.findById(user.id) as any;
                             const authorDisplayName =
-                                userProfile?.profile?.fullName || userProfile?.email.split('@')[0] || 'User';
+                                userProfile?.profile?.fullName || userProfile?.email?.split('@')[0] || 'User';
 
                             // Create signature comment
                             const signatureCommentData: ContractComment = {
@@ -219,7 +219,7 @@ router.put(
                             // Get user profile for display name
                             const userProfile = await usersDB.findById(user.id) as any;
                             const authorDisplayName =
-                                userProfile?.profile?.fullName || userProfile?.email.split('@')[0] || 'User';
+                                userProfile?.profile?.fullName || userProfile?.email?.split('@')[0] || 'User';
 
                             // Create signature comment
                             const signatureCommentData: ContractComment = {

@@ -3,7 +3,6 @@
 	import type { Contract } from '$lib/types';
 	import apiClient, { type ContractData } from '$lib/api';
 	import FileUpload from '$lib/components/FileUpload.svelte';
-	import { writable } from 'svelte/store';
 
 	interface Props {
 		workRequestId?: string | undefined;
@@ -74,8 +73,8 @@
 	});
 
 	// Attachment handling
-	let selectedFiles = $state(writable<File[]>([]));
-	let removedExistingAttachments = $state(writable<string[]>([]));
+	let selectedFiles = $state<File[]>([]);
+	let removedExistingAttachments = $state<string[]>([]);
 	let isUploadingFiles = $state(false);
 
 	// UI state
@@ -105,7 +104,7 @@
 	// Reset removed attachments store when component loads with existing contract
 	$effect(() => {
 		if (existingContract) {
-			removedExistingAttachments.set([]);
+			removedExistingAttachments = [];
 		}
 	});
 
@@ -128,7 +127,7 @@
 		}
 
 		// Client-side validation for file count
-		const fileCount = $selectedFiles.length;
+		const fileCount = selectedFiles.length;
 		if (fileCount > 15) {
 			errorMessage = 'Maximum 15 files allowed per contract.';
 			isLoading = false;
@@ -186,7 +185,7 @@
 				// Enhanced attachment management for contract editing
 				// Calculate which existing attachments to keep (not removed by user)
 				const existingAttachmentsToKeep = existingAttachments.filter(
-					(attachment) => !$removedExistingAttachments.includes(attachment.fileName)
+					(attachment) => !removedExistingAttachments.includes(attachment.fileName)
 				);
 
 				// Upload new attachments first if any files are selected
@@ -200,7 +199,7 @@
 					isUploadingFiles = true;
 					try {
 						const formData = new FormData();
-						$selectedFiles.forEach((file) => {
+						selectedFiles.forEach((file) => {
 							formData.append('files', file);
 						});
 
@@ -222,7 +221,7 @@
 				// Send explicit attachment management data with new attachments included
 				contractData.attachmentManagement = {
 					keepExisting: existingAttachmentsToKeep,
-					removeExisting: $removedExistingAttachments,
+					removeExisting: removedExistingAttachments,
 					hasNewAttachments: fileCount > 0,
 					newAttachments: newAttachments
 				};
@@ -245,7 +244,7 @@
 					isUploadingFiles = true;
 					try {
 						const formData = new FormData();
-						$selectedFiles.forEach((file) => {
+						selectedFiles.forEach((file) => {
 							formData.append('files', file);
 						});
 
@@ -291,7 +290,7 @@
 		termsAndConditions = '';
 		warrantyPeriod = '';
 		cancellationPolicy = '';
-		selectedFiles.set([]);
+		selectedFiles = [];
 	}
 </script>
 

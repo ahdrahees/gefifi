@@ -11,7 +11,8 @@
 	// Define UserProfile type
 	type UserProfile = {
 		id: string;
-		email: string;
+		email?: string;
+		phoneNumber?: string;
 		userType: 'customer' | 'expert' | 'supplier' | 'admin' | string;
 		profile?: {
 			fullName?: string;

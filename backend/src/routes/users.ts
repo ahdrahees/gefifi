@@ -86,7 +86,7 @@ router.put(
 	async (req: AuthenticatedRequest, res: Response) => {
 		try {
 			const user = req.user as JwtPayload;
-			const profileData: Partial<UserProfile> = req.body;
+			const { email, phoneNumber, ...otherProfileFields } = req.body;
 			const avatarFile = req.file;
 
 			// Fetch the latest user data to ensure we're not overwriting anything unintentionally
@@ -95,8 +95,50 @@ router.put(
 				return res.status(404).json({ message: 'User not found.' });
 			}
 
+			const allUsers = await usersDB.getAll();
+			const PHONE_REGEX = /^\+[1-9]\d{1,14}$/;
+			const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+			let updatedTopLevelFields: Partial<Omit<User, 'id'>> = {};
+
+			// 1. Phone number validation and uniqueness check
+			if (phoneNumber !== undefined && phoneNumber !== existingUser.phoneNumber) {
+				if (phoneNumber !== '') {
+					if (!PHONE_REGEX.test(phoneNumber)) {
+						return res.status(400).json({ message: 'A valid E.164 phone number is required (e.g. +919999999999).' });
+					}
+					const isDuplicatePhone = allUsers.some(
+						(u: User) => u.phoneNumber === phoneNumber && u.id !== existingUser.id
+					);
+					if (isDuplicatePhone) {
+						return res.status(409).json({ message: 'This phone number is already linked to another account.' });
+					}
+					updatedTopLevelFields.phoneNumber = phoneNumber;
+				} else {
+					updatedTopLevelFields.phoneNumber = undefined;
+				}
+			}
+
+			// 2. Email validation and uniqueness check
+			if (email !== undefined && email.toLowerCase() !== (existingUser.email || '').toLowerCase()) {
+				if (email !== '') {
+					if (!EMAIL_REGEX.test(email)) {
+						return res.status(400).json({ message: 'A valid email address is required.' });
+					}
+					const isDuplicateEmail = allUsers.some(
+						(u: User) => u.email && u.email.toLowerCase() === email.toLowerCase() && u.id !== existingUser.id
+					);
+					if (isDuplicateEmail) {
+						return res.status(409).json({ message: 'This email address is already linked to another account.' });
+					}
+					updatedTopLevelFields.email = email.toLowerCase();
+				} else {
+					updatedTopLevelFields.email = undefined;
+				}
+			}
+
 			// Validate the provided profile data against the user's type
-			const profileValidation = validateProfileData(profileData, user.userType);
+			const profileValidation = validateProfileData(otherProfileFields, user.userType);
 			if (!profileValidation.valid) {
 				return res
 					.status(400)
@@ -108,6 +150,15 @@ router.put(
 				...existingUser.profile,
 				...profileValidation.validatedProfile
 			};
+
+			// Sync phoneNumber into profile for backward compatibility
+			if (phoneNumber !== undefined) {
+				if (phoneNumber !== '') {
+					updatedProfile.phoneNumber = phoneNumber;
+				} else {
+					delete updatedProfile.phoneNumber;
+				}
+			}
 
 			// Handle avatar upload if provided
 			if (avatarFile) {
@@ -126,6 +177,7 @@ router.put(
 
 			const now = new Date().toISOString();
 			const updates = {
+				...updatedTopLevelFields,
 				profile: updatedProfile,
 				updatedAt: now
 			};
