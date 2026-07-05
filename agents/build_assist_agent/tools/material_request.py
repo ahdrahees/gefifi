@@ -81,6 +81,7 @@ async def create_material_request(
     delivery_date: Optional[str] = None,
     attachment_list: Optional[list[str]] = None,
     expert_request_id_to_link: Optional[str] = None,
+    opt_expiration_date: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Create a material request post for a customer
@@ -95,6 +96,7 @@ async def create_material_request(
         delivery_date (Optional[str]): The delivery date of the material request. Defaults to None.
         attachment_list (Optional[list[str]]): The list of filenames of attachments for the material request. Supported file types are pdf, doc, docx, xls, xlsx, dwg, dxf, png, jpeg, jpg, webp, and gif. Defaults to None.
         expert_request_id_to_link (Optional[str]): The ID of the expert request to link with this material request. The expert/work request must be in `open` or `contracted` status. Defaults to None.
+        opt_expiration_date (Optional[str]): Optional request expiration date or deadline (YYYY-MM-DD format). Defaults to None.
 
     Returns:
         dict: A dictionary containing the following:
@@ -105,6 +107,16 @@ async def create_material_request(
     # Initialize to None to ensure the variable is always bound
     created_material_request: MaterialRequest | None = None
     try:
+        if opt_expiration_date:
+            try:
+                from datetime import datetime
+                parsed_date = datetime.strptime(opt_expiration_date, "%Y-%m-%d")
+                today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                if parsed_date < today:
+                    return {"status": "error", "error_message": "Expiration date cannot be in the past."}
+            except ValueError:
+                return {"status": "error", "error_message": "Expiration date must be a valid date in YYYY-MM-DD format."}
+
         token: str = tool_context.state.get("auth_token")
 
         items: list[dict[str, str]] = [
@@ -127,6 +139,8 @@ async def create_material_request(
             material_request_data["deliveryDate"] = delivery_date
         if expert_request_id_to_link is not None:
             material_request_data["linkedWorkRequestId"] = expert_request_id_to_link
+        if opt_expiration_date is not None:
+            material_request_data["expirationDate"] = opt_expiration_date
 
         # creating material request
         async with httpx.AsyncClient(timeout=30.0) as client:

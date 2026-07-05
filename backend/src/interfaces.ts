@@ -73,6 +73,7 @@ export interface WorkRequest extends Identifiable {
 	expectedCost?: number;
 	timeline?: string;
 	materialsSuggested?: string;
+	expirationDate?: string; // Optional request expiration date/deadline (ISO string or YYYY-MM-DD)
 	status:
 		| 'open'
 		| 'in_discussion'
@@ -82,7 +83,8 @@ export interface WorkRequest extends Identifiable {
 		| 'completed'
 		| 'cancelled'
 		| 'closed'
-		| 'disputed';
+		| 'disputed'
+		| 'expired';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
@@ -114,12 +116,13 @@ export interface MaterialRequest extends Identifiable {
 	deliveryDate?: string; // Optional preferred delivery date
 	linkedWorkRequestId?: string; // Optional link to an existing WorkRequest
 	attachments?: Attachment[]; // Array of attached files
+	expirationDate?: string; // Optional request expiration date/deadline (ISO string or YYYY-MM-DD)
 	items: {
 		itemName: string;
 		quantity: string; // e.g., '10 bags', '500 ft'
 		notes?: string; // e.g., 'Grade 43'
 	}[];
-	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled';
+	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled' | 'expired';
 	createdAt: string;
 	updatedAt: string;
 	interestedSuppliers?: string[]; // List of supplier User IDs who showed interest

@@ -13,7 +13,8 @@
 		expectedCost: undefined as number | undefined,
 		timeline: '',
 		materialsSuggested: '',
-		category: 'General Construction' // Default category
+		category: 'General Construction', // Default category
+		expirationDate: ''
 	});
 
 	let imageFiles: FileList | null = null;
@@ -178,7 +179,23 @@
 			return;
 		}
 
-		const finalWorkRequestData = { ...workRequestData };
+		if (workRequestData.expirationDate) {
+			const todayStart = new Date();
+			todayStart.setHours(0, 0, 0, 0);
+			if (new Date(workRequestData.expirationDate).getTime() < todayStart.getTime()) {
+				formMessage = {
+					type: 'error',
+					text: 'Expiration date cannot be in the past.'
+				};
+				isLoading = false;
+				return;
+			}
+		}
+
+		const finalWorkRequestData: any = { ...workRequestData };
+		if (!finalWorkRequestData.expirationDate) {
+			delete finalWorkRequestData.expirationDate;
+		}
 
 		try {
 			if (imageFiles && imageFiles.length > 0) {
@@ -219,7 +236,8 @@
 				expectedCost: undefined,
 				timeline: '',
 				materialsSuggested: '',
-				category: 'General Construction'
+				category: 'General Construction',
+				expirationDate: ''
 			};
 			imageFiles = null;
 			imagePreviews = [];
@@ -349,7 +367,7 @@
 			/>
 		</div>
 
-		<div class="grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-2">
+		<div class="grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-3">
 			<div>
 				<label for="expectedCost" class="mb-1.5 block text-sm font-medium text-sky-300"
 					>Expected Budget (₹, Optional)</label
@@ -373,6 +391,17 @@
 					bind:value={workRequestData.timeline}
 					class="w-full rounded-lg border border-slate-500 bg-slate-600/70 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
 					placeholder="e.g., 2 weeks, Within 1 month"
+				/>
+			</div>
+			<div>
+				<label for="expirationDate" class="mb-1.5 block text-sm font-medium text-sky-300"
+					>Expiration Date (Optional)</label
+				>
+				<input
+					type="date"
+					id="expirationDate"
+					bind:value={workRequestData.expirationDate}
+					class="w-full rounded-lg border border-slate-500 bg-slate-600/70 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
 				/>
 			</div>
 		</div>

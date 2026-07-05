@@ -37,7 +37,8 @@
 		contracted: ['contracted', 'signed', 'in_progress'],
 		completed: ['completed'],
 		on_hold: ['disputed', 'awaiting_signatures', 'revision_requested'],
-		cancelled: ['cancelled', 'terminated']
+		cancelled: ['cancelled', 'terminated'],
+		expired: ['expired']
 	};
 
 	// Reactive filtered requests
@@ -75,7 +76,8 @@
 		contracted: allRequests.filter((r) => statusCategories.contracted.includes(r.status)).length,
 		completed: allRequests.filter((r) => statusCategories.completed.includes(r.status)).length,
 		on_hold: allRequests.filter((r) => statusCategories.on_hold.includes(r.status)).length,
-		cancelled: allRequests.filter((r) => statusCategories.cancelled.includes(r.status)).length
+		cancelled: allRequests.filter((r) => statusCategories.cancelled.includes(r.status)).length,
+		expired: allRequests.filter((r) => statusCategories.expired.includes(r.status)).length
 	});
 
 	onMount(() => {

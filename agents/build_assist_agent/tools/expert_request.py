@@ -72,7 +72,7 @@ def create_expert_request_tool_guardrail(
     # opt_timeline = args.get("opt_timeline", "")
     # opt_materials_suggested = args.get("opt_materials_suggested", "")
     image_filenames: Optional[list[str]] = args.get("image_filenames")
-    category = args.get("category", "")
+    opt_expiration_date = args.get("opt_expiration_date", None)
 
     error_message: str = ""
 
@@ -89,6 +89,20 @@ def create_expert_request_tool_guardrail(
         error_message = attach_string(
             error_message, "Expected cost must be non-negative"
         )
+
+    if opt_expiration_date:
+        try:
+            from datetime import datetime
+            parsed_date = datetime.strptime(opt_expiration_date, "%Y-%m-%d")
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            if parsed_date < today:
+                error_message = attach_string(
+                    error_message, "Expiration date cannot be in the past"
+                )
+        except ValueError:
+            error_message = attach_string(
+                error_message, "Expiration date must be a valid date in YYYY-MM-DD format"
+            )
 
     if image_filenames:
         for filename in image_filenames:
@@ -127,6 +141,7 @@ async def create_expert_request(
     opt_timeline: Optional[str] = None,
     opt_materials_suggested: Optional[str] = None,
     image_filenames: Optional[list[str]] = None,
+    opt_expiration_date: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Create an expert/work request post for a customer.
@@ -146,6 +161,7 @@ async def create_expert_request(
         opt_timeline (str, optional): Optional timeline for the work. Defaults to None.
         opt_materials_suggested (str, optional): Optional materials suggested for the work. Defaults to None.
         image_filenames (list[str], optional): Optional images filenames related to the request Maximum 3 (Highly recommended to provide images that are relevant to the request). Only provide image files if available. Defaults to None. Supported files ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".avif"
+        opt_expiration_date (str, optional): Optional request expiration date or deadline (YYYY-MM-DD format). Defaults to None.
 
     Returns:
         dict: A dictionary containing the following:
@@ -199,7 +215,7 @@ async def create_expert_request(
 
             images_urls = [response["filePath"] for response in upload_file_responses]
 
-        final_expert_request: dict[str, str | list[str] | float] = {
+        final_expert_request: dict[str, Any] = {
             "title": title,
             "description": description,
             "location": location_or_address,
@@ -213,6 +229,8 @@ async def create_expert_request(
             final_expert_request["timeline"] = opt_timeline
         if opt_materials_suggested is not None:
             final_expert_request["materialsSuggested"] = opt_materials_suggested
+        if opt_expiration_date is not None:
+            final_expert_request["expirationDate"] = opt_expiration_date
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {

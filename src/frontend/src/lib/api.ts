@@ -133,6 +133,7 @@ interface WorkRequestData {
 	timeline?: string;
 	materialsSuggested?: string;
 	category?: string;
+	expirationDate?: string;
 }
 export interface WorkRequestResponse {
 	id: string;
@@ -147,6 +148,7 @@ export interface MaterialRequestData {
 	deliveryLocation: string;
 	deliveryDate?: string;
 	linkedWorkRequestId?: string;
+	expirationDate?: string;
 	items: {
 		itemName: string;
 		quantity: string;

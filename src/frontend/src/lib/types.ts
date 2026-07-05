@@ -64,6 +64,7 @@ export type WorkRequest = {
 	expectedCost?: number;
 	timeline?: string;
 	materialsSuggested?: string;
+	expirationDate?: string;
 	status:
 	| 'open'
 	| 'in_discussion'
@@ -73,7 +74,8 @@ export type WorkRequest = {
 	| 'completed'
 	| 'cancelled'
 	| 'closed'
-	| 'disputed';
+	| 'disputed'
+	| 'expired';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
@@ -107,12 +109,13 @@ export type MaterialRequest = {
 	deliveryDate?: string;
 	linkedWorkRequestId?: string;
 	attachments?: Attachment[];
+	expirationDate?: string;
 	items: {
 		itemName: string;
 		quantity: string;
 		notes?: string;
 	}[];
-	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled';
+	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled' | 'expired';
 	createdAt: string;
 	updatedAt: string;
 	interestedSuppliers?: string[]; // Users who showed interest
@@ -441,4 +444,4 @@ export type EnrichedChat = Chat & {
 /**
  * Status tabs for requests
  */
-export type StatusTab = 'active' | 'contracted' | 'completed' | 'on_hold' | 'cancelled';
+export type StatusTab = 'active' | 'contracted' | 'completed' | 'on_hold' | 'cancelled' | 'expired';
