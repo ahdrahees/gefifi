@@ -34,14 +34,29 @@ export interface UserProfile {
  * Represents a user in the system. This is the main user object.
  */
 export interface User extends Identifiable {
-	email: string; // Unique, used for login
-	password?: string; // Hashed password, for email/password auth
+	email?: string; // Optional (e.g. if signed up via phone number)
+	phoneNumber?: string; // Top-level phone number for OTP verification
+	password?: string; // Hashed password (unused/deprecated with OTP but kept for compatibility)
 	googleId?: string; // Unique ID from Google Sign-In
 	userType: 'customer' | 'expert' | 'supplier';
 	profile: UserProfile;
 	createdAt: string; // ISO 8601 date string
 	updatedAt: string; // ISO 8601 date string
 	isActive?: boolean; // For soft deletes or deactivation
+}
+
+/**
+ * Represents an OTP session for phone login/registration.
+ */
+export interface OtpSession extends Identifiable {
+	phoneNumber: string; // E.164 formatted phone number
+	createdAt: string; // ISO timestamp when OTP session was created
+	expiresAt: string; // ISO timestamp when current OTP expires
+	lastSentAt: string; // ISO timestamp when OTP was last sent (for cooldown checks)
+	attempts: number; // Verification attempts count
+	resendCount: number; // Resends count
+	twilioVerificationSid?: string; // Twilio Verify verification SID for cancellation/tracking
+	twilioStatus?: string; // Last known Twilio Verify verification status
 }
 
 // --- Core Application Data Types ---
@@ -58,6 +73,7 @@ export interface WorkRequest extends Identifiable {
 	expectedCost?: number;
 	timeline?: string;
 	materialsSuggested?: string;
+	expirationDate?: string; // Optional request expiration date/deadline (ISO string or YYYY-MM-DD)
 	status:
 		| 'open'
 		| 'in_discussion'
@@ -67,7 +83,8 @@ export interface WorkRequest extends Identifiable {
 		| 'completed'
 		| 'cancelled'
 		| 'closed'
-		| 'disputed';
+		| 'disputed'
+		| 'expired';
 	createdAt: string;
 	updatedAt: string;
 	category?: string;
@@ -99,12 +116,13 @@ export interface MaterialRequest extends Identifiable {
 	deliveryDate?: string; // Optional preferred delivery date
 	linkedWorkRequestId?: string; // Optional link to an existing WorkRequest
 	attachments?: Attachment[]; // Array of attached files
+	expirationDate?: string; // Optional request expiration date/deadline (ISO string or YYYY-MM-DD)
 	items: {
 		itemName: string;
 		quantity: string; // e.g., '10 bags', '500 ft'
 		notes?: string; // e.g., 'Grade 43'
 	}[];
-	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled';
+	status: 'open' | 'quoting' | 'ordered' | 'contracted' | 'completed' | 'cancelled' | 'expired';
 	createdAt: string;
 	updatedAt: string;
 	interestedSuppliers?: string[]; // List of supplier User IDs who showed interest

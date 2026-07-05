@@ -20,9 +20,9 @@
 
 	function getProfessionalName(prof: AuthUser): string {
 		if (prof.userType === 'supplier') {
-			return prof.profile?.companyName || prof.email.split('@')[0] || 'Supplier';
+			return prof.profile?.companyName || prof.email?.split('@')[0] || prof.phoneNumber || 'Supplier';
 		}
-		return prof.profile?.fullName || prof.email.split('@')[0] || 'Professional';
+		return prof.profile?.fullName || prof.email?.split('@')[0] || prof.phoneNumber || 'Professional';
 	}
 
 	function handleSendInterestClick() {

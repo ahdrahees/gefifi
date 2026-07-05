@@ -10,6 +10,35 @@ const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
 
 const router = Router();
 
+// Helper function to auto-expire work requests whose deadlines have passed
+async function checkAndExpireWorkRequests(requests: WorkRequest[]): Promise<WorkRequest[]> {
+	const now = new Date();
+	const activeStatuses = ['open', 'in_discussion', 'awaiting_quotes'];
+
+	return Promise.all(
+		requests.map(async (req) => {
+			if (
+				req.expirationDate &&
+				activeStatuses.includes(req.status) &&
+				new Date(req.expirationDate).getTime() <= now.getTime()
+			) {
+				const updatedStatus = 'expired' as const;
+				const updatedAt = now.toISOString();
+				try {
+					await workRequestsDB.update(req.id, {
+						status: updatedStatus,
+						updatedAt
+					});
+					return { ...req, status: updatedStatus, updatedAt };
+				} catch (e) {
+					console.error(`Failed to auto-expire work request ${req.id}:`, e);
+				}
+			}
+			return req;
+		})
+	);
+}
+
 // --- Work Request Endpoints ---
 // /work-requests?customerId=${customerId} for customer
 // /work-requests for experts
@@ -17,6 +46,9 @@ router.get('/work-requests', async (req: Request, res: Response) => {
 	try {
 		const { customerId } = req.query as { customerId?: string };
 		let workRequests = await workRequestsDB.getAll();
+
+		// Check and auto-expire requests
+		workRequests = await checkAndExpireWorkRequests(workRequests);
 
 		// If a customerId is provided, filter the work requests
 		if (customerId) {
@@ -56,7 +88,8 @@ router.post(
 				expectedCost,
 				timeline,
 				materialsSuggested,
-				category
+				category,
+				expirationDate
 			} = req.body;
 			if (!title || !description || !location) {
 				return res.status(400).json({ message: 'Title, description, and location are required.' });
@@ -71,6 +104,16 @@ router.post(
 			}
 			if (expectedCost !== undefined && typeof expectedCost !== 'number') {
 				return res.status(400).json({ message: 'Expected cost must be a number if provided.' });
+			}
+			if (expirationDate) {
+				if (isNaN(Date.parse(expirationDate))) {
+					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+				}
+				const todayStart = new Date();
+				todayStart.setHours(0, 0, 0, 0);
+				if (new Date(expirationDate).getTime() < todayStart.getTime()) {
+					return res.status(400).json({ message: 'Expiration date cannot be in the past.' });
+				}
 			}
 			const now = new Date().toISOString();
 			const workRequestId = crypto.randomUUID();
@@ -91,6 +134,9 @@ router.post(
 				interestedExperts: [],
 				invitedExperts: []
 			};
+			if (expirationDate) {
+				newWorkRequest.expirationDate = new Date(expirationDate).toISOString();
+			}
 			const createdWorkRequest = await workRequestsDB.create(newWorkRequest);
 			res.status(201).json(createdWorkRequest);
 		} catch (error: unknown) {
@@ -111,10 +157,13 @@ router.get('/work-requests/:id', async (req: Request, res: Response) => {
 		if (!workRequestId) {
 			return res.status(400).json({ message: 'Work request ID parameter is required.' });
 		}
-		const workRequest = await workRequestsDB.findById(workRequestId);
+		let workRequest = await workRequestsDB.findById(workRequestId);
 		if (!workRequest) {
 			return res.status(404).json({ message: 'Work request not found.' });
 		}
+		// Run auto-expiration check
+		const expiredRequests = await checkAndExpireWorkRequests([workRequest]);
+		workRequest = expiredRequests[0];
 		res.status(200).json(workRequest);
 	} catch (error: unknown) {
 		console.error(`Error fetching work request ${req.params.id}:`, error);
@@ -153,6 +202,17 @@ router.put(
 				return res.status(400).json({ message: 'Only open work requests can be edited.' });
 			}
 
+			if (updateData.expirationDate) {
+				if (isNaN(Date.parse(updateData.expirationDate))) {
+					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+				}
+				const todayStart = new Date();
+				todayStart.setHours(0, 0, 0, 0);
+				if (new Date(updateData.expirationDate).getTime() < todayStart.getTime()) {
+					return res.status(400).json({ message: 'Expiration date cannot be in the past.' });
+				}
+			}
+
 			// Validate and sanitize update data
 			const allowedFields = [
 				'title',
@@ -162,13 +222,18 @@ router.put(
 				'expectedCost',
 				'timeline',
 				'materialsSuggested',
-				'images'
+				'images',
+				'expirationDate'
 			];
 			const sanitizedData: any = {};
 
 			for (const field of allowedFields) {
 				if (updateData[field] !== undefined) {
-					sanitizedData[field] = updateData[field];
+					if (field === 'expirationDate' && updateData[field]) {
+						sanitizedData[field] = new Date(updateData[field]).toISOString();
+					} else {
+						sanitizedData[field] = updateData[field];
+					}
 				}
 			}
 

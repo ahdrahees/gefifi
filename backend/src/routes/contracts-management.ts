@@ -137,7 +137,7 @@ router.post(
             // --- Send System Message ---
             const commentTypeLabel = type === 'revision_request' ? 'revision request' : 'comment';
             const authorDisplayName =
-                userProfile.profile?.fullName || userProfile.email.split('@')[0] || 'User';
+                userProfile.profile?.fullName || userProfile.email?.split('@')[0] || 'User';
 
             // Create message with attachment info if applicable
             let systemMessageContent = `${authorDisplayName} has added a ${commentTypeLabel} to the contract`;

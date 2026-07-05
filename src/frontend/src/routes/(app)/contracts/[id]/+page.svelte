@@ -111,7 +111,8 @@
 						customerProfile = customerData;
 						fetchedContract.customerName =
 							customerData.profile?.fullName ||
-							customerData.email.split('@')[0] ||
+							customerData.email?.split('@')[0] ||
+							customerData.phoneNumber ||
 							`Customer ${fetchedContract.customerId.substring(0, 8)}`;
 
 						fetchedContract.customerAvatarUrl = customerData.profile?.avatarUrl;
@@ -142,7 +143,8 @@
 							fetchedContract.expertSupplierAvatarUrl = providerData.profile.avatarUrl;
 						} else {
 							fetchedContract.expertSupplierName =
-								providerData.email.split('@')[0] ||
+								providerData.email?.split('@')[0] ||
+								providerData.phoneNumber ||
 								`${providerData.userType.charAt(0).toUpperCase() + providerData.userType.slice(1)} ${fetchedContract.expertSupplierId.substring(0, 8)}`;
 							fetchedContract.expertSupplierAvatarUrl = '/images/default-avatar.png';
 						}

@@ -365,7 +365,7 @@
 						<!-- User Info -->
 						<div class="flex-1">
 							<h2 class="text-2xl font-bold text-white">{getDisplayName()}</h2>
-							<p class="text-slate-400">{currentUser.email}</p>
+							<p class="text-slate-400">{currentUser.email || currentUser.phoneNumber || 'Not provided'}</p>
 							<div class="mt-3 flex flex-wrap gap-2">
 								<span
 									class="rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-300 uppercase"

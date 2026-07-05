@@ -11,6 +11,7 @@
 	let description = $state('');
 	let deliveryLocation = $state('');
 	let deliveryDate = $state('');
+	let expirationDate = $state('');
 	let linkedWorkRequestId: string | undefined = $state(undefined);
 
 	let items = $state([{ itemName: '', quantity: '', notes: '' }]);
@@ -93,6 +94,16 @@
 			return;
 		}
 
+		if (expirationDate) {
+			const todayStart = new Date();
+			todayStart.setHours(0, 0, 0, 0);
+			if (new Date(expirationDate).getTime() < todayStart.getTime()) {
+				errorMessage = 'Expiration date cannot be in the past.';
+				isLoading = false;
+				return;
+			}
+		}
+
 		try {
 			// Step 1: Create the material request
 			// Construct the request data, only including defined values (Firestore-safe)
@@ -109,6 +120,9 @@
 			}
 			if (linkedWorkRequestId) {
 				requestData.linkedWorkRequestId = linkedWorkRequestId;
+			}
+			if (expirationDate?.trim()) {
+				requestData.expirationDate = expirationDate;
 			}
 
 			const newMaterialRequest = await apiClient.createMaterialRequest(requestData);
@@ -198,7 +212,7 @@
 			></textarea>
 		</div>
 
-		<div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+		<div class="grid grid-cols-1 gap-6 md:grid-cols-3">
 			<div>
 				<label for="deliveryLocation" class="block text-sm leading-6 font-medium text-slate-300"
 					>Delivery Location</label
@@ -218,6 +232,17 @@
 				<input
 					id="deliveryDate"
 					bind:value={deliveryDate}
+					type="date"
+					class="mt-2 block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
+				/>
+			</div>
+			<div>
+				<label for="expirationDate" class="block text-sm leading-6 font-medium text-slate-300"
+					>Expiration Date <span class="text-xs text-slate-400">(Optional)</span></label
+				>
+				<input
+					id="expirationDate"
+					bind:value={expirationDate}
 					type="date"
 					class="mt-2 block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
 				/>

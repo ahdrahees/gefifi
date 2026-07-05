@@ -6,6 +6,7 @@
 	import { sessionEventsState, artifactsState, agentLoaders } from '$lib/states/agent.svelte';
 	import { fetchSession } from '$lib/services/agentChat';
 	import { authStore } from '$lib/stores/auth';
+	import { inlineAgentState } from '$lib/states/inlineAgent.svelte';
 
 	// --- DATA STATE ---
 	let agentEvents = $derived(sessionEventsState[page.params.sessionId || ''] ?? []);
@@ -34,6 +35,14 @@
 				agentLoaders.loadingSessionEvents = false;
 			}
 		})();
+	});
+
+	// Sync session ID to shared inline agent state
+	$effect(() => {
+		const sessionId = page.params.sessionId;
+		if (sessionId && isValidSessionId(sessionId)) {
+			inlineAgentState.sessionId = sessionId;
+		}
 	});
 
 	// --- AUTO SCROLL ---

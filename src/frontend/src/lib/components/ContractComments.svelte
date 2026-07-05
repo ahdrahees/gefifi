@@ -117,7 +117,10 @@
 		if (customerProfile && customerProfile.id === authorId) {
 			return {
 				name:
-					customerProfile.profile?.fullName || customerProfile.email.split('@')[0] || 'Customer',
+					customerProfile.profile?.fullName ||
+					customerProfile.email?.split('@')[0] ||
+					customerProfile.phoneNumber ||
+					'Customer',
 				avatarUrl: customerProfile.profile?.avatarUrl
 			};
 		}
@@ -127,7 +130,8 @@
 			return {
 				name:
 					expertSupplierProfile.profile?.fullName ||
-					expertSupplierProfile.email.split('@')[0] ||
+					expertSupplierProfile.email?.split('@')[0] ||
+					expertSupplierProfile.phoneNumber ||
 					'Expert/Supplier',
 				avatarUrl: expertSupplierProfile.profile?.avatarUrl
 			};

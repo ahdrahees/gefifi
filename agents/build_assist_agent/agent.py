@@ -48,17 +48,7 @@ from .tools.expert_request import (
     update_expert_request_tool_guardrail,
 )
 
-MODEL_GEMINI_2_0_FLASH: str = "gemini-2.0-flash"
-MODEL_GEMINI_2_5_FLASH: str = "gemini-2.5-flash"
-MODEL_GEMINI_2_5_PRO: str = "gemini-2.5-pro"
-OPENROUTER_MODEL_DEEPSEEK: str = "openrouter/deepseek/deepseek-chat-v3.1:free"
-OPENROUTER_MODEL_Nova_2_Lite: str = "openrouter/amazon/nova-2-lite-v1:free"
-OPENROUTER_MODEL_GPT_OSS_120B: str = "openrouter/openai/gpt-oss-120b:free"
-OPENROUTER_MODEL_POLARIS_ALPHA: str = "openrouter/z-ai/glm-4.5-air:free"
-GROQ_QWEN3_32B: str = "groq/qwen/qwen3-32b"
-OPENROUTER_XIAOMI = "openrouter/xiaomi/mimo-v2-flash:free"
-
-MODEL_ENV_PASSED =  os.getenv("LLM_MODEL", "gemini/gemini-2.0-flash")
+MODEL_ENV_PASSED = os.getenv("LLM_MODEL", "gemini/gemini-3.1-flash-lite")
 
 AGENT_ENV: str = os.getenv("AGENT_ENV", "development")
 DEV_MODE: bool = AGENT_ENV == "development"

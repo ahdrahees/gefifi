@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { authStore, type AuthUser, type AuthState } from '$lib/stores/auth';
 	import { get } from 'svelte/store';
-	import apiClient from '$lib/api';
+	import apiClient, { ApiError } from '$lib/api';
 	import { onMount } from 'svelte';
 
 	let currentUser = $state<AuthUser | null>(null);
@@ -10,11 +10,11 @@
 	let errorMessage = $state('');
 
 	// --- Form State ---
-	// We use one object to hold all possible fields for simplicity.
 	let profileData = $state({
 		// Common
 		fullName: '',
 		phoneNumber: '',
+		email: '', // Added for phone signups
 		location: '',
 		// Expert
 		expertise: '',
@@ -22,7 +22,6 @@
 		// Supplier
 		companyName: '',
 		category: ''
-		// 'experience' is shared with expert
 	});
 
 	onMount(() => {
@@ -33,9 +32,17 @@
 		}
 		currentUser = auth.user;
 
-		// Pre-fill form with data we might already have from Google
+		// Pre-fill form with data we might already have
 		if (currentUser.profile) {
 			profileData.fullName = currentUser.profile.fullName || '';
+			profileData.phoneNumber = currentUser.profile.phoneNumber || currentUser.phoneNumber || '';
+			profileData.location = currentUser.profile.location || '';
+		} else {
+			profileData.phoneNumber = currentUser.phoneNumber || '';
+		}
+
+		if (currentUser.email) {
+			profileData.email = currentUser.email;
 		}
 	});
 
@@ -43,6 +50,39 @@
 		if (!currentUser) return;
 		isLoading = true;
 		errorMessage = '';
+
+		function formatPhoneNumber(input: string): string {
+			const cleaned = input.trim().replace(/[^\d+]/g, '');
+			if (cleaned.startsWith('+')) {
+				return cleaned;
+			}
+			if (cleaned.startsWith('91') && cleaned.length === 12) {
+				return '+' + cleaned;
+			}
+			if (cleaned.length === 10) {
+				return '+91' + cleaned;
+			}
+			return '+91' + cleaned;
+		}
+
+		// Validate formats if entered
+		const PHONE_REGEX = /^\+[1-9]\d{1,14}$/;
+		const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+		if (profileData.phoneNumber) {
+			profileData.phoneNumber = formatPhoneNumber(profileData.phoneNumber);
+			if (!PHONE_REGEX.test(profileData.phoneNumber)) {
+				errorMessage = 'Please enter a valid E.164 phone number (e.g. +919999999999). If using another country code, prepend it with + (e.g. +1).';
+				isLoading = false;
+				return;
+			}
+		}
+
+		if (profileData.email && !EMAIL_REGEX.test(profileData.email)) {
+			errorMessage = 'Please enter a valid email address.';
+			isLoading = false;
+			return;
+		}
 
 		try {
 			const { user: updatedUser } = await apiClient.updateUserProfile(profileData);
@@ -54,7 +94,11 @@
 			// Redirect to the main home page
 			goto('/home');
 		} catch (error: unknown) {
-			errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			if (error instanceof ApiError && error.status === 409) {
+				errorMessage = error.data?.message || 'This detail is already linked to another account.';
+			} else {
+				errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			}
 			console.error('Profile completion error:', error);
 		} finally {
 			isLoading = false;
@@ -187,20 +231,54 @@
 					{/if}
 
 					<!-- Common Optional Fields -->
-					<div>
-						<label for="phoneNumber" class="block text-sm leading-6 font-medium text-slate-300"
-							>Phone Number <span class="text-xs text-slate-400">(Optional)</span></label
-						>
-						<div class="mt-2">
-							<input
-								id="phoneNumber"
-								name="phoneNumber"
-								type="tel"
-								bind:value={profileData.phoneNumber}
-								class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
-							/>
+					{#if currentUser.googleId}
+						<div>
+							<label for="phoneNumber" class="block text-sm leading-6 font-medium text-slate-300"
+								>Phone Number <span class="text-xs text-slate-400">(Optional)</span></label
+							>
+							<div class="mt-2">
+								<input
+									id="phoneNumber"
+									name="phoneNumber"
+									type="tel"
+									placeholder="e.g., +919999999999"
+									bind:value={profileData.phoneNumber}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
 						</div>
-					</div>
+					{:else}
+						<div>
+							<label for="phoneNumber" class="block text-sm leading-6 font-medium text-slate-300"
+								>Verified Phone Number</label
+							>
+							<div class="mt-2">
+								<input
+									id="phoneNumber"
+									name="phoneNumber"
+									type="tel"
+									disabled
+									bind:value={profileData.phoneNumber}
+									class="block w-full rounded-lg border-0 bg-slate-800/80 py-2.5 px-3 text-slate-400 shadow-sm ring-1 ring-slate-700 ring-inset focus:ring-0 sm:text-sm sm:leading-6 cursor-not-allowed"
+								/>
+							</div>
+						</div>
+						<div>
+							<label for="email" class="block text-sm leading-6 font-medium text-slate-300"
+								>Email Address <span class="text-xs text-slate-400">(Optional)</span></label
+							>
+							<div class="mt-2">
+								<input
+									id="email"
+									name="email"
+									type="email"
+									placeholder="e.g., user@example.com"
+									bind:value={profileData.email}
+									class="block w-full rounded-lg border-0 bg-slate-700/50 py-2.5 text-gray-100 shadow-sm ring-1 ring-slate-600 ring-inset placeholder:text-gray-400 focus:bg-slate-700 focus:ring-2 focus:ring-emerald-500 focus:ring-inset sm:text-sm sm:leading-6"
+								/>
+							</div>
+						</div>
+					{/if}
 
 					<div>
 						<label for="location" class="block text-sm leading-6 font-medium text-slate-300"

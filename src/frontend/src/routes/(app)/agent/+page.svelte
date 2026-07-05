@@ -1,5 +1,13 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/auth';
+	import { inlineAgentState } from '$lib/states/inlineAgent.svelte';
+
+	$effect(() => {
+		if (inlineAgentState.sessionId) {
+			goto(`/agent/${inlineAgentState.sessionId}`);
+		}
+	});
 </script>
 
 <div class="flex flex-1 flex-col items-center justify-center p-6 text-center">

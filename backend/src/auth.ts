@@ -48,7 +48,8 @@ export const comparePassword = async (password: string, hash: string): Promise<b
  */
 export interface JwtPayload {
 	id: string; // User's unique ID
-	email: string; // User's email
+	email?: string; // User's email
+	phoneNumber?: string; // User's phone number
 	userType: User['userType']; // User's role/type
 	// You can add other non-sensitive, useful information here (e.g., fullName)
 	// iat (issued at) and exp (expiration time) are added automatically by jwt.sign
@@ -56,10 +57,10 @@ export interface JwtPayload {
 
 /**
  * Generates a JWT for a given user.
- * @param user A partial User object containing id, email, and userType.
+ * @param user A partial User object containing id, email, phoneNumber, and userType.
  * @returns A JWT string.
  */
-export const generateToken = (user: Pick<User, 'id' | 'email' | 'userType'>): string => {
+export const generateToken = (user: Pick<User, 'id' | 'email' | 'phoneNumber' | 'userType'>): string => {
 	if (!JWT_SECRET) {
 		// This check is crucial. If JWT_SECRET is missing, tokens cannot be signed securely.
 		console.error('Cannot generate token: JWT_SECRET is not configured.');
@@ -68,6 +69,7 @@ export const generateToken = (user: Pick<User, 'id' | 'email' | 'userType'>): st
 	const payload: JwtPayload = {
 		id: user.id,
 		email: user.email,
+		phoneNumber: user.phoneNumber,
 		userType: user.userType
 	};
 	// Token expiration: '1h' for 1 hour, '7d' for 7 days, etc.

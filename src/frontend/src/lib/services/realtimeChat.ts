@@ -120,7 +120,7 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 			const testQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(5));
 			const testSnapshot = await getDocs(testQuery);
 			console.log(`[RealtimeChat] Latest 5 messages for comparison:`);
-			testSnapshot.forEach((doc, index) => {
+			testSnapshot.docs.forEach((doc, index) => {
 				const data = doc.data();
 				const docTimestamp = data.timestamp?.toDate?.()?.toISOString() || data.timestamp;
 				console.log(`  ${index + 1}. ${doc.id}: ${docTimestamp} (${typeof data.timestamp})`);
@@ -141,7 +141,7 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 			const simpleOlderQuery = query(messagesRef, orderBy('timestamp', 'asc'), limit(10));
 			const simpleSnapshot = await getDocs(simpleOlderQuery);
 			console.log(`[RealtimeChat] Oldest 10 messages in database:`);
-			simpleSnapshot.forEach((doc, index) => {
+			simpleSnapshot.docs.forEach((doc, index) => {
 				const data = doc.data();
 				const docTimestamp = data.timestamp?.toDate?.()?.toISOString() || data.timestamp;
 				const isOlder = new Date(docTimestamp) < new Date(lastMessage.timestamp);

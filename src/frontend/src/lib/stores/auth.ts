@@ -162,54 +162,61 @@ async function logout() {
 	await updateAuthData(null, null);
 }
 
-// Define types for credentials and user data for API calls
-interface LoginCredentials {
-	email: string;
-	password: string;
+// Define types for Google Sign-In Flow
+interface GoogleLoginPayload {
+	googleTokenId: string;
+	userTypeForNewUser?: 'customer' | 'expert' | 'supplier';
 }
-export interface RegisterUserData {
-	email: string;
-	password: string;
-	userType: 'customer' | 'expert' | 'supplier';
-	profile: Partial<AuthUser['profile']>; // Use Partial for flexibility during registration
+interface GoogleAuthResponse {
+	user: AuthUser;
+	token: string;
+	isNewUser: boolean;
+	message?: string;
 }
 
-async function login(credentials: LoginCredentials): Promise<AuthUser> {
+async function sendOtp(phoneNumber: string): Promise<{ success: boolean; message: string; cooldownRemaining?: number }> {
 	store.update((s) => ({ ...s, isLoading: true, error: null }));
 	try {
-		const response = await apiClient.login(credentials);
-		if (response.user && response.token) {
-			await updateAuthData(response.token, response.user);
-			return response.user;
-		} else {
-			// This case should ideally be caught by apiClient's error handling
-			throw new Error('Login response was incomplete.');
-		}
+		const response = await apiClient.sendOtp(phoneNumber);
+		store.update((s) => ({ ...s, isLoading: false }));
+		return {
+			success: true,
+			message: response.message
+		};
 	} catch (err: unknown) {
-		let errorMessage = 'Login failed. Please check your credentials or try again later.';
-		if (err instanceof ApiError && err.data?.message) {
-			errorMessage = err.data.message;
+		let errorMessage = 'Failed to send OTP. Please try again.';
+		let cooldownRemaining: number | undefined;
+		if (err instanceof ApiError) {
+			errorMessage = err.data?.message || errorMessage;
+			cooldownRemaining = err.data?.cooldownRemaining;
 		} else if (err instanceof Error) {
 			errorMessage = err.message;
 		}
-		// Ensure user is logged out in the store's state on error
-		await updateAuthData(null, null, errorMessage);
-		throw new Error(errorMessage); // Re-throw for the component to handle
+		store.update((s) => ({ ...s, isLoading: false, error: errorMessage }));
+		return {
+			success: false,
+			message: errorMessage,
+			cooldownRemaining
+		};
 	}
 }
 
-async function register(userData: RegisterUserData): Promise<AuthUser> {
+async function verifyOtp(
+	phoneNumber: string,
+	otpCode: string,
+	userTypeForNewUser?: 'customer' | 'expert' | 'supplier'
+): Promise<{ user: AuthUser; token: string; isNewUser: boolean; message?: string }> {
 	store.update((s) => ({ ...s, isLoading: true, error: null }));
 	try {
-		const response = await apiClient.register(userData);
+		const response = await apiClient.verifyOtp(phoneNumber, otpCode, userTypeForNewUser);
 		if (response.user && response.token) {
 			await updateAuthData(response.token, response.user);
-			return response.user;
+			return response;
 		} else {
-			throw new Error('Registration response was incomplete.');
+			throw new Error('Verification response was incomplete.');
 		}
 	} catch (err: unknown) {
-		let errorMessage = 'Registration failed. Please try again later.';
+		let errorMessage = 'Verification failed. Please try again.';
 		if (err instanceof ApiError && err.data?.message) {
 			errorMessage = err.data.message;
 		} else if (err instanceof Error) {
@@ -218,19 +225,6 @@ async function register(userData: RegisterUserData): Promise<AuthUser> {
 		await updateAuthData(null, null, errorMessage);
 		throw new Error(errorMessage);
 	}
-}
-
-// --- Google Sign-In Flow ---
-interface GoogleLoginPayload {
-	googleTokenId: string;
-	userTypeForNewUser?: 'customer' | 'expert' | 'supplier';
-	// profileForNewUser is not needed here as we will collect it on a separate page
-}
-interface GoogleAuthResponse {
-	user: AuthUser;
-	token: string;
-	isNewUser: boolean;
-	message?: string;
 }
 
 async function googleLogin(payload: GoogleLoginPayload): Promise<GoogleAuthResponse> {
@@ -261,8 +255,8 @@ export const authStore = {
 	set: store.set,
 	loadUserFromStorage,
 	logout,
-	login,
-	register,
+	sendOtp,
+	verifyOtp,
 	googleLogin,
 	_updateAuthData: updateAuthData
 };

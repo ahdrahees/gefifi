@@ -99,6 +99,14 @@ cd gefifi-2
 bun install
 ```
 
+Backend OTP authentication uses Twilio Verify SMS. Configure these backend environment variables for local development and Cloud Run secrets:
+
+```bash
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_VERIFY_SERVICE_SID=your_twilio_verify_service_sid
+```
+
 ### 3. Local Development
 
 For a full-system local environment, launch these in separate terminals:

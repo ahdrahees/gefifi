@@ -2,8 +2,6 @@ import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
 import { User, UserProfile } from '../interfaces';
 import {
-    hashPassword,
-    comparePassword,
     generateToken,
     authenticateToken,
     AuthenticatedRequest,
@@ -11,10 +9,9 @@ import {
 } from '../auth';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { uploadUserAvatar } from '../file-storage';
-import admin from 'firebase-admin';
 import { validateProfileData } from './shared/validation';
-import { avatarUpload } from './shared/middleware';
+import { otpService } from '../services/otp';
+import admin from 'firebase-admin';
 
 // Initialize databases
 const usersDB = new FirestoreCollection<User>('users');
@@ -23,111 +20,120 @@ const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // --- Authentication Routes ---
-router.post('/auth/register', async (req: Request, res: Response) => {
+
+/**
+ * Endpoint to request an OTP code for a phone number.
+ */
+router.post('/auth/send-otp', async (req: Request, res: Response) => {
     try {
-        const { email, password, userType, profile } = req.body;
-        if (!email || !password || !userType) {
-            return res.status(400).json({ message: 'Email, password, and userType are required.' });
+        const { phoneNumber } = req.body;
+        if (!phoneNumber) {
+            return res.status(400).json({ message: 'Phone number is required.' });
         }
-        if (typeof email !== 'string' || !email.includes('@')) {
-            return res.status(400).json({ message: 'A valid email is required.' });
+        if (!otpService.validatePhoneNumber(phoneNumber)) {
+            return res.status(400).json({ message: 'A valid E.164 phone number is required (e.g. +919999999999).' });
         }
-        if (typeof password !== 'string' || password.length < 6) {
-            return res.status(400).json({ message: 'Password must be at least 6 characters long.' });
-        }
-        if (!['customer', 'expert', 'supplier'].includes(userType)) {
-            return res
-                .status(400)
-                .json({ message: 'Invalid userType. Must be customer, expert, or supplier.' });
-        }
-        const profileValidation = validateProfileData(profile, userType);
-        if (!profileValidation.valid) {
-            return res
-                .status(400)
-                .json({ message: profileValidation.message || 'Invalid profile data.' });
-        }
-        const existingUsers = await usersDB.getAll();
-        if (existingUsers.some((u: User) => u.email.toLowerCase() === email.toLowerCase())) {
-            return res.status(409).json({
-                message: 'User with this email already exists. Please login or use a different email.'
+
+        // Trigger lazy cleanup of expired OTPs
+        otpService.cleanupExpiredOtps().catch(err => console.error('Error in lazy OTP cleanup:', err));
+
+        const result = await otpService.sendOtp(phoneNumber);
+        if (!result.success) {
+            return res.status(429).json({
+                message: result.message,
+                cooldownRemaining: result.cooldownRemaining
             });
         }
-        const hashedPassword = await hashPassword(password);
-        const userId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        const newUser: User = {
-            id: userId,
-            email: email.toLowerCase(),
-            password: hashedPassword,
-            userType,
-            profile: profileValidation.validatedProfile,
-            createdAt: now,
-            updatedAt: now,
-            isActive: true
-        };
-        const createdUser = await usersDB.create(newUser);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password: _, ...userToReturn } = createdUser;
-        const token = generateToken({
-            id: createdUser.id,
-            email: createdUser.email,
-            userType: createdUser.userType
-        });
-        res.status(201).json({ user: userToReturn, token, message: 'User registered successfully.' });
+
+        return res.status(200).json({ message: result.message });
     } catch (error: unknown) {
-        console.error('Registration error:', error);
-        if (error instanceof Error) {
-            if (error.message && error.message.includes('already exists')) {
-                return res.status(409).json({ message: error.message });
-            }
-            res
-                .status(500)
-                .json({ message: 'Internal server error during registration.', error: error.message });
-        } else {
-            res.status(500).json({ message: 'An unknown error occurred during registration.' });
-        }
+        console.error('Error in send-otp:', error);
+        const errMsg = error instanceof Error ? error.message : 'Failed to send OTP.';
+        return res.status(500).json({ message: errMsg });
     }
 });
 
-router.post('/auth/login', async (req: Request, res: Response) => {
+/**
+ * Endpoint to verify OTP and log in / initiate new account creation.
+ */
+router.post('/auth/verify-otp', async (req: Request, res: Response) => {
     try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required.' });
+        const { phoneNumber, otpCode, userTypeForNewUser } = req.body;
+        if (!phoneNumber || !otpCode) {
+            return res.status(400).json({ message: 'Phone number and OTP code are required.' });
         }
-        if (typeof email !== 'string' || typeof password !== 'string') {
-            return res.status(400).json({ message: 'Email and password must be strings.' });
+
+        // Trigger lazy cleanup of expired OTPs
+        otpService.cleanupExpiredOtps().catch(err => console.error('Error in lazy OTP cleanup:', err));
+
+        const verification = await otpService.verifyOtp(phoneNumber, otpCode);
+        if (!verification.valid) {
+            return res.status(400).json({ message: verification.message || 'Verification failed.' });
         }
-        const users = await usersDB.getAll();
-        const user = users.find((u: User) => u.email.toLowerCase() === email.toLowerCase());
+
+        // Check if user exists in the database
+        const allUsers = await usersDB.getAll();
+        let user = allUsers.find((u: User) => u.phoneNumber === phoneNumber);
+        let isNewUser = false;
+
         if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials. User not found.' });
+            // If no userType is provided, we assume it's a login attempt for a non-existent account
+            if (!userTypeForNewUser) {
+                return res.status(404).json({
+                    message: "Account not found. Please register first.",
+                    needsRegister: true
+                });
+            }
+
+            // New user registration flow
+            isNewUser = true;
+            if (!['customer', 'expert', 'supplier'].includes(userTypeForNewUser)) {
+                return res.status(400).json({
+                    message: "Invalid user type. Must be customer, expert, or supplier.",
+                    needsUserType: true
+                });
+            }
+
+            const now = new Date().toISOString();
+            const newUserId = crypto.randomUUID();
+            const newUser: User = {
+                id: newUserId,
+                phoneNumber: phoneNumber,
+                userType: userTypeForNewUser,
+                profile: {
+                    phoneNumber: phoneNumber // sync with profile
+                },
+                createdAt: now,
+                updatedAt: now,
+                isActive: true
+            };
+            user = await usersDB.create(newUser);
         }
+
         if (!user.isActive) {
             return res.status(403).json({ message: 'Account is inactive. Please contact support.' });
         }
-        if (!user.password) {
-            return res
-                .status(401)
-                .json({ message: 'Login with email/password not available. Try Google Sign-In.' });
-        }
-        const isPasswordMatch = await comparePassword(password, user.password);
-        if (!isPasswordMatch) {
-            return res.status(401).json({ message: 'Invalid credentials. Password incorrect.' });
-        }
-        const token = generateToken({ id: user.id, email: user.email, userType: user.userType });
+
+        const token = generateToken({
+            id: user.id,
+            email: user.email,
+            phoneNumber: user.phoneNumber,
+            userType: user.userType
+        });
+
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password: _, ...userToReturn } = user;
-        res.status(200).json({ user: userToReturn, token, message: 'Login successful.' });
+
+        return res.status(200).json({
+            user: userToReturn,
+            token,
+            isNewUser,
+            message: 'OTP verified successfully.'
+        });
     } catch (error: unknown) {
-        console.error('Login error:', error);
-        if (error instanceof Error) {
-            res
-                .status(500)
-                .json({ message: 'Internal server error during login.', error: error.message });
-        } else {
-            res.status(500).json({ message: 'An unknown error occurred during login.' });
-        }
+        console.error('Error in verify-otp:', error);
+        const errMsg = error instanceof Error ? error.message : 'Verification failed.';
+        return res.status(500).json({ message: errMsg });
     }
 });
 
@@ -183,8 +189,11 @@ router.post('/auth/google', async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Email not found in Google token.' });
         }
 
+        const normalizedEmail = email.toLowerCase();
         const users = await usersDB.getAll();
-        let user = users.find((u: User) => u.googleId === googleId || u.email.toLowerCase() === email);
+        let user = users.find(
+            (u: User) => u.googleId === googleId || u.email?.toLowerCase() === normalizedEmail
+        );
         const now = new Date().toISOString();
         let isNewUser = false; // Flag to indicate if a new user was created
 
@@ -194,13 +203,15 @@ router.post('/auth/google', async (req: Request, res: Response) => {
                 return res.status(403).json({ message: 'Account is inactive.' });
             }
             // Update user details if they've changed in their Google profile
-            user.googleId = user.googleId || googleId; // Link account if they signed up with email first
+            user.googleId = user.googleId || googleId; // Link account if they signed up with email/phone first
+            user.email = user.email || normalizedEmail;
             user.profile.fullName = user.profile.fullName || name;
             user.profile.avatarUrl = user.profile.avatarUrl || avatarUrl;
             user.updatedAt = now;
 
             await usersDB.update(user.id, {
                 googleId: user.googleId,
+                email: user.email,
                 profile: user.profile,
                 updatedAt: user.updatedAt
             });
@@ -228,7 +239,7 @@ router.post('/auth/google', async (req: Request, res: Response) => {
             const newUserId = crypto.randomUUID();
             user = {
                 id: newUserId,
-                email: email.toLowerCase(),
+                email: normalizedEmail,
                 googleId,
                 userType: userTypeForNewUser,
                 profile: profileValidation.validatedProfile,
@@ -240,7 +251,12 @@ router.post('/auth/google', async (req: Request, res: Response) => {
         }
 
         // --- Generate Token and Respond ---
-        const token = generateToken({ id: user.id, email: user.email, userType: user.userType });
+        const token = generateToken({
+            id: user.id,
+            email: user.email || '',
+            phoneNumber: user.phoneNumber || '',
+            userType: user.userType
+        });
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password: _, ...userToReturn } = user;
         res.status(200).json({
@@ -278,7 +294,8 @@ router.post(
             // Generate a Firebase custom token for the authenticated user
             const firebaseToken = await admin.auth().createCustomToken(user.id, {
                 userType: user.userType,
-                email: user.email
+                email: user.email || '',
+                phoneNumber: user.phoneNumber || ''
             });
 
             res.status(200).json({ firebaseToken });

@@ -60,6 +60,12 @@
 			label: 'Cancelled',
 			icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z',
 			color: 'text-red-400 border-red-500/50 bg-red-500/10'
+		},
+		{
+			id: 'expired',
+			label: 'Expired',
+			icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+			color: 'text-orange-400 border-orange-500/50 bg-orange-500/10'
 		}
 	];
 

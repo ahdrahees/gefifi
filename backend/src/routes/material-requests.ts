@@ -12,6 +12,35 @@ const router = Router();
 
 // --- Material Request Endpoints ---
 
+// Helper function to auto-expire material requests whose deadlines have passed
+async function checkAndExpireMaterialRequests(requests: MaterialRequest[]): Promise<MaterialRequest[]> {
+	const now = new Date();
+	const activeStatuses = ['open', 'quoting', 'ordered'];
+
+	return Promise.all(
+		requests.map(async (req) => {
+			if (
+				req.expirationDate &&
+				activeStatuses.includes(req.status) &&
+				new Date(req.expirationDate).getTime() <= now.getTime()
+			) {
+				const updatedStatus = 'expired' as const;
+				const updatedAt = now.toISOString();
+				try {
+					await materialRequestsDB.update(req.id, {
+						status: updatedStatus,
+						updatedAt
+					});
+					return { ...req, status: updatedStatus, updatedAt };
+				} catch (e) {
+					console.error(`Failed to auto-expire material request ${req.id}:`, e);
+				}
+			}
+			return req;
+		})
+	);
+}
+
 // GET all material requests-
 // fix optimize this function
 // /material-requests?customerId=${customerId} for customer
@@ -20,6 +49,9 @@ router.get('/material-requests', async (req: Request, res: Response) => {
 	try {
 		const { customerId } = req.query as { customerId?: string };
 		let materialRequests = await materialRequestsDB.getAll();
+
+		// Auto-expire requests before returning
+		materialRequests = await checkAndExpireMaterialRequests(materialRequests);
 
 		if (customerId) {
 			materialRequests = materialRequests.filter(
@@ -52,7 +84,7 @@ router.post(
 					.json({ message: 'Forbidden. Only customers can create material requests.' });
 			}
 
-			const { title, description, deliveryLocation, deliveryDate, linkedWorkRequestId, items } =
+			const { title, description, deliveryLocation, deliveryDate, linkedWorkRequestId, items, expirationDate } =
 				req.body;
 
 			if (
@@ -74,6 +106,17 @@ router.post(
 					return res
 						.status(400)
 						.json({ message: 'Each item must have an itemName and a quantity.' });
+				}
+			}
+
+			if (expirationDate) {
+				if (isNaN(Date.parse(expirationDate))) {
+					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+				}
+				const todayStart = new Date();
+				todayStart.setHours(0, 0, 0, 0);
+				if (new Date(expirationDate).getTime() < todayStart.getTime()) {
+					return res.status(400).json({ message: 'Expiration date cannot be in the past.' });
 				}
 			}
 
@@ -101,6 +144,9 @@ router.post(
 			if (linkedWorkRequestId) {
 				newMaterialRequest.linkedWorkRequestId = linkedWorkRequestId;
 			}
+			if (expirationDate) {
+				newMaterialRequest.expirationDate = new Date(expirationDate).toISOString();
+			}
 
 			const createdMaterialRequest = await materialRequestsDB.create(newMaterialRequest);
 			res.status(201).json(createdMaterialRequest);
@@ -119,10 +165,13 @@ router.get('/material-requests/:id', async (req: Request, res: Response) => {
 		if (!materialRequestId) {
 			return res.status(400).json({ message: 'Material request ID parameter is required.' });
 		}
-		const materialRequest = await materialRequestsDB.findById(materialRequestId);
+		let materialRequest = await materialRequestsDB.findById(materialRequestId);
 		if (!materialRequest) {
 			return res.status(404).json({ message: 'Material request not found.' });
 		}
+		// Run auto-expiration check
+		const expiredRequests = await checkAndExpireMaterialRequests([materialRequest]);
+		materialRequest = expiredRequests[0];
 		res.status(200).json(materialRequest);
 	} catch (error: unknown) {
 		console.error(`Error fetching material request ${req.params.id}:`, error);
@@ -161,6 +210,17 @@ router.put(
 				return res.status(400).json({ message: 'Only open material requests can be edited.' });
 			}
 
+			if (updateData.expirationDate) {
+				if (isNaN(Date.parse(updateData.expirationDate))) {
+					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+				}
+				const todayStart = new Date();
+				todayStart.setHours(0, 0, 0, 0);
+				if (new Date(updateData.expirationDate).getTime() < todayStart.getTime()) {
+					return res.status(400).json({ message: 'Expiration date cannot be in the past.' });
+				}
+			}
+
 			// Validate and sanitize update data
 			const allowedFields = [
 				'title',
@@ -169,13 +229,18 @@ router.put(
 				'deliveryDate',
 				'linkedWorkRequestId',
 				'items',
-				'attachments'
+				'attachments',
+				'expirationDate'
 			];
 			const sanitizedData: any = {};
 
 			for (const field of allowedFields) {
 				if (updateData[field] !== undefined) {
-					sanitizedData[field] = updateData[field];
+					if (field === 'expirationDate' && updateData[field]) {
+						sanitizedData[field] = new Date(updateData[field]).toISOString();
+					} else {
+						sanitizedData[field] = updateData[field];
+					}
 				}
 			}
 

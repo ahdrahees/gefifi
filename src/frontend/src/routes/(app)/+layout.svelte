@@ -5,6 +5,7 @@
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
 	import PWAInstallPrompt from '$lib/components/ui/PWAInstallPrompt.svelte';
+	import AgentChatFAB from '$lib/components/agent/AgentChatFAB.svelte';
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
@@ -14,6 +15,13 @@
 	console.log('[Debug] (app)/+layout.svelte script is executing.');
 
 	let currentAuth = $derived($authStore);
+
+	let showAgentFAB = $derived(
+		currentAuth.isAuthenticated &&
+		currentAuth.user?.userType === 'customer' &&
+		page.url.pathname !== '/home' &&
+		!page.url.pathname.startsWith('/agent')
+	);
 
 	interface NavLink {
 		href: string;
@@ -151,7 +159,9 @@
 								currentAuth.user.profile?.fullName ||
 								'User'}
 						</p>
-						<p class="truncate text-xs text-slate-400">{currentAuth.user.email}</p>
+						<p class="truncate text-xs text-slate-400">
+							{currentAuth.user.email || currentAuth.user.phoneNumber || ''}
+						</p>
 						<p class="text-xs text-amber-400 capitalize">{currentAuth.user.userType}</p>
 					</div>
 				</a>
@@ -226,6 +236,10 @@
 		</main>
 	</div>
 </div>
+
+{#if showAgentFAB}
+	<AgentChatFAB />
+{/if}
 
 <!-- PWA Install Prompt -->
 <PWAInstallPrompt />

@@ -24,32 +24,33 @@ export const updateSessionEventsState = (sessionId: string, event: AgentEvent | 
 	const updatedEvents = [...currentEvents];
 
 	for (const ev of newEvents) {
-		if (ev.partial) {
-			// Find the last event to append to
-			const lastEventIndex = updatedEvents.findIndex(
-				(e, i) =>
-					i === updatedEvents.length - 1 &&
-					e.author === ev.author &&
-					e.invocationId === ev.invocationId
+		if (ev.invocationId) {
+			const existingEventIndex = updatedEvents.findIndex(
+				(e) => e.invocationId === ev.invocationId && e.author === ev.author
 			);
 
-			if (lastEventIndex !== -1) {
-				const lastEvent = updatedEvents[lastEventIndex];
-				// Clone to ensure reactivity
-				const mergedEvent = { ...lastEvent, content: { ...lastEvent.content } };
-				if (!mergedEvent.content.parts) mergedEvent.content.parts = [];
+			if (existingEventIndex !== -1) {
+				if (ev.partial) {
+					const lastEvent = updatedEvents[existingEventIndex];
+					// Clone to ensure reactivity
+					const mergedEvent = { ...lastEvent, content: { ...lastEvent.content } };
+					if (!mergedEvent.content.parts) mergedEvent.content.parts = [];
 
-				// Assuming partial events only have one part with text for simplicity in streaming
-				const newPart = ev.content?.parts?.[0];
-				if (newPart?.text) {
-					const lastPart = mergedEvent.content.parts[mergedEvent.content.parts.length - 1];
-					if (lastPart && lastPart.text !== null && lastPart.text !== undefined) {
-						lastPart.text += newPart.text;
-					} else {
-						mergedEvent.content.parts.push({ ...newPart });
+					// Assuming partial events only have one part with text for simplicity in streaming
+					const newPart = ev.content?.parts?.[0];
+					if (newPart?.text) {
+						const lastPart = mergedEvent.content.parts[mergedEvent.content.parts.length - 1];
+						if (lastPart && lastPart.text !== null && lastPart.text !== undefined) {
+							lastPart.text += newPart.text;
+						} else {
+							mergedEvent.content.parts.push({ ...newPart });
+						}
 					}
+					updatedEvents[existingEventIndex] = mergedEvent;
+				} else {
+					// Final event: replace the partial streaming event with the complete final event
+					updatedEvents[existingEventIndex] = ev;
 				}
-				updatedEvents[lastEventIndex] = mergedEvent;
 				continue;
 			}
 		}

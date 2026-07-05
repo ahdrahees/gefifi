@@ -8,11 +8,106 @@
 	// Get Google Client ID from environment variables
 	const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-	let email = $state('');
-	let password = $state('');
+	let phoneNumber = $state('');
+	let otpCode = $state('');
+	let otpSent = $state(false);
+	let cooldownSeconds = $state(0);
+	let timerInterval: any = null;
+
 	let isLoading = $state(false);
 	let errorMessage: string | null = $state(null);
 	let googleIsLoading = $state(false);
+
+	// Sanitize phone number and OTP inputs reactively
+	$effect(() => {
+		phoneNumber = phoneNumber.replace(/[^\d+]/g, '');
+	});
+
+	$effect(() => {
+		otpCode = otpCode.replace(/\D/g, '').slice(0, 6);
+	});
+
+	// --- OTP Functions ---
+	function startCooldown(seconds: number = 60) {
+		cooldownSeconds = seconds;
+		if (timerInterval) clearInterval(timerInterval);
+		timerInterval = setInterval(() => {
+			if (cooldownSeconds > 0) {
+				cooldownSeconds--;
+			} else {
+				clearInterval(timerInterval);
+			}
+		}, 1000);
+	}
+
+	function formatPhoneNumber(input: string): string {
+		const cleaned = input.trim().replace(/[^\d+]/g, '');
+		if (cleaned.startsWith('+')) {
+			return cleaned;
+		}
+		if (cleaned.startsWith('91') && cleaned.length === 12) {
+			return '+' + cleaned;
+		}
+		if (cleaned.length === 10) {
+			return '+91' + cleaned;
+		}
+		return '+91' + cleaned;
+	}
+
+	async function handleSendOtp() {
+		isLoading = true;
+		errorMessage = null;
+
+		phoneNumber = formatPhoneNumber(phoneNumber);
+
+		const PHONE_REGEX = /^\+[1-9]\d{1,14}$/;
+		if (!PHONE_REGEX.test(phoneNumber)) {
+			errorMessage = 'Please enter a valid E.164 phone number (e.g. +919999999999). If using another country code, prepend it with + (e.g. +1).';
+			isLoading = false;
+			return;
+		}
+
+		try {
+			const res = await authStore.sendOtp(phoneNumber);
+			if (res.success) {
+				otpSent = true;
+				startCooldown(60);
+			} else {
+				errorMessage = res.message;
+				if (res.cooldownRemaining) {
+					startCooldown(res.cooldownRemaining);
+				}
+			}
+		} catch (error: any) {
+			errorMessage = error.message || 'Failed to send OTP.';
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	async function handleVerifyAndLogin() {
+		isLoading = true;
+		errorMessage = null;
+
+		if (!otpCode || otpCode.length !== 6) {
+			errorMessage = 'Please enter a valid 6-digit OTP code.';
+			isLoading = false;
+			return;
+		}
+
+		try {
+			const result = await authStore.verifyOtp(phoneNumber, otpCode);
+			if (result.isNewUser) {
+				goto('/auth/complete-profile', { replaceState: true });
+			} else {
+				goto('/home', { replaceState: true });
+			}
+		} catch (error: any) {
+			errorMessage = error.message || 'Verification failed. Please try again.';
+		} finally {
+			isLoading = false;
+		}
+	}
 
 	// --- Google Sign-In Functions ---
 
@@ -23,11 +118,6 @@
 			return;
 		}
 		googleIsLoading = true;
-		// The actual sign-in is triggered by the Google library's button/prompt,
-		// and the result is handled by the 'handleGoogleCredentialResponse' callback.
-		// We can use a one-tap prompt for returning users.
-		// For a button click, the library's own UI is preferred.
-		// We just show a loading state on our button.
 	}
 
 	// This function will be called by the Google library after a successful sign-in
@@ -35,20 +125,18 @@
 		googleIsLoading = true;
 		errorMessage = null;
 		try {
-			const result = await apiClient.googleLogin({ googleTokenId: response.credential });
-
-			// On successful login (existing user) or registration, the backend returns a token.
-			authStore._updateAuthData(result.token, result.user);
-			goto('/home', { replaceState: true });
+			const result = await authStore.googleLogin({ googleTokenId: response.credential });
+			if (result.isNewUser) {
+				goto('/auth/complete-profile', { replaceState: true });
+			} else {
+				goto('/home', { replaceState: true });
+			}
 		} catch (error: unknown) {
 			console.error('Google Sign-In Error:', error);
 			if (error instanceof ApiError && error.status === 400) {
-				// Handle case where user is new and needs to select a userType
 				errorMessage =
 					error.data?.message ||
-					'This Google account is not yet registered. Please use the registration page.';
-				// TODO: In a more advanced flow, you could redirect to register page with pre-filled details.
-				// For now, we just inform the user.
+					'This Google account is not yet registered. Please register first.';
 			} else if (error instanceof ApiError) {
 				errorMessage = error.data?.message || 'An error occurred during Google Sign-In.';
 			} else {
@@ -56,26 +144,6 @@
 			}
 		} finally {
 			googleIsLoading = false;
-		}
-	}
-
-	// --- Email/Password Login ---
-	async function handleLogin() {
-		isLoading = true;
-		errorMessage = null;
-		try {
-			await authStore.login({ email, password });
-			// authStore's internal logic (via updateAuthData) should set isLoggedIn.
-			// A reactive statement in a layout or a +layout.ts load function
-			// would typically handle redirection based on isLoggedIn.
-			// For now, explicit navigation on success:
-			goto('/home');
-		} catch (error: unknown) {
-			// The error thrown by authStore.login already has a user-friendly message
-			errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-			console.error('Login page error:', error);
-		} finally {
-			isLoading = false;
 		}
 	}
 
@@ -111,9 +179,6 @@
 					logo_alignment: 'left'
 				});
 			}
-
-			// Optional: Display one-tap prompt for returning users
-			// window.google.accounts.id.prompt();
 		} else {
 			console.error('Google Client ID not found or Google script not loaded.');
 		}
@@ -121,6 +186,9 @@
 		return () => {
 			if (unsubscribeAuth) {
 				unsubscribeAuth();
+			}
+			if (timerInterval) {
+				clearInterval(timerInterval);
 			}
 		};
 	});
@@ -142,7 +210,14 @@
 		</h2>
 
 		<form
-			on:submit|preventDefault={handleLogin}
+			onsubmit={(e) => {
+				e.preventDefault();
+				if (otpSent) {
+					handleVerifyAndLogin();
+				} else {
+					handleSendOtp();
+				}
+			}}
 			class="space-y-6 rounded-xl bg-slate-800/70 p-6 shadow-2xl sm:p-8"
 		>
 			{#if errorMessage}
@@ -155,68 +230,89 @@
 			{/if}
 
 			<div>
-				<label for="email" class="mb-1.5 block text-sm font-medium text-sky-300"
-					>Email Address</label
+				<label for="phoneNumber" class="mb-1.5 block text-sm font-medium text-sky-300"
+					>Phone Number</label
 				>
-				<input
-					type="email"
-					id="email"
-					bind:value={email}
-					required
-					class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-					placeholder="you@example.com"
-					disabled={isLoading || googleIsLoading}
-				/>
-			</div>
-
-			<div>
-				<label for="password" class="mb-1.5 block text-sm font-medium text-sky-300">Password</label>
-				<input
-					type="password"
-					id="password"
-					bind:value={password}
-					required
-					class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-					placeholder="••••••••"
-					disabled={isLoading || googleIsLoading}
-				/>
-				<!-- <div class="text-right mt-1">
-          <a href="/auth/forgot-password" class="text-xs text-sky-400 hover:text-sky-300 hover:underline">Forgot password?</a>
-        </div> -->
-			</div>
-
-			<div>
-				<button
-					type="submit"
-					disabled={isLoading || googleIsLoading}
-					class="flex w-full items-center justify-center rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-				>
-					{#if isLoading}
-						<svg
-							class="mr-3 -ml-1 h-5 w-5 animate-spin text-white"
-							xmlns="http://www.w3.org/2000/svg"
-							fill="none"
-							viewBox="0 0 24 24"
+				<div class="mt-2 flex gap-2">
+					<input
+						type="tel"
+						id="phoneNumber"
+						bind:value={phoneNumber}
+						required
+						placeholder="e.g. +919999999999"
+						disabled={otpSent || isLoading || googleIsLoading}
+						class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
+					/>
+					{#if otpSent}
+						<button
+							type="button"
+							onclick={() => { otpSent = false; otpCode = ''; }}
+							class="rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-600"
 						>
-							<circle
-								class="opacity-25"
-								cx="12"
-								cy="12"
-								r="10"
-								stroke="currentColor"
-								stroke-width="4"
-							></circle>
-							<path
-								class="opacity-75"
-								fill="currentColor"
-								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-							></path>
-						</svg>
-						Logging in...
-					{:else}
-						Login
+							Change
+						</button>
 					{/if}
-				</button>
+				</div>
+			</div>
+
+			{#if otpSent}
+				<div>
+					<label for="otpCode" class="mb-1.5 block text-sm font-medium text-sky-300"
+						>One-Time Password (OTP)</label
+					>
+					<input
+						type="text"
+						id="otpCode"
+						inputmode="numeric"
+						bind:value={otpCode}
+						required
+						class="w-full rounded-lg border border-slate-600 bg-slate-700/80 px-4 py-2.5 text-center text-lg font-mono tracking-widest text-gray-100 transition-colors outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-slate-800 disabled:opacity-60"
+						placeholder="Enter 6-digit code"
+						disabled={isLoading || googleIsLoading}
+					/>
+					<p class="mt-2 text-xs text-slate-400">
+						{#if cooldownSeconds > 0}
+							Resend OTP in {cooldownSeconds}s
+						{:else}
+							<button
+								type="button"
+								onclick={handleSendOtp}
+								class="text-emerald-400 underline hover:text-emerald-300"
+							>
+								Resend OTP
+							</button>
+						{/if}
+					</p>
+				</div>
+			{/if}
+
+			<div>
+				{#if !otpSent}
+					<button
+						type="button"
+						onclick={handleSendOtp}
+						disabled={isLoading || googleIsLoading || !phoneNumber}
+						class="flex w-full items-center justify-center rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						{#if isLoading}
+							Sending OTP...
+						{:else}
+							Send Verification Code
+						{/if}
+					</button>
+				{:else}
+					<button
+						type="submit"
+						disabled={isLoading || googleIsLoading || !otpCode}
+						class="flex w-full items-center justify-center rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white shadow-md transition-all duration-150 ease-in-out hover:bg-emerald-600 hover:shadow-lg focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						{#if isLoading}
+							Verifying...
+						{:else}
+							Verify & Login
+						{/if}
+					</button>
+				{/if}
 			</div>
 
 			<div class="relative flex items-center py-2">
@@ -227,8 +323,6 @@
 
 			<!-- Google Sign-In Button Container -->
 			<div id="google-signin-button" class="flex justify-center">
-				<!-- The Google library will render its button here. -->
-				<!-- We can show a fallback or our own styled button as a placeholder. -->
 				<button
 					type="button"
 					disabled={true}
