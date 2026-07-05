@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 cd agents
 poetry run adk web --allow_origins http://localhost:5173 \
   --session_service_uri sqlite://./.local-state/agent_session_service_db.sqlite3 \

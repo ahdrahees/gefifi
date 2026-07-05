@@ -6,10 +6,12 @@
 	// --- PROPS ---
 	let {
 		isSending = false,
-		onSubmit
+		onSubmit,
+		noTopBorder = false
 	}: {
 		isSending?: boolean;
 		onSubmit?: (detail: { message: string; files: File[] }) => void;
+		noTopBorder?: boolean;
 	} = $props();
 	const MAX_FILES = 10;
 	// Allowed file extensions
@@ -162,9 +164,50 @@
 	});
 
 	function handleKeydownWindow(e: KeyboardEvent) {
-		if (e.key !== 'Enter' && e.key !== 'Shift' && !isVirtualKeyboard) {
-			textarea?.focus();
+		// Ignore if user is using a shortcut modifier (Command, Control, Alt)
+		if (e.metaKey || e.ctrlKey || e.altKey) {
+			return;
 		}
+
+		// List of control/navigation keys that shouldn't trigger autofocus
+		const ignoreKeys = [
+			'Enter',
+			'Shift',
+			'Control',
+			'Meta',
+			'Alt',
+			'Escape',
+			'Tab',
+			'CapsLock',
+			'ArrowUp',
+			'ArrowDown',
+			'ArrowLeft',
+			'ArrowRight',
+			'Backspace',
+			'Delete'
+		];
+
+		if (ignoreKeys.includes(e.key) || isVirtualKeyboard) {
+			return;
+		}
+
+		// Avoid stealing focus if user is already typing in another input/textarea
+		const activeEl = document.activeElement;
+		if (
+			activeEl &&
+			(activeEl.tagName === 'INPUT' ||
+				activeEl.tagName === 'TEXTAREA' ||
+				activeEl.getAttribute('contenteditable') === 'true')
+		) {
+			return;
+		}
+
+		// Avoid stealing focus if the user currently has text selected (e.g. attempting to copy)
+		if (window.getSelection()?.toString()) {
+			return;
+		}
+
+		textarea?.focus();
 	}
 
 	/**
@@ -191,7 +234,7 @@
 </script>
 
 <svelte:window onkeydown={handleKeydownWindow} />
-<div class="border-t border-slate-700/50 bg-slate-900 p-4">
+<div class="border-t border-slate-700/50 bg-slate-900 p-4{noTopBorder ? ' border-t-0' : ''}">
 	<div
 		class="mx-auto max-w-3xl rounded-xl border border-slate-700 bg-slate-800/50 p-2 shadow-lg backdrop-blur-sm transition-colors focus-within:border-slate-600 hover:border-slate-600"
 	>

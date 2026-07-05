@@ -314,9 +314,9 @@
 			{/each}
 		</div>
 	{:else}
-		<div class="flex flex-1 flex-col justify-center space-y-4 py-6 text-center">
-			<div class="mx-auto mb-2 w-fit rounded-full bg-slate-600/50 p-3">
-				<svg class="h-6 w-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<div class="scrollable-content flex flex-1 flex-col overflow-y-auto pr-1 space-y-3 py-2 text-center">
+			<div class="mx-auto mb-1 w-fit rounded-full bg-slate-600/50 p-2">
+				<svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -325,19 +325,19 @@
 					/>
 				</svg>
 			</div>
-			<div class="space-y-2">
+			<div class="space-y-1">
 				<p class="text-sm font-medium text-slate-300">No active contracts yet</p>
-				<p class="px-2 text-xs leading-relaxed text-slate-400">
+				<p class="px-2 text-[11px] leading-relaxed text-slate-400">
 					Contracts will appear here once you start collaborating with experts and suppliers
 				</p>
 			</div>
 
 			<!-- Quick stats or tips -->
-			<div class="mt-4 space-y-3">
-				<div class="rounded-lg border border-slate-600/30 bg-slate-600/20 p-3">
-					<div class="mb-1 flex items-center gap-2">
+			<div class="mt-2 space-y-2.5">
+				<div class="rounded-lg border border-slate-600/30 bg-slate-600/20 p-2.5">
+					<div class="mb-1 flex items-center gap-1.5">
 						<svg
-							class="h-4 w-4 text-emerald-400"
+							class="h-3.5 w-3.5 text-emerald-400"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -351,19 +351,19 @@
 						</svg>
 						<span class="text-xs font-medium text-emerald-300">Quick Tip</span>
 					</div>
-					<p class="text-xs leading-relaxed text-slate-300">
+					<p class="text-[11px] leading-relaxed text-slate-300">
 						Create requests to find experts and suppliers, then formalize agreements with contracts
 					</p>
 				</div>
 
-				<div class="grid grid-cols-2 gap-2 text-xs">
-					<div class="rounded-md bg-slate-700/40 p-2 text-center">
+				<div class="grid grid-cols-2 gap-2 text-[11px]">
+					<div class="rounded-md bg-slate-700/40 p-1.5 text-center">
 						<div class="font-medium text-slate-300">Next Step</div>
-						<div class="text-slate-400">Post a request</div>
+						<div class="text-slate-450">Post a request</div>
 					</div>
-					<div class="rounded-md bg-slate-700/40 p-2 text-center">
+					<div class="rounded-md bg-slate-700/40 p-1.5 text-center">
 						<div class="font-medium text-slate-300">Then</div>
-						<div class="text-slate-400">Create contracts</div>
+						<div class="text-slate-455">Create contracts</div>
 					</div>
 				</div>
 			</div>

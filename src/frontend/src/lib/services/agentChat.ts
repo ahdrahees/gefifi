@@ -8,6 +8,7 @@ import {
 	updateArtifactState,
 	updateSessionEventsState
 } from '$lib/states/agent.svelte';
+import { inlineAgentState } from '$lib/states/inlineAgent.svelte';
 import type {
 	AgentContentInput,
 	AgentContentPart,
@@ -84,7 +85,8 @@ export async function sendChat(sessionId: string, userId: string, message: strin
 		appName: CUSTOMER_AGENT_NAME,
 		userId,
 		sessionId,
-		newMessage
+		newMessage,
+		streaming: true
 	};
 	// api call run agent
 	try {
@@ -111,4 +113,30 @@ export async function fetchSession(userId: string, sessionId: string) {
 	if (session.events) {
 		sessionEventsState[sessionId] = session.events; // reset events state
 	}
+}
+
+export async function newInlineChat(userId: string, message: string, files: File[]) {
+	// Create new session
+	const newSessionId = generateSessionId();
+
+	const state = {
+		sessionMetadata: { title: message.slice(0, 200) } // 200 characters
+	};
+	const response = await agentApiClient.createSessionWithId(
+		CUSTOMER_AGENT_NAME,
+		newSessionId,
+		userId,
+		state
+	);
+
+	agentSessionState.add(response); // adding to state for updating sidebar
+
+	// Initialize the events state to empty to avoid race condition
+	sessionEventsState[newSessionId] = [];
+
+	// Set inline agent session ID
+	inlineAgentState.sessionId = newSessionId;
+
+	// Send message
+	await sendChat(newSessionId, userId, message, files);
 }
