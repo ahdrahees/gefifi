@@ -1,0 +1,27 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install project dependencies
+COPY agents/pyproject.toml agents/poetry.lock* ./
+RUN pip install --no-cache-dir poetry && \
+    poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi --no-root
+
+# Copy app code
+COPY agents/ ./
+
+# Non-root user
+RUN adduser --disabled-password --gecos "" myuser && \
+    chown -R myuser:myuser /app
+USER myuser
+
+ENV PATH="/home/myuser/.local/bin:$PATH"
+ENV PORT=8000
+
+# Use adk api_server; configure URIs via env
+# Point adk at AGENTS_DIR="." (which contains build_assist_agent)
+CMD ["sh", "-c", "adk api_server --host 0.0.0.0 --port $PORT \
+    --allow_origins \"$ALLOW_ORIGINS\" \
+    --session_service_uri \"$SESSION_SERVICE_URI\" \
+    --artifact_service_uri \"$ARTIFACT_SERVICE_URI\" ."]
