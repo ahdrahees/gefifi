@@ -11,12 +11,6 @@ RUN pip install --no-cache-dir poetry && \
 # Copy app code
 COPY agents/ ./
 
-# Non-root user
-RUN adduser --disabled-password --gecos "" myuser && \
-    chown -R myuser:myuser /app
-USER myuser
-
-ENV PATH="/home/myuser/.local/bin:$PATH"
 ENV PORT=8000
 
 # Use adk api_server; configure URIs via env
