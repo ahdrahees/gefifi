@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { agentLoaders } from '$lib/states/agent.svelte';
+	import { inlineAgentState } from '$lib/states/inlineAgent.svelte';
 	import { formatRelativeTime, getTemporalGroup } from '$lib/utils/timeUtils';
 
 	interface Props {
@@ -35,6 +36,7 @@
 	}
 
 	async function handleNewChat() {
+		inlineAgentState.sessionId = null;
 		if (newChat) {
 			newChat();
 		}
