@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, Literal, Optional, TypedDict
 
 import httpx
@@ -6,6 +7,8 @@ from google.adk.tools import ToolContext
 
 from build_assist_agent.config import API_BASE_URL
 from build_assist_agent.tool_types import HTTPStatusErrorResponse
+
+logger = logging.getLogger(__name__)
 
 
 class UserProfile(TypedDict):
@@ -158,13 +161,13 @@ async def find_experts(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_experts]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_experts")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve experts list. Reason error: {str(e)}",
@@ -278,13 +281,13 @@ async def find_suppliers(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_suppliers]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_suppliers")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve suppliers list. Reason error: {str(e)}",
@@ -354,13 +357,13 @@ async def find_a_user_by_id(user_id: str, tool_context: ToolContext) -> dict[str
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_a_user_by_id]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_a_user_by_id")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve User details. Reason error: {str(e)}",
@@ -487,7 +490,7 @@ async def find_users_by_ids(
                 "failed_users": failed_users_ids_and_reasons,
             }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_a_user_by_id]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_users_by_ids")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve User details. Reason error: {str(e)}",
@@ -603,15 +606,13 @@ async def invite_expert_to_expert_request(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[invite_expert_to_expert_request]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in invite_expert_to_expert_request")
         return {
             "status": "error",
             "error_message": f"Failed to invite expert. Reason error: {str(e)}",
@@ -727,15 +728,13 @@ async def invite_supplier_to_material_request(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[invite_supplier_to_material_request]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in invite_supplier_to_material_request")
         return {
             "status": "error",
             "error_message": f"Failed to invite supplier. Reason error: {str(e)}",

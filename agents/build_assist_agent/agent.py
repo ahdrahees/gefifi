@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any
 
@@ -48,18 +49,24 @@ from .tools.expert_request import (
     update_expert_request_tool_guardrail,
 )
 
-MODEL_ENV_PASSED = os.getenv("LLM_MODEL", "gemini/gemini-3.1-flash-lite")
+# Configure basic logging level based on environment (defaults to INFO in production)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=LOG_LEVEL, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+)
 
+logger = logging.getLogger(__name__)
+
+MODEL_ENV_PASSED = os.getenv("LLM_MODEL", "gemini/gemini-3.1-flash-lite")
 AGENT_ENV: str = os.getenv("AGENT_ENV", "development")
 DEV_MODE: bool = AGENT_ENV == "development"
-
 
 ###### Auth
 JWT_SECRET = os.getenv("JWT_SECRET")
 
 if JWT_SECRET is None:
-    print(
-        "FATAL ERROR: JWT_SECRET is not defined in .env. Authentication will not work."
+    logger.critical(
+        "JWT_SECRET is not defined in .env. Authentication will not work."
     )
     raise ValueError("FATAL ERROR: JWT_SECRET is not defined. Halting application.")
 
@@ -74,7 +81,7 @@ def verify_auth_token(auth_token: str) -> AuthData | None:
     Returns:
         user_id if valid, None if invalid
     """
-    print("HELPER[verify_auth_token]: verifying JWT token")
+    logger.debug("verify_auth_token: verifying JWT token")
     try:
         # Remove "Bearer " prefix if present
         if auth_token.startswith("Bearer "):
@@ -89,23 +96,23 @@ def verify_auth_token(auth_token: str) -> AuthData | None:
         user_type = decoded.get("userType")
 
         if user_id is None:
-            print("ERROR@ HELPER[verify_auth_token]: user_id not found in token")
+            logger.warning("verify_auth_token: user_id not found in token")
             return None
         elif user_type is None:
-            print("ERROR@ HELPER[verify_auth_token]: user_type not found in token")
+            logger.warning("verify_auth_token: user_type not found in token")
             return None
 
         auth_data = AuthData(user_id=user_id, user_type=user_type)
 
-        print(
-            f"HELPER[verify_auth_token]: token verified successfully for user_id: {user_id}"
+        logger.debug(
+            "verify_auth_token: token verified successfully for user_id: %s", user_id
         )
         return auth_data
     except jwt.ExpiredSignatureError as e:
-        print(f"ERROR@ HELPER[verify_auth_token]: token expired - {e}")
+        logger.warning("verify_auth_token: token expired - %s", e)
         return None
     except jwt.InvalidTokenError as e:
-        print(f"ERROR@ HELPER[verify_auth_token]: invalid token - {e}")
+        logger.warning("verify_auth_token: invalid token - %s", e)
         return None
 
 
@@ -122,7 +129,7 @@ async def auth_before_agent_callback(
     agent_name = (
         callback_context.agent_name
     )  # Get the name of the agent whose model call is being intercepted
-    print(f"CALLBACK[auth_before_agent_callback]: running for agent: {agent_name} ---")
+    logger.debug("auth_before_agent_callback: running for agent: %s", agent_name)
 
     # The token should be passed from your app as state_delta in api call. If it is a development environment we will get token from environment variable
     auth_token: str | None = (
@@ -145,8 +152,8 @@ async def auth_before_agent_callback(
     auth_data = verify_auth_token(auth_token)
 
     if not auth_data:
-        print(
-            f"CALLBACK[auth_before_agent_callback]: Authentication failed for token: {auth_token}"
+        logger.warning(
+            "auth_before_agent_callback: Authentication failed for token"
         )
         return types.Content(
             role="model",
@@ -167,8 +174,8 @@ async def auth_before_agent_callback(
     if DEV_MODE and auth_token:
         callback_context.state["auth_token"] = auth_token
 
-    print(
-        f"CALLBACK[auth_before_agent_callback]: User {auth_data['user_id']} authenticated successfully"
+    logger.info(
+        "auth_before_agent_callback: User %s authenticated successfully", auth_data['user_id']
     )
 
     # available_files = await callback_context.list_artifacts()
@@ -187,7 +194,7 @@ async def auth_before_model_callback(
     agent_name = (
         callback_context.agent_name
     )  # Get the name of the agent whose model call is being intercepted
-    print(f"CALLBACK[auth_before_model_callback]: running for agent: {agent_name} ---")
+    logger.debug("auth_before_model_callback: running for agent: %s", agent_name)
 
     # The token should be passed from your app as state_delta in api call. If it is a development environment we will get token from environment variable
     auth_token: str | None = (
@@ -231,8 +238,8 @@ async def auth_before_model_callback(
     # - Token is still accessible via callback_context.state.get("auth_token")
     #   during THIS invocation (due to state_delta merge)
 
-    print(
-        f"CALLBACK[before_model_callback]: User {auth_data['user_id']} authenticated successfully"
+    logger.info(
+        "before_model_callback: User %s authenticated successfully", auth_data['user_id']
     )
 
     # available_files = await callback_context.list_artifacts()
@@ -263,8 +270,8 @@ async def before_tool_callback(
         else tool_context.state.get("auth_token")
     )
 
-    print(
-        f"CALLBACK[before_tool_callback]: running for tool: {tool.name} with user_id: {user_id}"
+    logger.info(
+        "before_tool_callback: running for tool: %s with user_id: %s", tool.name, user_id
     )
 
     # Check if user_id and auth_token are present (all tool relay on this to call backend)
@@ -281,7 +288,7 @@ async def before_tool_callback(
 
     available_files = await tool_context.list_artifacts()
 
-    print(f"CALLBACK[before_tool_callback]: available files: {available_files}")
+    logger.debug("before_tool_callback: available files: %s", available_files)
 
     return await run_tool_specific_guardrail(tool, args, tool_context)
 
@@ -292,8 +299,8 @@ async def run_tool_specific_guardrail(
     """
     Run a tool specific guardrail for the given tool.
     """
-    print(
-        f"HELPER[run_tool_specific_guardrail]: checking for tool-specific guardrail for tool: {tool.name}"
+    logger.debug(
+        "run_tool_specific_guardrail: checking for tool-specific guardrail for tool: %s", tool.name
     )
     if tool.name == "create_expert_request":
         return create_expert_request_tool_guardrail(tool, args, tool_context)
@@ -308,8 +315,8 @@ async def run_tool_specific_guardrail(
             tool, args, tool_context
         )
 
-    print(
-        f"HELPER[run_tool_specific_guardrail]: no specific guardrail found for tool: {tool.name}"
+    logger.debug(
+        "run_tool_specific_guardrail: no specific guardrail found for tool: %s", tool.name
     )
     return None
 
