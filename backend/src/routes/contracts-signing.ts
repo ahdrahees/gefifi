@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
-import { Contract, ContractComment, Attachment, Project } from '../interfaces';
+import { Contract, ContractComment, Attachment } from '../interfaces';
 import { authenticateToken, AuthenticatedRequest, JwtPayload } from '../auth';
 import { uploadEntityAttachment } from '../file-storage';
 import { sendSystemMessage } from './shared/system-messages';
@@ -12,7 +12,6 @@ const contractsDB = new FirestoreCollection<Contract>('contracts');
 const usersDB = new FirestoreCollection('users');
 const workRequestsDB = new FirestoreCollection('workRequests');
 const materialRequestsDB = new FirestoreCollection('materialRequests');
-const projectsDB = new FirestoreCollection<Project>('projects');
 
 const router = Router();
 
@@ -153,59 +152,6 @@ router.put(
                     if (!updatedContract) {
                         return res.status(500).json({ message: 'Failed to update contract after signing.' });
                     }
-
-                    // --- PROJECT CREATION/UPDATE LOGIC ---
-                    // When a contract is fully signed, create or update the corresponding project.
-                    const projectId = updatedContract.workRequestId || updatedContract.materialRequestId;
-                    if (projectId) {
-                        const project = await projectsDB.findById(projectId);
-                        const workRequest = updatedContract.workRequestId
-                            ? await workRequestsDB.findById(updatedContract.workRequestId) as any
-                            : null;
-                        const materialRequest = updatedContract.materialRequestId
-                            ? await materialRequestsDB.findById(updatedContract.materialRequestId) as any
-                            : null;
-
-                        const projectUpdate: Partial<Project> = {
-                            updatedAt: now
-                        };
-
-                        const historyEntry = { status: 'Not Started', updatedAt: now, updatedBy: user.id };
-
-                        if (updatedContract.requestType === 'work') {
-                            projectUpdate.workComponent = {
-                                expertId: updatedContract.expertSupplierId,
-                                contractId: updatedContract.id,
-                                status: 'Not Started',
-                                statusHistory: [historyEntry]
-                            };
-                        } else {
-                            // 'material'
-                            projectUpdate.materialComponent = {
-                                supplierId: updatedContract.expertSupplierId,
-                                contractId: updatedContract.id,
-                                status: 'Awaiting Dispatch',
-                                statusHistory: [historyEntry]
-                            };
-                        }
-
-                        if (project) {
-                            // Project exists, just add the new component
-                            await projectsDB.update(projectId, projectUpdate);
-                        } else {
-                            // Project doesn't exist, create it
-                            const newProject: Project = {
-                                id: projectId,
-                                title: workRequest?.title || materialRequest?.title || 'Project',
-                                customerId: updatedContract.customerId,
-                                createdAt: now,
-                                updatedAt: now,
-                                ...projectUpdate
-                            };
-                            await projectsDB.create(newProject);
-                        }
-                    }
-                    // --- END PROJECT LOGIC ---
 
                     res.status(200).json(updatedContract);
                 } else {

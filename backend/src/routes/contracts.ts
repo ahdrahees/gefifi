@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
-import { Contract, ContractComment, Attachment, User, WorkRequest, MaterialRequest, Project } from '../interfaces';
+import { Contract, ContractComment, Attachment, User, WorkRequest, MaterialRequest } from '../interfaces';
 import { authenticateToken, AuthenticatedRequest, JwtPayload } from '../auth';
 import { uploadEntityAttachment } from '../file-storage';
 import { sendSystemMessage } from './shared/system-messages';
@@ -12,7 +12,6 @@ const contractsDB = new FirestoreCollection<Contract>('contracts');
 const usersDB = new FirestoreCollection<User>('users');
 const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
 const materialRequestsDB = new FirestoreCollection<MaterialRequest>('materialRequests');
-const projectsDB = new FirestoreCollection<Project>('projects');
 
 const router = Router();
 

@@ -295,19 +295,6 @@ export type Contract = {
 	// e.g., workRequestTitle?: string;
 };
 
-/**
- * Represents a project in the "My Projects" list view, which is an
- * enriched contract with details from other models for easy display.
- */
-export type ProjectSummary = {
-	id: string; // Contract ID
-	workRequestTitle?: string;
-	otherPartyName?: string;
-	status: ContractStatus;
-	contractDate: string;
-	workRequestId?: string;
-};
-
 // --- Quote Management Types ---
 
 /**
@@ -365,38 +352,6 @@ export type QuoteMessage = Message & {
 	quoteAmount?: number;
 	quoteValidity?: string;
 	quoteTitle?: string;
-};
-
-/**
- * Defines the structure for a project, which is a container for work and/or material components.
- * This should align with the backend's Project interface.
- */
-export type Project = {
-	id: string;
-	title: string;
-	customerId: string;
-	workComponent?: {
-		expertId: string;
-		contractId: string;
-		chatId?: string;
-		status: string; // Using string for flexibility on the client
-		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
-	};
-	materialComponent?: {
-		supplierId: string;
-		contractId: string;
-		chatId?: string;
-		status: string; // Using string for flexibility on the client
-		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
-	};
-	createdAt: string;
-	updatedAt: string;
-	// Frontend-enriched properties
-	workRequest?: WorkRequest;
-	materialRequest?: MaterialRequest;
-	customer?: AuthUser;
-	expert?: AuthUser;
-	supplier?: AuthUser;
 };
 
 /**
