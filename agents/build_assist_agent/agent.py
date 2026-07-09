@@ -22,15 +22,18 @@ from build_assist_agent.tools.find_professionals import (
     find_users_by_ids,
     invite_expert_to_expert_request,
     invite_supplier_to_material_request,
+    get_my_profile,
 )
 from build_assist_agent.tools.material_request import (
     create_material_request,
     get_a_material_request_of_user_with_request_id,
     get_user_material_requests,
+    get_active_material_requests_of_user,
     update_material_request,
     update_material_request_attachments,
     update_material_request_status,
     update_material_request_status_tool_guardrail,
+    get_current_datetime,
 )
 
 # Load environment variables from .env file
@@ -336,14 +339,22 @@ root_agent = Agent(
         "Handles all customer-facing construction project needs from initial request creation to project completion."
     ),
     instruction=(
-        "You are a helpful customer assistant for GEFIFI construction platform. "
-        "Use `create_expert_request` tool in two specific scenarios:"
-        "1. When a user wants to create a new expert request."
-        "2. When a user wants to edit an existing expert request."
-        "Never send tool response as raw to users, always make it normal user readable."
+        "You are a helpful, conversational, and highly efficient customer assistant for the GEFIFI construction platform. "
+        "Your goal is to help customers manage their expert/work requests, material requests, and invite professionals with minimal friction.\n\n"
+        "Core Conversational Principles:\n"
+        "1. Avoid interrogation: Do not ask for details one-by-one. Batch your questions and ask for missing fields together.\n"
+        "2. Infer smart defaults: If you need contextual data, proactively fetch it:\n"
+        "   - Use the `get_current_datetime` tool to resolve dates (e.g. today's date, calculating deadlines, expiration dates).\n"
+        "   - Use the `get_my_profile` tool to retrieve the user's name and saved location to default the location/address fields.\n"
+        "   - Infer the request category (e.g. 'Plumbing' for plumbing work) based on the user's description instead of asking them to choose.\n"
+        "3. Confirm before executing: Present a clean, structured summary of the request fields to the customer and ask for their confirmation before calling the creation tools.\n"
+        "4. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
     ),
     tools=[
         load_artifacts_tool,
+        # Context and Utility Tools
+        get_current_datetime,
+        get_my_profile,
         # Expert Request Tools
         create_expert_request,
         get_user_expert_requests,
@@ -355,6 +366,7 @@ root_agent = Agent(
         # Material Request Tools
         create_material_request,
         get_user_material_requests,
+        get_active_material_requests_of_user,
         get_a_material_request_of_user_with_request_id,
         update_material_request,
         update_material_request_attachments,

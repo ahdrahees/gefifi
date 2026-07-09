@@ -1288,3 +1288,35 @@ async def update_material_request_status(
             "status": "error",
             "error_message": f"Failed to update status of material request. Reason error: {str(e)}",
         }
+
+
+# Tool to retrieve current datetime
+async def get_current_datetime(tool_context: ToolContext) -> dict[str, Any]:
+    """Retrieves the current date and time.
+
+    Use this tool whenever you need to know today's date, calculate expiration dates, or handle deadlines.
+
+    Returns:
+        dict: A dictionary containing:
+            - status (str): 'success' or 'error'
+            - current_datetime (str): Current ISO 8601 formatted datetime string
+            - current_date (str): Current date in YYYY-MM-DD format
+            - day_of_week (str): Current day of the week (e.g. 'Monday')
+    """
+    try:
+        from datetime import datetime
+        now = datetime.now()
+        return {
+            "status": "success",
+            "current_datetime": now.isoformat(),
+            "current_date": now.strftime("%Y-%m-%d"),
+            "day_of_week": now.strftime("%A"),
+            "message": "Current date and time retrieved successfully.",
+        }
+    except Exception as e:
+        print(f"ERROR@ TOOL[get_current_datetime]: Unexpected error - {str(e)}")
+        return {
+            "status": "error",
+            "error_message": f"Failed to retrieve current date and time. Reason error: {str(e)}",
+        }
+
