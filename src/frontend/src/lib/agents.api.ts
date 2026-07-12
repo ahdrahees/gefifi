@@ -6,7 +6,8 @@ import type {
 	AgentEvent,
 	AgentSession,
 	ListSessionsResponse,
-	RunAgentRequest
+	RunAgentRequest,
+	ArtifactPart
 } from './types/agent-api';
 import type { JsonObject } from './types/json';
 
@@ -190,6 +191,23 @@ const agentApiClient = {
 	},
 	runSSE: (args: RunAgentRequest): AsyncGenerator<AgentEvent> => {
 		return streamRequest<AgentEvent>(`/run_sse`, 'POST', args);
+	},
+	listArtifacts: (agentName: AgentName, userId: string, sessionId: string): Promise<string[]> => {
+		return request<string[]>(
+			`/apps/${agentName}/users/${userId}/sessions/${sessionId}/artifacts`,
+			'GET'
+		);
+	},
+	loadArtifact: (
+		agentName: AgentName,
+		userId: string,
+		sessionId: string,
+		artifactName: string
+	): Promise<ArtifactPart | null> => {
+		return request<ArtifactPart | null>(
+			`/apps/${agentName}/users/${userId}/sessions/${sessionId}/artifacts/${artifactName}`,
+			'GET'
+		);
 	}
 };
 
