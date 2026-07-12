@@ -778,7 +778,7 @@ async def get_my_profile(tool_context: ToolContext) -> dict[str, Any]:
             "message": "User profile retrieved successfully",
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[get_my_profile]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in get_my_profile")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve user profile. Reason error: {str(e)}",

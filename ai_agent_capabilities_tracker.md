@@ -118,7 +118,7 @@ graph TD
 | 18 | Invite expert to work request | ✅ | `invite_expert_to_expert_request` |
 | 19 | Invite supplier to material request | ✅ | `invite_supplier_to_material_request` |
 | | **Quote Management** | | |
-| 20 | View quotes for a request | 🔧 | Backend API exists: `GET /api/quotes/request/:requestId` |
+| 20 | View quotes for a request | ✅ | Implemented as tool: `get_quotes_for_request` |
 | 21 | Accept a quote | 🚫 | Backend: `PUT /api/quotes/:quoteId/status` — **needs human review and explicit approval** |
 | 22 | Reject a quote | 🚫 | Backend: `PUT /api/quotes/:quoteId/status` — **needs human confirmation** |
 | 23 | Mark quote "under review" | 🔧 | Backend: `PUT /api/quotes/:quoteId/status` — low-risk, automatable |
@@ -134,8 +134,8 @@ graph TD
 | 31 | View single project detail | ❌ | **DELETED** from codebase |
 | 32 | Update project component status | ❌ | **DELETED** from codebase |
 | | **Chat** | | |
-| 33 | Send chat message | 🔧 | Backend: `POST /api/chat/:chatId/messages` — agent could draft messages |
-| 34 | List active chats | 🔧 | Backend: `GET /api/chat` |
+| 33 | Send chat message | ✅ | Implemented as tool: `send_chat_message` |
+| 34 | List active chats | ✅ | Implemented as tool: `get_user_chats` |
 | | **Profile** | | |
 | 35 | Update own profile | 🔧 | Backend: `PUT /api/users/me/profile` |
 | 36 | Get current date/time | ✅ | Implemented as tool: `get_current_datetime` |
@@ -356,9 +356,9 @@ instruction=(
 | 🔴 P0 | `get_current_datetime` | Customer | Low | High | ✅ **Done** |
 | 🔴 P0 | `get_my_profile` | All | Low | High | ✅ **Done** |
 | 🔴 P0 | Improve system prompt | Customer | Low | High | ✅ **Done** |
-| 🟡 P1 | `get_quotes_for_request` | Customer | Medium | High | 🔧 |
+| 🟡 P1 | `get_quotes_for_request` | Customer | Medium | High | ✅ **Done** |
 | 🟡 P1 | `view_projects` | Customer | — | — | ❌ **Deleted** |
-| 🟡 P1 | `view_chats` | Customer | Medium | Medium | 🔧 |
+| 🟡 P1 | `view_chats` | Customer | Medium | Medium | ✅ **Done** |
 | 🟢 P2 | `draft_contract` (with human confirm) | Customer | High | High | 🔧 |
 | 🟢 P2 | Expert Agent (new) | Expert | High | High | 🔧 |
 | 🟢 P2 | Supplier Agent (new) | Supplier | High | High | 🔧 |

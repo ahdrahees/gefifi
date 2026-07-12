@@ -1314,7 +1314,7 @@ async def get_current_datetime(tool_context: ToolContext) -> dict[str, Any]:
             "message": "Current date and time retrieved successfully.",
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[get_current_datetime]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in get_current_datetime")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve current date and time. Reason error: {str(e)}",

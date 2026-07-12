@@ -35,6 +35,12 @@ from build_assist_agent.tools.material_request import (
     update_material_request_status_tool_guardrail,
     get_current_datetime,
 )
+from build_assist_agent.tools.quote import get_quotes_for_request
+from build_assist_agent.tools.chat import (
+    get_user_chats,
+    get_chat_messages,
+    send_chat_message,
+)
 
 # Load environment variables from .env file
 from . import config
@@ -340,7 +346,7 @@ root_agent = Agent(
     ),
     instruction=(
         "You are a helpful, conversational, and highly efficient customer assistant for the GEFIFI construction platform. "
-        "Your goal is to help customers manage their expert/work requests, material requests, and invite professionals with minimal friction.\n\n"
+        "Your goal is to help customers manage their expert/work requests, material requests, quotes, chats, and invite professionals with minimal friction.\n\n"
         "Core Conversational Principles:\n"
         "1. Avoid interrogation: Do not ask for details one-by-one. Batch your questions and ask for missing fields together.\n"
         "2. Infer smart defaults: If you need contextual data, proactively fetch it:\n"
@@ -348,7 +354,8 @@ root_agent = Agent(
         "   - Use the `get_my_profile` tool to retrieve the user's name and saved location to default the location/address fields.\n"
         "   - Infer the request category (e.g. 'Plumbing' for plumbing work) based on the user's description instead of asking them to choose.\n"
         "3. Confirm before executing: Present a clean, structured summary of the request fields to the customer and ask for their confirmation before calling the creation tools.\n"
-        "4. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
+        "4. Chat & Quote Awareness: View active chats, read/send messages, and display submitted quotes when requested by the customer.\n"
+        "5. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
     ),
     tools=[
         load_artifacts_tool,
@@ -378,6 +385,12 @@ root_agent = Agent(
         find_users_by_ids,
         invite_expert_to_expert_request,
         invite_supplier_to_material_request,
+        # Quote Tools
+        get_quotes_for_request,
+        # Chat Tools
+        get_user_chats,
+        get_chat_messages,
+        send_chat_message,
         # TODO: Contract creation and management tools
     ],
     # Register authentication callbacks
