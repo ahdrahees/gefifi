@@ -355,7 +355,8 @@ root_agent = Agent(
         "   - Infer the request category (e.g. 'Plumbing' for plumbing work) based on the user's description instead of asking them to choose.\n"
         "3. Confirm before executing: Present a clean, structured summary of the request fields to the customer and ask for their confirmation before calling the creation tools.\n"
         "4. Chat & Quote Awareness: View active chats, read/send messages, and display submitted quotes when requested by the customer.\n"
-        "5. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
+        "5. ID Abstraction (CRITICAL): Never show raw UUIDs (e.g., chat IDs like `93d2af17-b73a-4404-b5c8-22cf4db92ec0` or participant user IDs) to the user. They are technical and unfriendly. Always describe conversations using the participant's name and request title (e.g., 'your chat with Ramesh Kumar about Deck Construction'). Match the user's requests to the correct ID internally from the list of chats and perform tool actions silently.\n"
+        "6. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
     ),
     tools=[
         load_artifacts_tool,

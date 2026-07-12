@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from typing import Any, Optional
@@ -9,21 +10,64 @@ from build_assist_agent.tool_types import HTTPStatusErrorResponse
 
 logger = logging.getLogger(__name__)
 
+
+async def _fetch_user_profile(user_id: str, token: str) -> dict:
+    """Fetch user profile from the backend API."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = await client.get(
+                f"{API_BASE_URL}/api/users/{user_id}",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                user_data = response.json()
+                profile = user_data.get("profile", {})
+                fullName = profile.get("fullName", "")
+                email = user_data.get("email", "")
+                userType = user_data.get("userType", "")
+                return {
+                    "fullName": fullName or email.split("@")[0] or "User",
+                    "userType": userType,
+                }
+    except Exception as e:
+        logger.error(f"Error fetching user profile for {user_id}: {e}")
+    return {"fullName": "Unknown User", "userType": "unknown"}
+
+
+async def _fetch_request_title(request_id: str, request_type: str, token: str) -> str:
+    """Fetch the request title (work or material request) from the backend API."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            headers = {"Authorization": f"Bearer {token}"}
+            endpoint = "work-requests" if request_type == "work" else "material-requests"
+            response = await client.get(
+                f"{API_BASE_URL}/api/{endpoint}/{request_id}",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                return response.json().get("title", "")
+    except Exception as e:
+        logger.error(f"Error fetching request title for {request_id} ({request_type}): {e}")
+    return ""
+
+
 # Tool to list chats
 async def get_user_chats(tool_context: ToolContext) -> dict[str, Any]:
     """
-    Get all active chat sessions of the current user.
+    Get all active chat sessions of the current user, fully resolved with participant names and request titles.
 
     Use this tool when the user wants to list their active chats, check who they are talking to, or see recent messages.
 
     Returns:
         dict: A dictionary containing:
             - status (str): 'success' or 'error'
-            - chats (list): List of active chat rooms with participant details.
+            - chats (list): List of active chat rooms with resolved names, request titles, and last messages.
     """
     logger.info("TOOL[get_user_chats]: fetching user's active chats")
     try:
         token: str = tool_context.state.get("auth_token")
+        current_user_id = tool_context.state.get("auth_data", {}).get("user_id")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
@@ -35,10 +79,91 @@ async def get_user_chats(tool_context: ToolContext) -> dict[str, Any]:
             )
             result = response.raise_for_status().json()
 
-        logger.info("TOOL[get_user_chats]: retrieved %s chats", len(result))
+        # Collect unique other user IDs and request IDs
+        other_user_ids = set()
+        request_ids = []  # list of tuples (id, type)
+
+        for chat in result:
+            for p_id in chat.get("participants", []):
+                if p_id != current_user_id:
+                    other_user_ids.add(p_id)
+            
+            w_req = chat.get("workRequestId")
+            m_req = chat.get("materialRequestId")
+            if w_req:
+                request_ids.append((w_req, "work"))
+            elif m_req:
+                request_ids.append((m_req, "material"))
+
+        # Fetch profiles concurrently
+        user_tasks = {
+            u_id: _fetch_user_profile(u_id, token)
+            for u_id in other_user_ids
+        }
+        user_results = {}
+        if user_tasks:
+            resolved_keys = list(user_tasks.keys())
+            resolved_vals = await asyncio.gather(*[user_tasks[k] for k in resolved_keys])
+            user_results = dict(zip(resolved_keys, resolved_vals))
+
+        # Fetch request titles concurrently
+        request_tasks = {
+            (r_id, r_type): _fetch_request_title(r_id, r_type, token)
+            for r_id, r_type in set(request_ids)
+        }
+        request_results = {}
+        if request_tasks:
+            resolved_keys = list(request_tasks.keys())
+            resolved_vals = await asyncio.gather(*[request_tasks[k] for k in resolved_keys])
+            request_results = dict(zip(resolved_keys, resolved_vals))
+
+        # Build clean user-facing response
+        enriched_chats = []
+        for chat in result:
+            other_participants = []
+            for p_id in chat.get("participants", []):
+                if p_id != current_user_id:
+                    p_info = user_results.get(p_id, {"fullName": "Unknown User", "userType": "unknown"})
+                    other_participants.append(f"{p_info['fullName']} ({p_info['userType']})")
+                else:
+                    other_participants.append("You")
+
+            req_title = "General Inquiry"
+            w_req = chat.get("workRequestId")
+            m_req = chat.get("materialRequestId")
+            if w_req:
+                req_title = request_results.get((w_req, "work"), "Work Request")
+            elif m_req:
+                req_title = request_results.get((m_req, "material"), "Material Request")
+
+            last_msg = chat.get("lastMessage")
+            last_msg_sender = "System"
+            if last_msg:
+                sender_id = last_msg.get("senderId")
+                if sender_id == current_user_id:
+                    last_msg_sender = "You"
+                elif sender_id in user_results:
+                    last_msg_sender = user_results[sender_id]["fullName"]
+
+            enriched_chats.append({
+                "chat_id": chat["id"],
+                "participants_names": other_participants,
+                "related_request": {
+                    "id": w_req or m_req or "none",
+                    "title": req_title,
+                    "type": "work" if w_req else ("material" if m_req else "none")
+                },
+                "last_message": {
+                    "content": last_msg.get("content", ""),
+                    "sender": last_msg_sender,
+                    "timestamp": last_msg.get("timestamp", "")
+                } if last_msg else None
+            })
+
+        logger.info("TOOL[get_user_chats]: enriched and returned %s chats", len(enriched_chats))
         return {
             "status": "success",
-            "chats": result,
+            "chats": enriched_chats,
             "message": "Chats retrieved successfully",
         }
 
@@ -89,7 +214,7 @@ async def get_chat_messages(
     opt_offset: Optional[int] = 0,
 ) -> dict[str, Any]:
     """
-    Get recent messages from a specific chat session.
+    Get recent messages from a specific chat session with sender user IDs resolved to human names.
 
     Use this tool when the user wants to read or view conversation history in a specific chat room.
 
@@ -101,11 +226,12 @@ async def get_chat_messages(
     Returns:
         dict: A dictionary containing:
             - status (str): 'success' or 'error'
-            - messages (list): Sorted list of messages.
+            - messages (list): Sorted list of messages with human-readable sender names.
     """
     logger.info("TOOL[get_chat_messages]: fetching messages for chat %s", chat_id)
     try:
         token: str = tool_context.state.get("auth_token")
+        current_user_id = tool_context.state.get("auth_data", {}).get("user_id")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
@@ -118,10 +244,48 @@ async def get_chat_messages(
             result = response.raise_for_status().json()
 
         messages_list = result.get("messages", [])
-        logger.info("TOOL[get_chat_messages]: retrieved %s messages", len(messages_list))
+
+        # Collect unique sender IDs (excluding system/current user)
+        sender_ids = set()
+        for msg in messages_list:
+            s_id = msg.get("senderId")
+            if s_id and s_id != current_user_id and s_id != "system":
+                sender_ids.add(s_id)
+
+        # Resolve sender names concurrently
+        user_tasks = {
+            u_id: _fetch_user_profile(u_id, token)
+            for u_id in sender_ids
+        }
+        user_results = {}
+        if user_tasks:
+            resolved_keys = list(user_tasks.keys())
+            resolved_vals = await asyncio.gather(*[user_tasks[k] for k in resolved_keys])
+            user_results = dict(zip(resolved_keys, resolved_vals))
+
+        # Enriched messages
+        enriched_messages = []
+        for msg in messages_list:
+            s_id = msg.get("senderId")
+            sender_name = "System"
+            if s_id == current_user_id:
+                sender_name = "You"
+            elif s_id in user_results:
+                sender_name = user_results[s_id]["fullName"]
+
+            enriched_messages.append({
+                "message_id": msg["id"],
+                "sender_name": sender_name,
+                "content": msg.get("content", ""),
+                "timestamp": msg.get("timestamp", ""),
+                "has_images": len(msg.get("images", [])) > 0,
+                "has_attachments": len(msg.get("attachments", [])) > 0,
+            })
+
+        logger.info("TOOL[get_chat_messages]: retrieved and enriched %s messages", len(enriched_messages))
         return {
             "status": "success",
-            "messages": messages_list,
+            "messages": enriched_messages,
             "message": "Messages retrieved successfully",
         }
 
