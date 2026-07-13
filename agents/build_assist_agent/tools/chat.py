@@ -121,12 +121,23 @@ async def get_user_chats(tool_context: ToolContext) -> dict[str, Any]:
         enriched_chats = []
         for chat in result:
             other_participants = []
+            participants_details = []
             for p_id in chat.get("participants", []):
                 if p_id != current_user_id:
                     p_info = user_results.get(p_id, {"fullName": "Unknown User", "userType": "unknown"})
                     other_participants.append(f"{p_info['fullName']} ({p_info['userType']})")
+                    participants_details.append({
+                        "id": p_id,
+                        "name": p_info['fullName'],
+                        "role": p_info['userType']
+                    })
                 else:
                     other_participants.append("You")
+                    participants_details.append({
+                        "id": p_id,
+                        "name": "You",
+                        "role": "customer"
+                    })
 
             req_title = "General Inquiry"
             w_req = chat.get("workRequestId")
@@ -148,6 +159,7 @@ async def get_user_chats(tool_context: ToolContext) -> dict[str, Any]:
             enriched_chats.append({
                 "chat_id": chat["id"],
                 "participants_names": other_participants,
+                "participants": participants_details,
                 "related_request": {
                     "id": w_req or m_req or "none",
                     "title": req_title,

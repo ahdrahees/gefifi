@@ -123,7 +123,7 @@ graph TD
 | 22 | Reject a quote | 🚫 | Backend: `PUT /api/quotes/:quoteId/status` — **needs human confirmation** |
 | 23 | Mark quote "under review" | 🔧 | Backend: `PUT /api/quotes/:quoteId/status` — low-risk, automatable |
 | | **Contract Management** | | |
-| 24 | Create/draft a contract | 🚫 | Backend: `POST /api/contracts` — **high-stakes, needs human drafting/review** |
+| 24 | Create/draft a contract | ✅ | Implemented as tool: `draft_contract` (with active contract validation) |
 | 25 | Edit contract terms | 🚫 | Backend: `PUT /api/contracts/:id` — **needs human content authoring** |
 | 26 | Add comment/revision request | 🔧 | Backend: `POST /api/contracts/:id/comments` — agent can draft, human approves |
 | 27 | Sign a contract | 🚫 | Backend: `PUT /api/contracts/:id/sign` — **strictly requires human consent** |
@@ -359,7 +359,7 @@ instruction=(
 | 🟡 P1 | `get_quotes_for_request` | Customer | Medium | High | ✅ **Done** |
 | 🟡 P1 | `view_projects` | Customer | — | — | ❌ **Deleted** |
 | 🟡 P1 | `view_chats` | Customer | Medium | Medium | ✅ **Done** |
-| 🟢 P2 | `draft_contract` (with human confirm) | Customer | High | High | 🔧 |
+| 🟢 P2 | `draft_contract` (with human confirm) | Customer | High | High | ✅ **Done** |
 | 🟢 P2 | Expert Agent (new) | Expert | High | High | 🔧 |
 | 🟢 P2 | Supplier Agent (new) | Supplier | High | High | 🔧 |
 | 🔵 P3 | `accept_quote` (with human confirm) | Customer | Medium | High | 🔧 |

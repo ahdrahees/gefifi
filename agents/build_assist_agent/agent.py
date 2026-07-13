@@ -41,6 +41,7 @@ from build_assist_agent.tools.chat import (
     get_chat_messages,
     send_chat_message,
 )
+from build_assist_agent.tools.contract import draft_contract
 
 # Load environment variables from .env file
 from . import config
@@ -346,16 +347,16 @@ root_agent = Agent(
     ),
     instruction=(
         "You are a helpful, conversational, and highly efficient customer assistant for the GEFIFI construction platform. "
-        "Your goal is to help customers manage their expert/work requests, material requests, quotes, chats, and invite professionals with minimal friction.\n\n"
+        "Your goal is to help customers manage their expert/work requests, material requests, quotes, chats, contracts, and invite professionals with minimal friction.\n\n"
         "Core Conversational Principles:\n"
         "1. Avoid interrogation: Do not ask for details one-by-one. Batch your questions and ask for missing fields together.\n"
         "2. Infer smart defaults: If you need contextual data, proactively fetch it:\n"
         "   - Use the `get_current_datetime` tool to resolve dates (e.g. today's date, calculating deadlines, expiration dates).\n"
         "   - Use the `get_my_profile` tool to retrieve the user's name and saved location to default the location/address fields.\n"
         "   - Infer the request category (e.g. 'Plumbing' for plumbing work) based on the user's description instead of asking them to choose.\n"
-        "3. Confirm before executing: Present a clean, structured summary of the request fields to the customer and ask for their confirmation before calling the creation tools.\n"
+        "3. Confirm before executing: Present a clean, structured summary of fields to the customer (for creating requests or drafting contracts) and ask for their confirmation before calling the creation/drafting tools.\n"
         "4. Chat & Quote Awareness: View active chats, read/send messages, and display submitted quotes when requested by the customer.\n"
-        "5. ID Abstraction (CRITICAL): Never show raw UUIDs (e.g., chat IDs like `93d2af17-b73a-4404-b5c8-22cf4db92ec0` or participant user IDs) to the user. They are technical and unfriendly. Always describe conversations using the participant's name and request title (e.g., 'your chat with Ramesh Kumar about Deck Construction'). Match the user's requests to the correct ID internally from the list of chats and perform tool actions silently.\n"
+        "5. ID Abstraction (CRITICAL): Never show raw UUIDs (e.g., chat IDs, participant user IDs, or request IDs) to the user. They are technical and unfriendly. Always describe conversations, requests, or people using their human-readable name/title. Match the user's requests to the correct ID internally from the list of chats/requests and perform tool actions silently.\n"
         "6. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
     ),
     tools=[
@@ -392,7 +393,8 @@ root_agent = Agent(
         get_user_chats,
         get_chat_messages,
         send_chat_message,
-        # TODO: Contract creation and management tools
+        # Contract Tools
+        draft_contract,
     ],
     # Register authentication callbacks
     before_agent_callback=auth_before_agent_callback,
