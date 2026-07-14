@@ -271,13 +271,13 @@ async def run_tool_specific_guardrail(
 
 class RoleRouterAgent(BaseAgent):
     """
-    Programmatic router agent that delegates execution directly to the sub-agent 
+    Programmatic router agent that delegates execution directly to the sub-agent
     matching the user's authenticated type (customer, expert, supplier).
     """
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        auth_data = ctx.state.get("auth_data", {})
-        user_type = auth_data.get("user_type")
+        auth_data = ctx.session.state.get("auth_data", {})
+        user_type = auth_data.get("user_type") if auth_data else None
 
         logger.info("RoleRouterAgent: Routing conversation for userType: '%s'", user_type)
 
