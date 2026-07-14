@@ -8,3 +8,4 @@ _ = load_dotenv(dotenv_path=env_path)
 
 
 API_BASE_URL = os.getenv("API_BASE_URL")
+MODEL_ENV_PASSED = os.getenv("LLM_MODEL", "gemini/gemini-3.1-flash-lite")
