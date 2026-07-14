@@ -267,38 +267,6 @@ export interface Contract extends Identifiable {
 	updatedAt: string;
 }
 
-/**
- * Represents a project, which is a high-level container for work and/or material components
- * that have been contracted. The ID often matches the original request ID.
- */
-export interface Project extends Identifiable {
-	title: string;
-	customerId: string;
-	workComponent?: {
-		expertId: string;
-		contractId: string;
-		status: string;
-		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
-		chatId?: string; // Added for API response enrichment
-	};
-	materialComponent?: {
-		supplierId: string;
-		contractId: string;
-		status: string;
-		statusHistory: { status: string; updatedAt: string; updatedBy: string }[];
-		chatId?: string; // Added for API response enrichment
-	};
-	createdAt: string;
-	updatedAt: string;
-
-	// Additional properties for API response enrichment (not stored in database)
-	workRequest?: WorkRequest;
-	materialRequest?: MaterialRequest;
-	customer?: User;
-	expert?: User;
-	supplier?: User;
-}
-
 // --- Quote Management Types ---
 
 /**

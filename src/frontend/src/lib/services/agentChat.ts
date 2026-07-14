@@ -108,11 +108,33 @@ export async function fetchAllSessions(userId: string) {
 	agentLoaders.isSessionsListLoadedAlready = true;
 }
 
+export async function loadSessionArtifacts(userId: string, sessionId: string) {
+	try {
+		const artifactNames = await agentApiClient.listArtifacts(CUSTOMER_AGENT_NAME, userId, sessionId);
+		await Promise.all(
+			artifactNames.map(async (name) => {
+				const artifactPart = await agentApiClient.loadArtifact(
+					CUSTOMER_AGENT_NAME,
+					userId,
+					sessionId,
+					name
+				);
+				if (artifactPart) {
+					updateArtifactState(sessionId, name, artifactPart);
+				}
+			})
+		);
+	} catch (error) {
+		console.error('Error loading session artifacts:', error);
+	}
+}
+
 export async function fetchSession(userId: string, sessionId: string) {
 	const session = await agentApiClient.getSession(CUSTOMER_AGENT_NAME, userId, sessionId);
 	if (session.events) {
 		sessionEventsState[sessionId] = session.events; // reset events state
 	}
+	await loadSessionArtifacts(userId, sessionId);
 }
 
 export async function newInlineChat(userId: string, message: string, files: File[]) {

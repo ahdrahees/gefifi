@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, Literal, Optional, TypedDict
 
 import httpx
@@ -6,6 +7,9 @@ from google.adk.tools import ToolContext
 
 from build_assist_agent.config import API_BASE_URL
 from build_assist_agent.tool_types import HTTPStatusErrorResponse
+from build_assist_agent.auth_types import AuthData
+
+logger = logging.getLogger(__name__)
 
 
 class UserProfile(TypedDict):
@@ -75,8 +79,10 @@ async def find_experts(
     """
     # fix add authentication header
     try:
+        token: str = tool_context.state.get("auth_token")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{API_BASE_URL}/api/users/experts")
+            headers = {"Authorization": f"Bearer {token}"}
+            response = await client.get(f"{API_BASE_URL}/api/users/experts", headers=headers)
 
             list_of_experts: list[User] = response.raise_for_status().json()
 
@@ -158,13 +164,13 @@ async def find_experts(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_experts]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_experts")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve experts list. Reason error: {str(e)}",
@@ -193,8 +199,10 @@ async def find_suppliers(
     """
     # fix add authentication header
     try:
+        token: str = tool_context.state.get("auth_token")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{API_BASE_URL}/api/users/suppliers")
+            headers = {"Authorization": f"Bearer {token}"}
+            response = await client.get(f"{API_BASE_URL}/api/users/suppliers", headers=headers)
 
             list_of_suppliers: list[User] = response.raise_for_status().json()
 
@@ -278,13 +286,13 @@ async def find_suppliers(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_suppliers]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_suppliers")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve suppliers list. Reason error: {str(e)}",
@@ -354,13 +362,13 @@ async def find_a_user_by_id(user_id: str, tool_context: ToolContext) -> dict[str
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_a_user_by_id]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_a_user_by_id")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve User details. Reason error: {str(e)}",
@@ -487,7 +495,7 @@ async def find_users_by_ids(
                 "failed_users": failed_users_ids_and_reasons,
             }
     except Exception as e:
-        print(f"ERROR@ TOOL[find_a_user_by_id]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in find_users_by_ids")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve User details. Reason error: {str(e)}",
@@ -535,7 +543,7 @@ async def invite_expert_to_expert_request(
 
             # adding expert_id into invtedExperts list
             response = await client.post(
-                f"{API_BASE_URL}/api/work-requests/${expert_request_id}/invite",
+                f"{API_BASE_URL}/api/work-requests/{expert_request_id}/invite",
                 json=body,
                 headers=headers,
             )
@@ -603,15 +611,13 @@ async def invite_expert_to_expert_request(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[invite_expert_to_expert_request]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in invite_expert_to_expert_request")
         return {
             "status": "error",
             "error_message": f"Failed to invite expert. Reason error: {str(e)}",
@@ -659,7 +665,7 @@ async def invite_supplier_to_material_request(
 
             # adding supplier_id into invitedSuppliers list
             response = await client.post(
-                f"{API_BASE_URL}/api/material-requests/${material_request_id}/invite",
+                f"{API_BASE_URL}/api/material-requests/{material_request_id}/invite",
                 json=body,
                 headers=headers,
             )
@@ -727,16 +733,54 @@ async def invite_supplier_to_material_request(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[invite_supplier_to_material_request]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in invite_supplier_to_material_request")
         return {
             "status": "error",
             "error_message": f"Failed to invite supplier. Reason error: {str(e)}",
         }
+
+
+# Tool to get current logged-in user's profile details
+async def get_my_profile(tool_context: ToolContext) -> dict[str, Any]:
+    """Retrieves the authenticated user's own profile information (such as name, location, phone number).
+
+    Use this tool to find out details about the user you are currently chatting with.
+
+    Returns:
+        dict: A dictionary containing the following:
+            Includes a 'status' key ('success' or 'error').
+            If 'status' is 'success', includes 'profile' key with user profile details and 'message' key.
+            If 'status' is 'error', includes an 'error_message' key.
+    """
+    try:
+        token: str = tool_context.state.get("auth_token")
+        auth_data: AuthData = tool_context.state.get("auth_data")
+        user_id = auth_data["user_id"]
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{API_BASE_URL}/api/users/{user_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        user: User = response.raise_for_status().json()
+        sanitized_user = sanitize_user(user)
+
+        return {
+            "status": "success",
+            "profile": sanitized_user,
+            "message": "User profile retrieved successfully",
+        }
+    except Exception as e:
+        logger.exception("Unexpected error in get_my_profile")
+        return {
+            "status": "error",
+            "error_message": f"Failed to retrieve user profile. Reason error: {str(e)}",
+        }
+

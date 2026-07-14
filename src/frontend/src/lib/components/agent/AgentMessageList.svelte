@@ -86,8 +86,12 @@
 	function getArtifactUrl(artifact: ArtifactPart): string | null {
 		// If inlineData exists (Blob)
 		if (artifact.inlineData && artifact.inlineData.data) {
-			// Assuming inlineData.data is base64
-			return `data:${artifact.inlineData.mimeType};base64,${artifact.inlineData.data}`;
+			// Convert URL-safe base64 (base64url) to standard base64 if needed
+			let base64Data = artifact.inlineData.data.replace(/-/g, '+').replace(/_/g, '/');
+			while (base64Data.length % 4) {
+				base64Data += '=';
+			}
+			return `data:${artifact.inlineData.mimeType};base64,${base64Data}`;
 		}
 		return null;
 	}

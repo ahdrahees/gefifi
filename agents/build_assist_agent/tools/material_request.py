@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, Literal, Optional, TypedDict
 
 import httpx
@@ -8,6 +9,8 @@ from google.adk.tools.tool_context import ToolContext
 from build_assist_agent.auth_types import AuthData
 from build_assist_agent.config import API_BASE_URL
 from build_assist_agent.tool_types import HTTPStatusErrorResponse
+
+logger = logging.getLogger(__name__)
 
 
 # Arg
@@ -110,12 +113,21 @@ async def create_material_request(
         if opt_expiration_date:
             try:
                 from datetime import datetime
+
                 parsed_date = datetime.strptime(opt_expiration_date, "%Y-%m-%d")
-                today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                today = datetime.now().replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
                 if parsed_date < today:
-                    return {"status": "error", "error_message": "Expiration date cannot be in the past."}
+                    return {
+                        "status": "error",
+                        "error_message": "Expiration date cannot be in the past.",
+                    }
             except ValueError:
-                return {"status": "error", "error_message": "Expiration date must be a valid date in YYYY-MM-DD format."}
+                return {
+                    "status": "error",
+                    "error_message": "Expiration date must be a valid date in YYYY-MM-DD format.",
+                }
 
         token: str = tool_context.state.get("auth_token")
 
@@ -291,11 +303,11 @@ async def create_material_request(
                 else error_message + f"HTTP error: {e}"
             )
 
-        print(print_message)
+        logger.error(print_message)
         result["error_message"] = error_message
         return result
     except Exception as e:
-        print(f"ERROR@ TOOL[create_material_request]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in create_material_request")
         return {
             "status": "error",
             "error_message": f"Failed to create material request. Reason error: {str(e)}",
@@ -357,13 +369,15 @@ async def get_user_material_requests(tool_context: ToolContext) -> dict[str, Any
             If 'status' is 'success', includes 'material_requests_list' key this will contain a list of material request posts and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print("TOOL[get_user_material_requests]: fetching user's material requests")
+    logger.info("TOOL[get_user_material_requests]: fetching user's material requests")
     try:
         token: str = tool_context.state.get("auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
-        print(f"TOOL[get_user_material_requests]: requesting for user_id: {user_id}")
+        logger.debug(
+            "TOOL[get_user_material_requests]: requesting for user_id: %s", user_id
+        )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
@@ -379,8 +393,9 @@ async def get_user_material_requests(tool_context: ToolContext) -> dict[str, Any
             # response = response.raise_for_status()
             result = response.raise_for_status().json()
 
-        print(
-            f"TOOL[get_user_material_requests]: retrieved {len(result)} material requests"
+        logger.info(
+            "TOOL[get_user_material_requests]: retrieved %s material requests",
+            len(result),
         )
         return {
             "status": "success",
@@ -417,13 +432,13 @@ async def get_user_material_requests(tool_context: ToolContext) -> dict[str, Any
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[get_user_material_requests]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in get_user_material_requests")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve material requests. Reason error: {str(e)}",
@@ -446,7 +461,7 @@ async def get_active_material_requests_of_user(
             If 'status' is 'success', includes 'active_material_requests_list' key this will contain a list of active material request posts and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(
+    logger.info(
         "TOOL[get_active_material_requests_of_user]: fetching user's material requests"
     )
     try:
@@ -454,8 +469,9 @@ async def get_active_material_requests_of_user(
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
-        print(
-            f"TOOL[get_active_material_requests_of_user]: requesting for user_id: {user_id}"
+        logger.debug(
+            "TOOL[get_active_material_requests_of_user]: requesting for user_id: %s",
+            user_id,
         )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -482,8 +498,9 @@ async def get_active_material_requests_of_user(
                 if material_request["status"] in ACTIVE_STATUSES
             ]
 
-        print(
-            f"TOOL[get_active_material_requests_of_user]: retrieved {len(active_material_requests_list)} material requests"
+        logger.info(
+            "TOOL[get_active_material_requests_of_user]: retrieved %s material requests",
+            len(active_material_requests_list),
         )
         return {
             "status": "success",
@@ -520,15 +537,13 @@ async def get_active_material_requests_of_user(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[get_active_material_requests_of_user]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in get_active_material_requests_of_user")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve active material requests. Reason error: {str(e)}",
@@ -552,8 +567,9 @@ async def get_a_material_request_of_user_with_request_id(
             If 'status' is 'success', includes 'material_request' key this will contain a material request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(
-        f"TOOL[get_a_material_request_of_user_with_request_id]: called with request_id: {request_id}"
+    logger.info(
+        "TOOL[get_a_material_request_of_user_with_request_id]: called with request_id: %s",
+        request_id,
     )
     try:
         token: str = tool_context.state.get("auth_token")
@@ -601,14 +617,14 @@ async def get_a_material_request_of_user_with_request_id(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[get_a_material_request_of_user_with_request_id]: Unexpected error - {str(e)}"
+        logger.exception(
+            "Unexpected error in get_a_material_request_of_user_with_request_id"
         )
         return {
             "status": "error",
@@ -650,7 +666,7 @@ async def update_material_request(
             If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(f"TOOL[update_material_request]: called with request_id: {request_id}")
+    logger.info("TOOL[update_material_request]: called with request_id: %s", request_id)
     try:
         token: str = tool_context.state.get("auth_token")
 
@@ -726,13 +742,13 @@ async def update_material_request(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[update_material_request]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in update_material_request")
         return {
             "status": "error",
             "error_message": f"Failed to update material request. Reason error: {str(e)}",
@@ -761,8 +777,9 @@ async def update_material_request_attachments(
             If 'status' is 'error', includes an 'error_message' key. may include `updated_material_request` if attachments removed successfully but failed to add new attachments.
             If 'status' is 'no changes', includes a 'message' key with the message that no changes were made and `existing_material_request` key contains the existing material request.
     """
-    print(
-        f"TOOL[update_material_request_attachments]: called with request_id: {request_id}, url_of_attachments_to_remove: {url_or_path_of_attachments_to_remove}, filenames_of_attachments_to_add: {filenames_of_attachments_to_add}"
+    logger.info(
+        "TOOL[update_material_request_attachments]: called with request_id: %s",
+        request_id,
     )
 
     updated_material_request: MaterialRequest | None = None
@@ -1055,7 +1072,7 @@ async def update_material_request_attachments(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
 
         result: dict[str, Any] = {
             "status": "error",
@@ -1065,9 +1082,7 @@ async def update_material_request_attachments(
             result["updated_material_request"] = updated_material_request
         return result
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[update_material_request_attachments]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in update_material_request_attachments")
         return {
             "status": "error",
             "error_message": f"Failed to update attachments of material request. Reason error: {str(e)}",
@@ -1078,16 +1093,18 @@ async def update_material_request_status_tool_guardrail(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """Guardrail for updating material request status of a customer"""
-    print(
-        f"GUARDRAIL[update_material_request_status_tool_guardrail]: running for tool: {tool.name} with args: {args}"
+    logger.debug(
+        "GUARDRAIL[update_material_request_status_tool_guardrail]: running for tool: %s with args: %s",
+        tool.name,
+        args,
     )
 
     request_id: str | None = args.get("request_id")
     status: str | None = args.get("status")
 
     if not request_id:
-        print(
-            "ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Request ID is empty"
+        logger.warning(
+            "GUARDRAIL[update_material_request_status_tool_guardrail]: Request ID is empty"
         )
         return {
             "status": "error",
@@ -1095,8 +1112,8 @@ async def update_material_request_status_tool_guardrail(
         }
 
     if not status:
-        print(
-            "ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Status is empty"
+        logger.warning(
+            "GUARDRAIL[update_material_request_status_tool_guardrail]: Status is empty"
         )
         return {
             "status": "error",
@@ -1127,8 +1144,9 @@ async def update_material_request_status_tool_guardrail(
             # Check if the current status is one that the customer is allowed to change.
             # This implicitly handles terminal states (completed, cancelled) and states
             if current_status not in valid_transitions:
-                print(
-                    f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Invalid status transition from {current_status}"
+                logger.warning(
+                    "GUARDRAIL[update_material_request_status_tool_guardrail]: Invalid status transition from %s",
+                    current_status,
                 )
                 return {
                     "status": "error",
@@ -1138,8 +1156,10 @@ async def update_material_request_status_tool_guardrail(
             # Check if the requested new status is a valid transition from the current status.
             allowed_next_statuses: set[str] = valid_transitions[current_status]
             if status not in allowed_next_statuses:
-                print(
-                    f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Invalid status transition from '{current_status}' to '{status}'"
+                logger.warning(
+                    "GUARDRAIL[update_material_request_status_tool_guardrail]: Invalid status transition from '%s' to '%s'",
+                    current_status,
+                    status,
                 )
                 return {
                     "status": "error",
@@ -1148,8 +1168,9 @@ async def update_material_request_status_tool_guardrail(
 
             return None
         else:
-            print(
-                f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Failed to fetch material request for checking current status. {message}"
+            logger.error(
+                "GUARDRAIL[update_material_request_status_tool_guardrail]: Failed to fetch material request for checking current status: %s",
+                message,
             )
             return {
                 "status": "error",
@@ -1157,8 +1178,8 @@ async def update_material_request_status_tool_guardrail(
             }
 
     except Exception as e:
-        print(
-            f"ERROR@ GUARDRAIL[update_material_request_status_tool_guardrail]: Unexpected error - {str(e)}"
+        logger.exception(
+            "Unexpected error in update_material_request_status_tool_guardrail"
         )
         return {
             "status": "error",
@@ -1200,8 +1221,10 @@ async def update_material_request_status(
             If 'status' is 'success', includes 'updated_material_request' key this will contain the updated material request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(
-        f"TOOL[update_material_request_status]: called with request_id: {request_id}, status: {status}"
+    logger.info(
+        "TOOL[update_material_request_status]: called with request_id: %s, status: %s",
+        request_id,
+        status,
     )
     try:
         token: str = tool_context.state.get("auth_token")
@@ -1254,16 +1277,46 @@ async def update_material_request_status(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[update_material_request_status]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in update_material_request_status")
         return {
             "status": "error",
             "error_message": f"Failed to update status of material request. Reason error: {str(e)}",
         }
+
+
+# Tool to retrieve current datetime
+async def get_current_datetime(tool_context: ToolContext) -> dict[str, Any]:
+    """Retrieves the current date and time.
+
+    Use this tool whenever you need to know today's date, calculate expiration dates, or handle deadlines.
+
+    Returns:
+        dict: A dictionary containing:
+            - status (str): 'success' or 'error'
+            - current_datetime (str): Current ISO 8601 formatted datetime string
+            - current_date (str): Current date in YYYY-MM-DD format
+            - day_of_week (str): Current day of the week (e.g. 'Monday')
+    """
+    try:
+        from datetime import datetime
+        now = datetime.now()
+        return {
+            "status": "success",
+            "current_datetime": now.isoformat(),
+            "current_date": now.strftime("%Y-%m-%d"),
+            "day_of_week": now.strftime("%A"),
+            "message": "Current date and time retrieved successfully.",
+        }
+    except Exception as e:
+        logger.exception("Unexpected error in get_current_datetime")
+        return {
+            "status": "error",
+            "error_message": f"Failed to retrieve current date and time. Reason error: {str(e)}",
+        }
+

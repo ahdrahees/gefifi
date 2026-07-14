@@ -3,6 +3,7 @@ Tools for handling expert requests.
 """
 
 import asyncio
+import logging
 import os
 from typing import Any, Dict, Literal, Optional, TypedDict
 
@@ -15,6 +16,8 @@ from build_assist_agent.tool_types import HTTPStatusErrorResponse, UploadRespons
 
 from ..auth_types import AuthData
 
+logger = logging.getLogger(__name__)
+
 # from google.adk.agents import Artifact
 
 
@@ -23,7 +26,7 @@ from ..auth_types import AuthData
 API_BASE_URL = os.getenv("API_BASE_URL")
 
 if API_BASE_URL is None:
-    print("FATAL ERROR: API_BASE_URL is not defined in .env")
+    logger.critical("API_BASE_URL is not defined in .env")
     raise ValueError("FATAL ERROR: API_BASE_URL is not defined. Halting application.")
 
 WorkRequestCategory = Literal[
@@ -61,13 +64,16 @@ def create_expert_request_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """Guardrail for the create_expert_request tool. Validate the arguments and return an error message if the arguments are not valid."""
-    print(
-        f"GUARDRAIL[create_expert_request_tool_guardrail]: running for tool: {tool.name} with args: {args}"
+    logger.debug(
+        "GUARDRAIL[create_expert_request_tool_guardrail]: running for tool: %s with args: %s",
+        tool.name,
+        args,
     )
 
     title = args.get("title", "")
     description = args.get("description", "")
     location_or_address = args.get("location_or_address", "")
+    category = args.get("category", "")
     opt_expected_cost = args.get("opt_expected_cost", None)
     # opt_timeline = args.get("opt_timeline", "")
     # opt_materials_suggested = args.get("opt_materials_suggested", "")
@@ -93,6 +99,7 @@ def create_expert_request_tool_guardrail(
     if opt_expiration_date:
         try:
             from datetime import datetime
+
             parsed_date = datetime.strptime(opt_expiration_date, "%Y-%m-%d")
             today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             if parsed_date < today:
@@ -101,7 +108,8 @@ def create_expert_request_tool_guardrail(
                 )
         except ValueError:
             error_message = attach_string(
-                error_message, "Expiration date must be a valid date in YYYY-MM-DD format"
+                error_message,
+                "Expiration date must be a valid date in YYYY-MM-DD format",
             )
 
     if image_filenames:
@@ -119,12 +127,12 @@ def create_expert_request_tool_guardrail(
                 )
 
     if error_message:
-        print(
-            f"GUARDRAIL[create_expert_request_tool_guardrail]: error: {error_message}"
+        logger.warning(
+            "GUARDRAIL[create_expert_request_tool_guardrail]: error: %s", error_message
         )
         return {"status": "error", "error_message": error_message}
 
-    print(
+    logger.debug(
         "GUARDRAIL[create_expert_request_tool_guardrail]: arguments are valid, proceeding with tool execution"
     )
     return None  # Proceed with tool execution
@@ -169,8 +177,10 @@ async def create_expert_request(
             If 'status' is 'success', includes 'created_expert_request' key with the expert request data and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(
-        f"TOOL[create_expert_request]: called with args, title: {truncate_string(title, 20)}, description: {truncate_string(description, 50)}, category: {category}, location_or_address: {truncate_string(location_or_address, 20)}"
+    logger.info(
+        "TOOL[create_expert_request]: called with args, title: %s, category: %s",
+        truncate_string(title, 20),
+        category,
     )
 
     try:
@@ -253,8 +263,10 @@ async def create_expert_request(
             "message": "Expert request created successfully. Please wait for an expert to respond.",
         }
 
-        print(
-            f"TOOL[create_expert_request]: Work request created successfully {result.get('created_expert_request')}"
+        logger.info("TOOL[create_expert_request]: Work request created successfully")
+        logger.debug(
+            "TOOL[create_expert_request]: response: %s",
+            result.get("created_expert_request"),
         )
 
         return result
@@ -274,24 +286,33 @@ async def create_expert_request(
         # method = e.request.method  # GET, POST, etc.
 
         if url == f"{API_BASE_URL}/api/upload":
-            print(
-                f"ERROR@ TOOL[create_expert_request]: Failed to upload image to backend - status_code: {status_code}, url: {url}, response_json: {response_json}"
+            logger.error(
+                "TOOL[create_expert_request]: Failed to upload image to backend - status_code: %s, url: %s, response_json: %s",
+                status_code,
+                url,
+                response_json,
             )
             return {
                 "status": "error",
                 "error_message": f"Failed to upload image to backend. Backend responded with message: {response_json['message']}",
             }
         elif url == f"{API_BASE_URL}/api/work-requests":
-            print(
-                f"ERROR@ TOOL[create_expert_request]: Failed to create work request - status_code: {status_code}, url: {url}, response_json: {response_json}"
+            logger.error(
+                "TOOL[create_expert_request]: Failed to create work request - status_code: %s, url: %s, response_json: %s",
+                status_code,
+                url,
+                response_json,
             )
             return {
                 "status": "error",
                 "error_message": f"Failed to create work request. Backend responded with message: {response_json['message']}",
             }
 
-        print(
-            f"ERROR@ TOOL[create_expert_request]: HTTP status error - status_code: {status_code}, url: {url}, response_json: {response_json}"
+        logger.error(
+            "TOOL[create_expert_request]: HTTP status error - status_code: %s, url: %s, response_json: %s",
+            status_code,
+            url,
+            response_json,
         )
         return {
             "status": "error",
@@ -299,21 +320,21 @@ async def create_expert_request(
         }
 
     except httpx.TimeoutException as e:
-        print(f"ERROR@ TOOL[create_expert_request]: HTTP timeout error - {e}")
+        logger.error("TOOL[create_expert_request]: HTTP timeout error - %s", e)
         return {
             "status": "error",
             "error_message": f"Failed to create work request. HTTP Gefifi backend api call Timeout error occurred: {e}",
         }
 
     except httpx.HTTPError as e:
-        print(f"ERROR@ TOOL[create_expert_request]: HTTP error - {e}")
+        logger.error("TOOL[create_expert_request]: HTTP error - %s", e)
         return {
             "status": "error",
             "error_message": f"Failed to create work request. HTTP Gefifi backend api call error occurred: {e}",
         }
 
     except Exception as e:
-        print(f"ERROR@ TOOL[create_expert_request]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in create_expert_request")
         return {
             "status": "error",
             "error_message": f"Failed to create expert request. Reason error: {str(e)}",
@@ -335,8 +356,11 @@ async def upload_file(
     Returns:
         A dictionary with the status and data of the upload
     """
-    print(
-        f"API[upload_file]: uploading file '{filename}' ({len(bytes_data)} bytes, {mime_type})"
+    logger.info(
+        "API[upload_file]: uploading file '%s' (%s bytes, %s)",
+        filename,
+        len(bytes_data),
+        mime_type,
     )
 
     # Non-blocking
@@ -350,7 +374,9 @@ async def upload_file(
         _ = response.raise_for_status()
 
     result: UploadResponse = response.json()
-    print(f"API[upload_file]: file uploaded successfully - {result.get('filePath')}")
+    logger.info(
+        "API[upload_file]: file uploaded successfully - %s", result.get("filePath")
+    )
     return result
 
 
@@ -367,13 +393,15 @@ async def get_user_expert_requests(tool_context: ToolContext) -> dict[str, Any]:
             If 'status' is 'success', includes 'expert_requests_list' key this will contain a list of expert/work request posts and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print("TOOL[get_user_expert_requests]: fetching user's expert requests")
+    logger.info("TOOL[get_user_expert_requests]: fetching user's expert requests")
     try:
         token: str = tool_context.state.get("auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
-        print(f"TOOL[get_user_expert_requests]: requesting for user_id: {user_id}")
+        logger.debug(
+            "TOOL[get_user_expert_requests]: requesting for user_id: %s", user_id
+        )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
@@ -389,8 +417,8 @@ async def get_user_expert_requests(tool_context: ToolContext) -> dict[str, Any]:
             # response = response.raise_for_status()
             result = response.raise_for_status().json()
 
-        print(
-            f"TOOL[get_user_expert_requests]: retrieved {len(result)} expert requests"
+        logger.info(
+            "TOOL[get_user_expert_requests]: retrieved %s expert requests", len(result)
         )
         return {
             "status": "success",
@@ -427,13 +455,13 @@ async def get_user_expert_requests(tool_context: ToolContext) -> dict[str, Any]:
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[get_user_expert_requests]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in get_user_expert_requests")
         return {
             "status": "error",
             "error_message": f"Failed to retrieve expert requests. Reason error: {str(e)}",
@@ -483,14 +511,16 @@ async def get_active_user_expert_requests(tool_context: ToolContext) -> dict[str
             If 'status' is 'success', includes 'active_expert_requests_list' key this will contain a list of active expert/work request posts and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print("TOOL[get_active_user_expert_requests]: fetching user's expert requests")
+    logger.info(
+        "TOOL[get_active_user_expert_requests]: fetching user's expert requests"
+    )
     try:
         token: str = tool_context.state.get("auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
-        print(
-            f"TOOL[get_active_user_expert_requests]: requesting for user_id: {user_id}"
+        logger.debug(
+            "TOOL[get_active_user_expert_requests]: requesting for user_id: %s", user_id
         )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -522,8 +552,9 @@ async def get_active_user_expert_requests(tool_context: ToolContext) -> dict[str
                 for expert_request in expert_requests_list
                 if expert_request["status"] in ACTIVE_STATUSES
             ]
-        print(
-            f"TOOL[get_active_user_expert_requests]: retrieved {len(result)} active expert requests"
+        logger.info(
+            "TOOL[get_active_user_expert_requests]: retrieved %s active expert requests",
+            len(result),
         )
         return {
             "status": "success",
@@ -560,15 +591,13 @@ async def get_active_user_expert_requests(tool_context: ToolContext) -> dict[str
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[get_active_user_expert_requests]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in get_active_user_expert_requests")
         return {
             "status": "error",
             "error_message": f"Failed to active retrieve expert requests. Reason error: {str(e)}",
@@ -592,8 +621,9 @@ async def get_a_expert_request_of_user_with_request_id(
             If 'status' is 'success', includes 'expert_request' key this will contain a expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(
-        f"TOOL[get_a_expert_request_of_user_with_request_id]: called with request_id: {request_id}"
+    logger.info(
+        "TOOL[get_a_expert_request_of_user_with_request_id]: called with request_id: %s",
+        request_id,
     )
     try:
         token: str = tool_context.state.get("auth_token")
@@ -641,14 +671,14 @@ async def get_a_expert_request_of_user_with_request_id(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[get_a_expert_request_of_user_with_request_id]: Unexpected error - {str(e)}"
+        logger.exception(
+            "Unexpected error in get_a_expert_request_of_user_with_request_id"
         )
         return {
             "status": "error",
@@ -660,8 +690,10 @@ def update_expert_request_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """Guardrail for update_expert_request_tool. Validate the arguments and return an error message if the arguments are not valid."""
-    print(
-        f"GUARDRAIL[update_expert_request_tool_guardrail]: running for tool: {tool.name} with args: {args}"
+    logger.debug(
+        "GUARDRAIL[update_expert_request_tool_guardrail]: running for tool: %s with args: %s",
+        tool.name,
+        args,
     )
     title: str | None = args.get("title")
     description: str | None = args.get("description")
@@ -715,8 +747,8 @@ def update_expert_request_tool_guardrail(
         )
 
     if error_message:
-        print(
-            f"ERROR@ GUARDRAIL[update_expert_request_tool_guardrail]: error: {error_message}"
+        logger.warning(
+            "GUARDRAIL[update_expert_request_tool_guardrail]: error: %s", error_message
         )
         return {
             "status": "error",
@@ -730,7 +762,7 @@ def update_expert_request_tool_guardrail(
         args["category"] = category
         args["timeline"] = timeline
         args["materials_suggested"] = materials_suggested
-        print(
+        logger.debug(
             "GUARDRAIL[update_expert_request_tool_guardrail]: arguments are valid, proceeding with tool execution"
         )
         return None
@@ -772,7 +804,7 @@ async def update_expert_request(
             If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(f"TOOL[update_expert_request]: called with request_id: {request_id}")
+    logger.info("TOOL[update_expert_request]: called with request_id: %s", request_id)
     try:
         token: str = tool_context.state.get("auth_token")
 
@@ -842,13 +874,13 @@ async def update_expert_request(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[update_expert_request]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in update_expert_request")
         return {
             "status": "error",
             "error_message": f"Failed to update expert request. Reason error: {str(e)}",
@@ -876,8 +908,8 @@ async def update_expert_request_image(
             If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(
-        f"TOOL[update_expert_request_image]: called with request_id: {request_id}, url_of_images_to_remove: {url_of_images_to_remove}, filenames_of_images_to_add: {filenames_of_images_to_add}"
+    logger.info(
+        "TOOL[update_expert_request_image]: called with request_id: %s", request_id
     )
     try:
         token: str = tool_context.state.get("auth_token")
@@ -1028,15 +1060,13 @@ async def update_expert_request_image(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(
-            f"ERROR@ TOOL[update_images_of_expert_request]: Unexpected error - {str(e)}"
-        )
+        logger.exception("Unexpected error in update_images_of_expert_request")
         return {
             "status": "error",
             "error_message": f"Failed to update images of expert request. Reason error: {str(e)}",
@@ -1047,16 +1077,18 @@ async def update_expert_request_status_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
     """Guardrail for updating expert request status of a customer"""
-    print(
-        f"GUARDRAIL[update_expert_request_status_tool_guardrail]: running for tool: {tool.name} with args: {args}"
+    logger.debug(
+        "GUARDRAIL[update_expert_request_status_tool_guardrail]: running for tool: %s with args: %s",
+        tool.name,
+        args,
     )
 
     request_id: str | None = args.get("request_id")
     status: str | None = args.get("status")
 
     if not request_id:
-        print(
-            "ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Request ID is empty"
+        logger.warning(
+            "GUARDRAIL[update_expert_request_status_tool_guardrail]: Request ID is empty"
         )
         return {
             "status": "error",
@@ -1064,8 +1096,8 @@ async def update_expert_request_status_tool_guardrail(
         }
 
     if not status:
-        print(
-            "ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Status is empty"
+        logger.warning(
+            "GUARDRAIL[update_expert_request_status_tool_guardrail]: Status is empty"
         )
         return {
             "status": "error",
@@ -1097,8 +1129,9 @@ async def update_expert_request_status_tool_guardrail(
             # This implicitly handles terminal states (completed, cancelled, closed) and states
             # requiring expert action (contracted).
             if current_status not in valid_transitions:
-                print(
-                    f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Invalid status transition from {current_status}"
+                logger.warning(
+                    "GUARDRAIL[update_expert_request_status_tool_guardrail]: Invalid status transition from %s",
+                    current_status,
                 )
                 return {
                     "status": "error",
@@ -1108,8 +1141,10 @@ async def update_expert_request_status_tool_guardrail(
             # Check if the requested new status is a valid transition from the current status.
             allowed_next_statuses: set[str] = valid_transitions[current_status]
             if status not in allowed_next_statuses:
-                print(
-                    f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Invalid status transition from '{current_status}' to '{status}'"
+                logger.warning(
+                    "GUARDRAIL[update_expert_request_status_tool_guardrail]: Invalid status transition from '%s' to '%s'",
+                    current_status,
+                    status,
                 )
                 return {
                     "status": "error",
@@ -1118,8 +1153,9 @@ async def update_expert_request_status_tool_guardrail(
 
             return None
         else:
-            print(
-                f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Failed to fetch expert request for checking current status. {message}"
+            logger.error(
+                "GUARDRAIL[update_expert_request_status_tool_guardrail]: Failed to fetch expert request: %s",
+                message,
             )
             return {
                 "status": "error",
@@ -1127,8 +1163,8 @@ async def update_expert_request_status_tool_guardrail(
             }
 
     except Exception as e:
-        print(
-            f"ERROR@ GUARDRAIL[update_expert_request_status_tool_guardrail]: Unexpected error - {str(e)}"
+        logger.exception(
+            "Unexpected error in update_expert_request_status_tool_guardrail"
         )
         return {
             "status": "error",
@@ -1175,8 +1211,10 @@ async def update_expert_request_status(
             If 'status' is 'success', includes 'updated_expert_request' key this will contain the updated expert/work request post and 'message' key with the success message and what to do next.
             If 'status' is 'error', includes an 'error_message' key.
     """
-    print(
-        f"TOOL[update_expert_request_status]: called with request_id: {request_id}, status: {status}"
+    logger.info(
+        "TOOL[update_expert_request_status]: called with request_id: %s, status: %s",
+        request_id,
+        status,
     )
     try:
         token: str = tool_context.state.get("auth_token")
@@ -1229,13 +1267,13 @@ async def update_expert_request_status(
             print_message = print_message + f"HTTP error - {e}"
             error_message = error_message + f"HTTP error: {e}"
 
-        print(print_message)
+        logger.error(print_message)
         return {
             "status": "error",
             "error_message": error_message,
         }
     except Exception as e:
-        print(f"ERROR@ TOOL[update_expert_request_status]: Unexpected error - {str(e)}")
+        logger.exception("Unexpected error in update_expert_request_status")
         return {
             "status": "error",
             "error_message": f"Failed to update status of expert request. Reason error: {str(e)}",

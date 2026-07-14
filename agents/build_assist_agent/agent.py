@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any
 
@@ -21,16 +22,26 @@ from build_assist_agent.tools.find_professionals import (
     find_users_by_ids,
     invite_expert_to_expert_request,
     invite_supplier_to_material_request,
+    get_my_profile,
 )
 from build_assist_agent.tools.material_request import (
     create_material_request,
     get_a_material_request_of_user_with_request_id,
     get_user_material_requests,
+    get_active_material_requests_of_user,
     update_material_request,
     update_material_request_attachments,
     update_material_request_status,
     update_material_request_status_tool_guardrail,
+    get_current_datetime,
 )
+from build_assist_agent.tools.quote import get_quotes_for_request
+from build_assist_agent.tools.chat import (
+    get_user_chats,
+    get_chat_messages,
+    send_chat_message,
+)
+from build_assist_agent.tools.contract import draft_contract
 
 # Load environment variables from .env file
 from . import config
@@ -48,18 +59,24 @@ from .tools.expert_request import (
     update_expert_request_tool_guardrail,
 )
 
-MODEL_ENV_PASSED = os.getenv("LLM_MODEL", "gemini/gemini-3.1-flash-lite")
+# Configure basic logging level based on environment (defaults to INFO in production)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=LOG_LEVEL, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+)
 
+logger = logging.getLogger(__name__)
+
+MODEL_ENV_PASSED = os.getenv("LLM_MODEL", "gemini/gemini-3.1-flash-lite")
 AGENT_ENV: str = os.getenv("AGENT_ENV", "development")
 DEV_MODE: bool = AGENT_ENV == "development"
-
 
 ###### Auth
 JWT_SECRET = os.getenv("JWT_SECRET")
 
 if JWT_SECRET is None:
-    print(
-        "FATAL ERROR: JWT_SECRET is not defined in .env. Authentication will not work."
+    logger.critical(
+        "JWT_SECRET is not defined in .env. Authentication will not work."
     )
     raise ValueError("FATAL ERROR: JWT_SECRET is not defined. Halting application.")
 
@@ -74,7 +91,7 @@ def verify_auth_token(auth_token: str) -> AuthData | None:
     Returns:
         user_id if valid, None if invalid
     """
-    print("HELPER[verify_auth_token]: verifying JWT token")
+    logger.debug("verify_auth_token: verifying JWT token")
     try:
         # Remove "Bearer " prefix if present
         if auth_token.startswith("Bearer "):
@@ -89,23 +106,23 @@ def verify_auth_token(auth_token: str) -> AuthData | None:
         user_type = decoded.get("userType")
 
         if user_id is None:
-            print("ERROR@ HELPER[verify_auth_token]: user_id not found in token")
+            logger.warning("verify_auth_token: user_id not found in token")
             return None
         elif user_type is None:
-            print("ERROR@ HELPER[verify_auth_token]: user_type not found in token")
+            logger.warning("verify_auth_token: user_type not found in token")
             return None
 
         auth_data = AuthData(user_id=user_id, user_type=user_type)
 
-        print(
-            f"HELPER[verify_auth_token]: token verified successfully for user_id: {user_id}"
+        logger.debug(
+            "verify_auth_token: token verified successfully for user_id: %s", user_id
         )
         return auth_data
     except jwt.ExpiredSignatureError as e:
-        print(f"ERROR@ HELPER[verify_auth_token]: token expired - {e}")
+        logger.warning("verify_auth_token: token expired - %s", e)
         return None
     except jwt.InvalidTokenError as e:
-        print(f"ERROR@ HELPER[verify_auth_token]: invalid token - {e}")
+        logger.warning("verify_auth_token: invalid token - %s", e)
         return None
 
 
@@ -122,7 +139,7 @@ async def auth_before_agent_callback(
     agent_name = (
         callback_context.agent_name
     )  # Get the name of the agent whose model call is being intercepted
-    print(f"CALLBACK[auth_before_agent_callback]: running for agent: {agent_name} ---")
+    logger.debug("auth_before_agent_callback: running for agent: %s", agent_name)
 
     # The token should be passed from your app as state_delta in api call. If it is a development environment we will get token from environment variable
     auth_token: str | None = (
@@ -145,8 +162,8 @@ async def auth_before_agent_callback(
     auth_data = verify_auth_token(auth_token)
 
     if not auth_data:
-        print(
-            f"CALLBACK[auth_before_agent_callback]: Authentication failed for token: {auth_token}"
+        logger.warning(
+            "auth_before_agent_callback: Authentication failed for token"
         )
         return types.Content(
             role="model",
@@ -167,8 +184,8 @@ async def auth_before_agent_callback(
     if DEV_MODE and auth_token:
         callback_context.state["auth_token"] = auth_token
 
-    print(
-        f"CALLBACK[auth_before_agent_callback]: User {auth_data['user_id']} authenticated successfully"
+    logger.info(
+        "auth_before_agent_callback: User %s authenticated successfully", auth_data['user_id']
     )
 
     # available_files = await callback_context.list_artifacts()
@@ -187,7 +204,7 @@ async def auth_before_model_callback(
     agent_name = (
         callback_context.agent_name
     )  # Get the name of the agent whose model call is being intercepted
-    print(f"CALLBACK[auth_before_model_callback]: running for agent: {agent_name} ---")
+    logger.debug("auth_before_model_callback: running for agent: %s", agent_name)
 
     # The token should be passed from your app as state_delta in api call. If it is a development environment we will get token from environment variable
     auth_token: str | None = (
@@ -231,8 +248,8 @@ async def auth_before_model_callback(
     # - Token is still accessible via callback_context.state.get("auth_token")
     #   during THIS invocation (due to state_delta merge)
 
-    print(
-        f"CALLBACK[before_model_callback]: User {auth_data['user_id']} authenticated successfully"
+    logger.info(
+        "before_model_callback: User %s authenticated successfully", auth_data['user_id']
     )
 
     # available_files = await callback_context.list_artifacts()
@@ -263,8 +280,8 @@ async def before_tool_callback(
         else tool_context.state.get("auth_token")
     )
 
-    print(
-        f"CALLBACK[before_tool_callback]: running for tool: {tool.name} with user_id: {user_id}"
+    logger.info(
+        "before_tool_callback: running for tool: %s with user_id: %s", tool.name, user_id
     )
 
     # Check if user_id and auth_token are present (all tool relay on this to call backend)
@@ -281,7 +298,7 @@ async def before_tool_callback(
 
     available_files = await tool_context.list_artifacts()
 
-    print(f"CALLBACK[before_tool_callback]: available files: {available_files}")
+    logger.debug("before_tool_callback: available files: %s", available_files)
 
     return await run_tool_specific_guardrail(tool, args, tool_context)
 
@@ -292,8 +309,8 @@ async def run_tool_specific_guardrail(
     """
     Run a tool specific guardrail for the given tool.
     """
-    print(
-        f"HELPER[run_tool_specific_guardrail]: checking for tool-specific guardrail for tool: {tool.name}"
+    logger.debug(
+        "run_tool_specific_guardrail: checking for tool-specific guardrail for tool: %s", tool.name
     )
     if tool.name == "create_expert_request":
         return create_expert_request_tool_guardrail(tool, args, tool_context)
@@ -308,8 +325,8 @@ async def run_tool_specific_guardrail(
             tool, args, tool_context
         )
 
-    print(
-        f"HELPER[run_tool_specific_guardrail]: no specific guardrail found for tool: {tool.name}"
+    logger.debug(
+        "run_tool_specific_guardrail: no specific guardrail found for tool: %s", tool.name
     )
     return None
 
@@ -329,14 +346,24 @@ root_agent = Agent(
         "Handles all customer-facing construction project needs from initial request creation to project completion."
     ),
     instruction=(
-        "You are a helpful customer assistant for GEFIFI construction platform. "
-        "Use `create_expert_request` tool in two specific scenarios:"
-        "1. When a user wants to create a new expert request."
-        "2. When a user wants to edit an existing expert request."
-        "Never send tool response as raw to users, always make it normal user readable."
+        "You are a helpful, conversational, and highly efficient customer assistant for the GEFIFI construction platform. "
+        "Your goal is to help customers manage their expert/work requests, material requests, quotes, chats, contracts, and invite professionals with minimal friction.\n\n"
+        "Core Conversational Principles:\n"
+        "1. Avoid interrogation: Do not ask for details one-by-one. Batch your questions and ask for missing fields together.\n"
+        "2. Infer smart defaults: If you need contextual data, proactively fetch it:\n"
+        "   - Use the `get_current_datetime` tool to resolve dates (e.g. today's date, calculating deadlines, expiration dates).\n"
+        "   - Use the `get_my_profile` tool to retrieve the user's name and saved location to default the location/address fields.\n"
+        "   - Infer the request category (e.g. 'Plumbing' for plumbing work) based on the user's description instead of asking them to choose.\n"
+        "3. Confirm before executing: Present a clean, structured summary of fields to the customer (for creating requests or drafting contracts) and ask for their confirmation before calling the creation/drafting tools.\n"
+        "4. Chat & Quote Awareness: View active chats, read/send messages, and display submitted quotes when requested by the customer.\n"
+        "5. ID Abstraction (CRITICAL): Never show raw UUIDs (e.g., chat IDs, participant user IDs, or request IDs) to the user. They are technical and unfriendly. Always describe conversations, requests, or people using their human-readable name/title. Match the user's requests to the correct ID internally from the list of chats/requests and perform tool actions silently.\n"
+        "6. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
     ),
     tools=[
         load_artifacts_tool,
+        # Context and Utility Tools
+        get_current_datetime,
+        get_my_profile,
         # Expert Request Tools
         create_expert_request,
         get_user_expert_requests,
@@ -348,6 +375,7 @@ root_agent = Agent(
         # Material Request Tools
         create_material_request,
         get_user_material_requests,
+        get_active_material_requests_of_user,
         get_a_material_request_of_user_with_request_id,
         update_material_request,
         update_material_request_attachments,
@@ -359,7 +387,14 @@ root_agent = Agent(
         find_users_by_ids,
         invite_expert_to_expert_request,
         invite_supplier_to_material_request,
-        # TODO: Contract creation and management tools
+        # Quote Tools
+        get_quotes_for_request,
+        # Chat Tools
+        get_user_chats,
+        get_chat_messages,
+        send_chat_message,
+        # Contract Tools
+        draft_contract,
     ],
     # Register authentication callbacks
     before_agent_callback=auth_before_agent_callback,
