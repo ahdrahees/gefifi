@@ -1,5 +1,6 @@
 import type { AgentEvent, AgentSession, ArtifactPart } from '$lib/types/agent-api';
 import { FastHistory } from '$lib/utils/FastHistory.svelte';
+import { inlineAgentState } from '$lib/states/inlineAgent.svelte';
 
 /**
  * State that holds agent sessions. `events` field is not in detail.
@@ -98,3 +99,28 @@ export const agentLoaders = $state({
 	isSessionsListLoadedAlready: false,
 	generating: {} as Record<string, boolean>
 });
+
+/**
+ * Resets all agent and session related state.
+ * Should be called when logging out or switching users.
+ */
+export function resetAgentState() {
+	agentSessionState.clear();
+
+	for (const key of Object.keys(sessionEventsState)) {
+		delete sessionEventsState[key];
+	}
+
+	for (const key of Object.keys(artifactsState)) {
+		delete artifactsState[key];
+	}
+
+	agentLoaders.loadingSessionsList = false;
+	agentLoaders.loadingArtifacts = false;
+	agentLoaders.loadingSessionEvents = false;
+	agentLoaders.isSessionsListLoadedAlready = false;
+	agentLoaders.generating = {};
+
+	inlineAgentState.sessionId = null;
+	inlineAgentState.isModalOpen = false;
+}

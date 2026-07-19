@@ -87,6 +87,13 @@ export class FastHistory<T> {
 		this._data = items;
 	}
 
+	/**
+	 * Clears all items in the history.
+	 */
+	clear(): void {
+		this._data = [];
+	}
+
 	get length(): number {
 		return this._data.length;
 	}
