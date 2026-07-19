@@ -1,8 +1,6 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/OnlineStatus.svelte -->
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import { realtimeChatService } from '$lib/services/realtimeChat';
-	import type { Unsubscribe } from 'firebase/firestore';
 
 	interface Props {
 		userId: string;
@@ -24,18 +22,13 @@
 		lg: { dot: 'h-4 w-4', text: 'text-base' }
 	};
 
-	onMount(() => {
+	$effect(() => {
 		if (userId) {
-			unsubscribe = realtimeChatService.subscribeToUserPresence(userId, (online, lastSeenDate) => {
+			const unsub = realtimeChatService.subscribeToUserPresence(userId, (online, lastSeenDate) => {
 				isOnline = online;
 				lastSeen = lastSeenDate || null;
 			});
-		}
-	});
-
-	onDestroy(() => {
-		if (unsubscribe) {
-			unsubscribe();
+			return () => unsub();
 		}
 	});
 
