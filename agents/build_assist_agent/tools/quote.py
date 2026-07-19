@@ -90,3 +90,133 @@ async def get_quotes_for_request(
             "status": "error",
             "error_message": f"Failed to retrieve quotes. Reason error: {str(e)}",
         }
+
+
+async def submit_expert_quote(
+    work_request_id: str,
+    title: str,
+    amount: float,
+    tool_context: ToolContext,
+    opt_description: Optional[str] = None,
+    opt_validity_days: int = 30,
+    opt_additional_terms: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Submit a formal bid/quote for a work request as an expert.
+
+    Use this tool when an expert explicitly asks to submit a quote or estimate for a work request.
+
+    Args:
+        work_request_id (str): The ID of the work request.
+        title (str): Concise title for the quote (e.g., "Full Plumbing Services Bid").
+        amount (float): Total price/cost for the work.
+        opt_description (str, optional): Detailed breakdown of the bid and scope of work.
+        opt_validity_days (int, optional): Number of days the quote remains valid (default: 30).
+        opt_additional_terms (str, optional): Payment terms, conditions, or milestone requirements.
+
+    Returns:
+        dict: Status, created quote details, and summary message.
+    """
+    logger.info("TOOL[submit_expert_quote]: submitting quote for work request %s", work_request_id)
+    try:
+        token: str = tool_context.state.get("auth_token")
+        body = {
+            "requestId": work_request_id,
+            "requestType": "work",
+            "title": title.strip(),
+            "amount": amount,
+            "validityDays": opt_validity_days,
+        }
+        if opt_description:
+            body["description"] = opt_description.strip()
+        if opt_additional_terms:
+            body["additionalTerms"] = opt_additional_terms.strip()
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            response = await client.post(f"{API_BASE_URL}/api/quotes", json=body, headers=headers)
+            result = response.raise_for_status().json()
+
+        logger.info("TOOL[submit_expert_quote]: quote submitted successfully (ID: %s)", result.get("id"))
+        return {
+            "status": "success",
+            "quote": result,
+            "message": "Quote submitted successfully.",
+        }
+    except httpx.HTTPError as e:
+        logger.error("HTTP error in submit_expert_quote: %s", e)
+        error_msg = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                error_msg = e.response.json().get("message", str(e))
+            except Exception:
+                pass
+        return {"status": "error", "error_message": f"Failed to submit quote: {error_msg}"}
+    except Exception as e:
+        logger.exception("Unexpected error in submit_expert_quote")
+        return {"status": "error", "error_message": f"Failed to submit quote: {str(e)}"}
+
+
+async def submit_material_quote(
+    material_request_id: str,
+    title: str,
+    amount: float,
+    tool_context: ToolContext,
+    opt_description: Optional[str] = None,
+    opt_validity_days: int = 30,
+    opt_additional_terms: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Submit a formal material supply quote for a material request as a supplier.
+
+    Use this tool when a supplier explicitly asks to submit a quote for a material request.
+
+    Args:
+        material_request_id (str): The ID of the material request.
+        title (str): Concise title for the quote (e.g., "Cement & Steel Procurement Quote").
+        amount (float): Total price/cost for the materials.
+        opt_description (str, optional): Itemized breakdown of materials, brand specs, and delivery schedule.
+        opt_validity_days (int, optional): Number of days the quote remains valid (default: 30).
+        opt_additional_terms (str, optional): Payment terms, delivery conditions, or notes.
+
+    Returns:
+        dict: Status, created quote details, and summary message.
+    """
+    logger.info("TOOL[submit_material_quote]: submitting quote for material request %s", material_request_id)
+    try:
+        token: str = tool_context.state.get("auth_token")
+        body = {
+            "requestId": material_request_id,
+            "requestType": "material",
+            "title": title.strip(),
+            "amount": amount,
+            "validityDays": opt_validity_days,
+        }
+        if opt_description:
+            body["description"] = opt_description.strip()
+        if opt_additional_terms:
+            body["additionalTerms"] = opt_additional_terms.strip()
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            response = await client.post(f"{API_BASE_URL}/api/quotes", json=body, headers=headers)
+            result = response.raise_for_status().json()
+
+        logger.info("TOOL[submit_material_quote]: quote submitted successfully (ID: %s)", result.get("id"))
+        return {
+            "status": "success",
+            "quote": result,
+            "message": "Material quote submitted successfully.",
+        }
+    except httpx.HTTPError as e:
+        logger.error("HTTP error in submit_material_quote: %s", e)
+        error_msg = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                error_msg = e.response.json().get("message", str(e))
+            except Exception:
+                pass
+        return {"status": "error", "error_message": f"Failed to submit material quote: {error_msg}"}
+    except Exception as e:
+        logger.exception("Unexpected error in submit_material_quote")
+        return {"status": "error", "error_message": f"Failed to submit material quote: {str(e)}"}

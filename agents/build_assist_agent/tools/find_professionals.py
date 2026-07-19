@@ -784,3 +784,81 @@ async def get_my_profile(tool_context: ToolContext) -> dict[str, Any]:
             "error_message": f"Failed to retrieve user profile. Reason error: {str(e)}",
         }
 
+
+# Tool to update current logged-in user's profile details
+async def update_my_profile(
+    tool_context: ToolContext,
+    opt_full_name: Optional[str] = None,
+    opt_location: Optional[str] = None,
+    opt_experience: Optional[str] = None,
+    opt_expertise: Optional[str] = None,
+    opt_company_name: Optional[str] = None,
+    opt_category: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Update the authenticated user's own profile information (such as full name, location, expertise, or company category).
+
+    Use this tool when a user explicitly asks to update their profile details.
+
+    Args:
+        opt_full_name (str, optional): User's full name.
+        opt_location (str, optional): General location or city (e.g., "Bangalore", "Kochi").
+        opt_experience (str, optional): Years of experience (e.g., "5 years").
+        opt_expertise (str, optional): Area of expertise for experts (e.g., "Plumbing", "Electrical").
+        opt_company_name (str, optional): Company name for suppliers (e.g., "ABC Materials").
+        opt_category (str, optional): Product/material category for suppliers (e.g., "Cement & Steel").
+
+    Returns:
+        dict: Status, updated profile, and summary message.
+    """
+    logger.info("TOOL[update_my_profile]: updating user profile")
+    try:
+        token: str = tool_context.state.get("auth_token")
+        auth_data: AuthData = tool_context.state.get("auth_data", {})
+
+        body = {}
+        if opt_full_name is not None:
+            body["fullName"] = opt_full_name.strip()
+        if opt_location is not None:
+            body["location"] = opt_location.strip()
+        if opt_experience is not None:
+            body["experience"] = opt_experience.strip()
+        if opt_expertise is not None:
+            body["expertise"] = opt_expertise.strip()
+        if opt_company_name is not None:
+            body["companyName"] = opt_company_name.strip()
+        if opt_category is not None:
+            body["category"] = opt_category.strip()
+
+        if not body:
+            return {"status": "error", "error_message": "No profile fields provided to update."}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            response = await client.put(
+                f"{API_BASE_URL}/api/users/me/profile",
+                json=body,
+                headers=headers,
+            )
+            result = response.raise_for_status().json()
+
+        logger.info("TOOL[update_my_profile]: profile updated successfully")
+        return {
+            "status": "success",
+            "user": result.get("user"),
+            "message": "Profile updated successfully.",
+        }
+    except httpx.HTTPError as e:
+        logger.error("HTTP error in update_my_profile: %s", e)
+        error_msg = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                error_msg = e.response.json().get("message", str(e))
+            except Exception:
+                pass
+        return {"status": "error", "error_message": f"Failed to update profile: {error_msg}"}
+    except Exception as e:
+        logger.exception("Unexpected error in update_my_profile")
+        return {"status": "error", "error_message": f"Failed to update profile: {str(e)}"}
+
+
