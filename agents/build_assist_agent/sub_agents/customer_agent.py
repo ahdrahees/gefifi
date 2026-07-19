@@ -60,8 +60,10 @@ customer_agent = Agent(
     ),
     tools=[
         load_artifacts_tool,
+        # Context and Utility Tools
         get_current_datetime,
         get_my_profile,
+        # Expert Request Tools
         create_expert_request,
         get_user_expert_requests,
         get_active_user_expert_requests,
@@ -69,6 +71,7 @@ customer_agent = Agent(
         update_expert_request,
         update_expert_request_image,
         update_expert_request_status,
+        # Material Request Tools
         create_material_request,
         get_user_material_requests,
         get_active_material_requests_of_user,
@@ -76,16 +79,20 @@ customer_agent = Agent(
         update_material_request,
         update_material_request_attachments,
         update_material_request_status,
+        # User interaction tools
         find_experts,
         find_suppliers,
         find_a_user_by_id,
         find_users_by_ids,
         invite_expert_to_expert_request,
         invite_supplier_to_material_request,
+        # Quote Tools
         get_quotes_for_request,
+         # Chat Tools
         get_user_chats,
         get_chat_messages,
         send_chat_message,
+         # Contract Tools
         draft_contract,
     ],
 )
