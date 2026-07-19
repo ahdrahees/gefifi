@@ -360,7 +360,7 @@ instruction=(
 | 🟡 P1 | `view_projects` | Customer | — | — | ❌ **Deleted** |
 | 🟡 P1 | `view_chats` | Customer | Medium | Medium | ✅ **Done** |
 | 🟢 P2 | `draft_contract` (with human confirm) | Customer | High | High | ✅ **Done** |
-| 🟢 P2 | Expert Agent (`browse_work_requests`) | Expert | High | High | ✅ **Done** |
+| 🟢 P2 | Expert Agent (`browse_expert_requests`) | Expert | High | High | ✅ **Done** |
 | 🟢 P2 | Supplier Agent (`browse_material_requests`) | Supplier | High | High | ✅ **Done** |
 | 🔵 P3 | `accept_quote` (with human confirm) | Customer | Medium | High | 🔧 |
 | 🔵 P3 | `sign_contract` (with human confirm) | All | Medium | High | 🔧 |

@@ -21,7 +21,7 @@ async def _fetch_user_profile_helper(user_id: str, token: str) -> dict[str, Any]
     return {}
 
 
-async def browse_work_requests(
+async def browse_expert_requests(
     tool_context: ToolContext,
     opt_expertise: Optional[str] = None,
     opt_location: Optional[str] = None,
@@ -29,9 +29,9 @@ async def browse_work_requests(
     opt_all_open: bool = False,
 ) -> dict[str, Any]:
     """
-    Browse open work/construction requests posted by customers for experts to bid on.
+    Browse open work/expert requests posted by customers for experts to bid on.
 
-    Use this tool when an expert user wants to view available work opportunities, find jobs matching their expertise, or search for work requests.
+    Use this tool when an expert user wants to view available work opportunities, find jobs matching their expertise, or search for expert requests.
 
     Behavior:
     - If `opt_expertise` or `opt_location` are omitted, this tool automatically retrieves the current expert's profile (expertise skills & location) to filter and rank the closest matching requests.
@@ -46,7 +46,7 @@ async def browse_work_requests(
     Returns:
         dict: Status, list of matching work requests, and summary message.
     """
-    logger.info("TOOL[browse_work_requests]: fetching open work requests for expert")
+    logger.info("TOOL[browse_expert_requests]: fetching open expert requests for expert")
     try:
         token: str = tool_context.state.get("auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data", {})
@@ -136,11 +136,11 @@ async def browse_work_requests(
                 "expirationDate": req.get("expirationDate"),
             })
 
-        msg = f"Found {len(formatted_requests)} open work requests matching your profile expertise ({target_expertise}) and location ({target_location})."
+        msg = f"Found {len(formatted_requests)} open expert requests matching your profile expertise ({target_expertise}) and location ({target_location})."
         if is_fallback:
-            msg = f"No exact matches found for expertise '{target_expertise}' or location '{target_location}'. Showing all {len(formatted_requests)} available open work requests."
+            msg = f"No exact matches found for expertise '{target_expertise}' or location '{target_location}'. Showing all {len(formatted_requests)} available open expert requests."
 
-        logger.info("TOOL[browse_work_requests]: returning %s requests", len(formatted_requests))
+        logger.info("TOOL[browse_expert_requests]: returning %s requests", len(formatted_requests))
         return {
             "status": "success",
             "matching_criteria": {
