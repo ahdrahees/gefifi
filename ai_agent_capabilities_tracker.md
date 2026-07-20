@@ -256,7 +256,30 @@ It provides no guidance on:
 
 ---
 
-## 9. Architectural Recommendations
+## 9. Frontend Pages & Agent Chat UI Audit
+
+### Frontend `my-requests` Page & Subpage Actions
+Analysis of automatable agent capabilities on `/my-requests` and `/my-requests/[id]`:
+
+| Page / Component | User Action | Agent Tool Mapping | Status |
+| :--- | :--- | :--- | :---: |
+| **`/my-requests` List** | Filter requests by status tab / search query | `browse_expert_requests`, `browse_material_requests` | ✅ Implemented |
+| **`/my-requests/[id]` (Quotations Tab)** | Submit a quote for work / material request | `submit_expert_quote`, `submit_material_quote` | ✅ Implemented |
+| **`/my-requests/[id]` (Quotations Tab)** | View submitted quotes | `get_quotes_for_request` | ✅ Implemented |
+| **`/my-requests/[id]` (Actions Tab)** | Progress work status (`contracted` → `in_progress` → `completed`) | `update_work_component_progress` | 🔧 Automatable |
+| **`/my-requests/[id]` (Actions Tab)** | Progress material delivery (`ordered` → `contracted` → `completed`) | `update_material_delivery_progress` | 🔧 Automatable |
+| **`/my-requests/[id]` (Actions Tab)** | Issue contract revision requests | `request_contract_revision` | ✅ Implemented |
+| **`/my-requests/[id]` (Actions Tab)** | Chat with customer / Send status update message | `get_user_chats`, `send_chat_message` | ✅ Implemented |
+
+### Agent Chat UI Visibility Analysis
+- **Current Limitation**: In `src/frontend/src/routes/(app)/+layout.svelte`, `showAgentFAB` and `/agent` navigation link are currently restricted to `userType === 'customer'`.
+- **Enabling Agent Chat for Experts & Suppliers**:
+  - Update `types: ['customer']` to `types: ['all']` in `navLinks` array for `/agent`.
+  - Remove `currentAuth.user?.userType === 'customer'` check from `showAgentFAB` derived property in `+layout.svelte`.
+
+---
+
+## 10. Architectural Recommendations
 
 ### Recommendation 1: Add Utility Tools (Quick Win)
 
