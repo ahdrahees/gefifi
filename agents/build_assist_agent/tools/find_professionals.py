@@ -405,39 +405,41 @@ async def find_a_user_by_id(user_id: str, tool_context: ToolContext) -> dict[str
 
 
 def sanitize_user(user: User) -> dict[str, str | bool | None]:
-    if user["userType"] == "expert":
+    profile = user.get("profile") or {}
+    user_type = user.get("userType", "")
+    if user_type == "expert":
         return {
-            "expert_id": user["id"],
-            "user_type": user["userType"],
-            "name": user["profile"]["fullName"],
-            "profile_picture": user["profile"]["avatarUrl"],
-            "location": user["profile"]["location"],
-            "experience": user["profile"]["experience"],
-            "expertise": user["profile"]["expertise"],
-            "is_active": user["isActive"],
-            "registration_date": user["createdAt"],
+            "expert_id": user.get("id"),
+            "user_type": user_type,
+            "name": profile.get("fullName", "Expert"),
+            "profile_picture": profile.get("avatarUrl", ""),
+            "location": profile.get("location", ""),
+            "experience": profile.get("experience", ""),
+            "expertise": profile.get("expertise", ""),
+            "is_active": user.get("isActive", True),
+            "registration_date": user.get("createdAt"),
         }
-    elif user["userType"] == "supplier":
+    elif user_type == "supplier":
         return {
-            "supplier_id": user["id"],
-            "user_type": user["userType"],
-            "supplier_name": user["profile"]["companyName"],
-            "profile_picture": user["profile"]["avatarUrl"],
-            "location": user["profile"]["location"],
-            "experience": user["profile"]["experience"],
-            "category": user["profile"]["category"],
-            "is_active": user["isActive"],
-            "registration_date": user["createdAt"],
+            "supplier_id": user.get("id"),
+            "user_type": user_type,
+            "supplier_name": profile.get("companyName") or profile.get("fullName") or "Supplier",
+            "profile_picture": profile.get("avatarUrl", ""),
+            "location": profile.get("location", ""),
+            "experience": profile.get("experience", ""),
+            "category": profile.get("category", ""),
+            "is_active": user.get("isActive", True),
+            "registration_date": user.get("createdAt"),
         }
     else:
         return {
-            "customer_id": user["id"],
-            "user_type": user["userType"],
-            "name": user["profile"]["fullName"],
-            "profile_picture": user["profile"]["avatarUrl"],
-            "location": user["profile"]["location"],
-            "is_active": user["isActive"],
-            "registration_date": user["createdAt"],
+            "customer_id": user.get("id"),
+            "user_type": user_type,
+            "name": profile.get("fullName", "Customer"),
+            "profile_picture": profile.get("avatarUrl", ""),
+            "location": profile.get("location", ""),
+            "is_active": user.get("isActive", True),
+            "registration_date": user.get("createdAt"),
         }
 
 
