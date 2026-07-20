@@ -86,53 +86,68 @@ async def find_experts(
 
             list_of_experts: list[User] = response.raise_for_status().json()
 
+        all_experts = list_of_experts
+        filtered_experts = list_of_experts
+
         # filter expertise
         if expertise:
-            list_of_experts = [
+            exp_kw = expertise.casefold()
+            filtered_experts = [
                 expert
-                for expert in list_of_experts
-                if expert["profile"]["expertise"]
-                and expertise.casefold() in expert["profile"]["expertise"].casefold()
+                for expert in filtered_experts
+                if exp_kw in (expert.get("profile", {}).get("expertise") or "").casefold()
+                or (expert.get("profile", {}).get("expertise") or "").casefold() in exp_kw
             ]
 
         # filter location
         if location:
-            list_of_experts = [
+            loc_kw = location.casefold()
+            filtered_experts = [
                 expert
-                for expert in list_of_experts
-                if expert["profile"]["location"]
-                and location.casefold() in expert["profile"]["location"].casefold()
+                for expert in filtered_experts
+                if loc_kw in (expert.get("profile", {}).get("location") or "").casefold()
+                or (expert.get("profile", {}).get("location") or "").casefold() in loc_kw
             ]
 
         # filter experience
         if experience:
-            list_of_experts = [
+            exp_num = experience.casefold()
+            filtered_experts = [
                 expert
-                for expert in list_of_experts
-                if expert["profile"]["experience"]
-                and experience.casefold() in expert["profile"]["experience"].casefold()
+                for expert in filtered_experts
+                if exp_num in (expert.get("profile", {}).get("experience") or "").casefold()
             ]
+
+        # Fallback: if strict filter returns no experts, show all active experts with a notice
+        is_fallback = False
+        if not filtered_experts and all_experts:
+            filtered_experts = all_experts
+            is_fallback = True
 
         # Sanitize the expert list to show only the required fields to agent
         sanitized_experts_list = [
             {
-                "expert_id": expert["id"],
-                "user_type": expert["userType"],
-                "name": expert["profile"]["fullName"],
-                "profile_picture": expert["profile"]["avatarUrl"],
-                "location": expert["profile"]["location"],
-                "experience": expert["profile"]["experience"],
-                "expertise": expert["profile"]["expertise"],
-                "is_active": expert["isActive"],
-                "registration_date": expert["createdAt"],
+                "expert_id": expert.get("id"),
+                "user_type": expert.get("userType", "expert"),
+                "name": expert.get("profile", {}).get("fullName", "Expert"),
+                "profile_picture": expert.get("profile", {}).get("avatarUrl", ""),
+                "location": expert.get("profile", {}).get("location", ""),
+                "experience": expert.get("profile", {}).get("experience", ""),
+                "expertise": expert.get("profile", {}).get("expertise", ""),
+                "is_active": expert.get("isActive", True),
+                "registration_date": expert.get("createdAt"),
             }
-            for expert in list_of_experts
+            for expert in filtered_experts
         ]
+
+        msg = f"Retrieved {len(sanitized_experts_list)} experts successfully."
+        if is_fallback:
+            msg = f"No exact matches found for expertise '{expertise}' or location '{location}'. Showing all {len(sanitized_experts_list)} available experts on GEFIFI."
 
         return {
             "status": "success",
             "list_of_experts": sanitized_experts_list,
-            "message": "List of experts retrieved successfully",
+            "message": msg,
         }
 
     except httpx.HTTPError as e:
@@ -158,7 +173,7 @@ async def find_experts(
             )
             error_message = (
                 error_message
-                + f"Gefifi Backend responded with message: {response_json['message']}"
+                + f"Gefifi Backend responded with message: {response_json.get('message', 'Unknown error')}"
             )
         else:
             print_message = print_message + f"HTTP error - {e}"
@@ -206,55 +221,69 @@ async def find_suppliers(
 
             list_of_suppliers: list[User] = response.raise_for_status().json()
 
+        all_suppliers = list_of_suppliers
+        filtered_suppliers = list_of_suppliers
+
         # filter material_category
         if material_category:
-            list_of_suppliers = [
+            cat_kw = material_category.casefold()
+            filtered_suppliers = [
                 supplier
-                for supplier in list_of_suppliers
-                if supplier["profile"]["category"]
-                and material_category.casefold()
-                in supplier["profile"]["category"].casefold()
+                for supplier in filtered_suppliers
+                if cat_kw in (supplier.get("profile", {}).get("category") or "").casefold()
+                or (supplier.get("profile", {}).get("category") or "").casefold() in cat_kw
+                or cat_kw in (supplier.get("profile", {}).get("companyName") or "").casefold()
             ]
 
         # filter location
         if location:
-            list_of_suppliers = [
+            loc_kw = location.casefold()
+            filtered_suppliers = [
                 supplier
-                for supplier in list_of_suppliers
-                if supplier["profile"]["location"]
-                and location.casefold() in supplier["profile"]["location"].casefold()
+                for supplier in filtered_suppliers
+                if loc_kw in (supplier.get("profile", {}).get("location") or "").casefold()
+                or (supplier.get("profile", {}).get("location") or "").casefold() in loc_kw
             ]
 
         # filter experience
         if experience:
-            list_of_suppliers = [
+            exp_num = experience.casefold()
+            filtered_suppliers = [
                 supplier
-                for supplier in list_of_suppliers
-                if supplier["profile"]["experience"]
-                and experience.casefold()
-                in supplier["profile"]["experience"].casefold()
+                for supplier in filtered_suppliers
+                if exp_num in (supplier.get("profile", {}).get("experience") or "").casefold()
             ]
+
+        # Fallback: if strict filter returns no suppliers, show all active suppliers with a notice
+        is_fallback = False
+        if not filtered_suppliers and all_suppliers:
+            filtered_suppliers = all_suppliers
+            is_fallback = True
 
         # Sanitize the supplier list to show only the required fields to agent
         sanitized_suppliers_list = [
             {
-                "supplier_id": supplier["id"],
-                "user_type": supplier["userType"],
-                "supplier_name": supplier["profile"]["companyName"],
-                "profile_picture": supplier["profile"]["avatarUrl"],
-                "location": supplier["profile"]["location"],
-                "experience": supplier["profile"]["experience"],
-                "category": supplier["profile"]["category"],
-                "is_active": supplier["isActive"],
-                "registration_date": supplier["createdAt"],
+                "supplier_id": supplier.get("id"),
+                "user_type": supplier.get("userType", "supplier"),
+                "supplier_name": supplier.get("profile", {}).get("companyName") or supplier.get("profile", {}).get("fullName") or "Supplier",
+                "profile_picture": supplier.get("profile", {}).get("avatarUrl", ""),
+                "location": supplier.get("profile", {}).get("location", ""),
+                "experience": supplier.get("profile", {}).get("experience", ""),
+                "category": supplier.get("profile", {}).get("category", ""),
+                "is_active": supplier.get("isActive", True),
+                "registration_date": supplier.get("createdAt"),
             }
-            for supplier in list_of_suppliers
+            for supplier in filtered_suppliers
         ]
+
+        msg = f"Retrieved {len(sanitized_suppliers_list)} suppliers successfully."
+        if is_fallback:
+            msg = f"No exact category matches found for material category '{material_category}'. Showing all {len(sanitized_suppliers_list)} available registered suppliers on GEFIFI."
 
         return {
             "status": "success",
             "list_of_suppliers": sanitized_suppliers_list,
-            "message": "List of suppliers retrieved successfully",
+            "message": msg,
         }
 
     except httpx.HTTPError as e:
@@ -376,39 +405,41 @@ async def find_a_user_by_id(user_id: str, tool_context: ToolContext) -> dict[str
 
 
 def sanitize_user(user: User) -> dict[str, str | bool | None]:
-    if user["userType"] == "expert":
+    profile = user.get("profile") or {}
+    user_type = user.get("userType", "")
+    if user_type == "expert":
         return {
-            "expert_id": user["id"],
-            "user_type": user["userType"],
-            "name": user["profile"]["fullName"],
-            "profile_picture": user["profile"]["avatarUrl"],
-            "location": user["profile"]["location"],
-            "experience": user["profile"]["experience"],
-            "expertise": user["profile"]["expertise"],
-            "is_active": user["isActive"],
-            "registration_date": user["createdAt"],
+            "expert_id": user.get("id"),
+            "user_type": user_type,
+            "name": profile.get("fullName", "Expert"),
+            "profile_picture": profile.get("avatarUrl", ""),
+            "location": profile.get("location", ""),
+            "experience": profile.get("experience", ""),
+            "expertise": profile.get("expertise", ""),
+            "is_active": user.get("isActive", True),
+            "registration_date": user.get("createdAt"),
         }
-    elif user["userType"] == "supplier":
+    elif user_type == "supplier":
         return {
-            "supplier_id": user["id"],
-            "user_type": user["userType"],
-            "supplier_name": user["profile"]["companyName"],
-            "profile_picture": user["profile"]["avatarUrl"],
-            "location": user["profile"]["location"],
-            "experience": user["profile"]["experience"],
-            "category": user["profile"]["category"],
-            "is_active": user["isActive"],
-            "registration_date": user["createdAt"],
+            "supplier_id": user.get("id"),
+            "user_type": user_type,
+            "supplier_name": profile.get("companyName") or profile.get("fullName") or "Supplier",
+            "profile_picture": profile.get("avatarUrl", ""),
+            "location": profile.get("location", ""),
+            "experience": profile.get("experience", ""),
+            "category": profile.get("category", ""),
+            "is_active": user.get("isActive", True),
+            "registration_date": user.get("createdAt"),
         }
     else:
         return {
-            "customer_id": user["id"],
-            "user_type": user["userType"],
-            "name": user["profile"]["fullName"],
-            "profile_picture": user["profile"]["avatarUrl"],
-            "location": user["profile"]["location"],
-            "is_active": user["isActive"],
-            "registration_date": user["createdAt"],
+            "customer_id": user.get("id"),
+            "user_type": user_type,
+            "name": profile.get("fullName", "Customer"),
+            "profile_picture": profile.get("avatarUrl", ""),
+            "location": profile.get("location", ""),
+            "is_active": user.get("isActive", True),
+            "registration_date": user.get("createdAt"),
         }
 
 
@@ -783,4 +814,82 @@ async def get_my_profile(tool_context: ToolContext) -> dict[str, Any]:
             "status": "error",
             "error_message": f"Failed to retrieve user profile. Reason error: {str(e)}",
         }
+
+
+# Tool to update current logged-in user's profile details
+async def update_my_profile(
+    tool_context: ToolContext,
+    opt_full_name: Optional[str] = None,
+    opt_location: Optional[str] = None,
+    opt_experience: Optional[str] = None,
+    opt_expertise: Optional[str] = None,
+    opt_company_name: Optional[str] = None,
+    opt_category: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Update the authenticated user's own profile information (such as full name, location, expertise, or company category).
+
+    Use this tool when a user explicitly asks to update their profile details.
+
+    Args:
+        opt_full_name (str, optional): User's full name.
+        opt_location (str, optional): General location or city (e.g., "Bangalore", "Kochi").
+        opt_experience (str, optional): Years of experience (e.g., "5 years").
+        opt_expertise (str, optional): Area of expertise for experts (e.g., "Plumbing", "Electrical").
+        opt_company_name (str, optional): Company name for suppliers (e.g., "ABC Materials").
+        opt_category (str, optional): Product/material category for suppliers (e.g., "Cement & Steel").
+
+    Returns:
+        dict: Status, updated profile, and summary message.
+    """
+    logger.info("TOOL[update_my_profile]: updating user profile")
+    try:
+        token: str = tool_context.state.get("auth_token")
+        auth_data: AuthData = tool_context.state.get("auth_data", {})
+
+        body = {}
+        if opt_full_name is not None:
+            body["fullName"] = opt_full_name.strip()
+        if opt_location is not None:
+            body["location"] = opt_location.strip()
+        if opt_experience is not None:
+            body["experience"] = opt_experience.strip()
+        if opt_expertise is not None:
+            body["expertise"] = opt_expertise.strip()
+        if opt_company_name is not None:
+            body["companyName"] = opt_company_name.strip()
+        if opt_category is not None:
+            body["category"] = opt_category.strip()
+
+        if not body:
+            return {"status": "error", "error_message": "No profile fields provided to update."}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            response = await client.put(
+                f"{API_BASE_URL}/api/users/me/profile",
+                json=body,
+                headers=headers,
+            )
+            result = response.raise_for_status().json()
+
+        logger.info("TOOL[update_my_profile]: profile updated successfully")
+        return {
+            "status": "success",
+            "user": result.get("user"),
+            "message": "Profile updated successfully.",
+        }
+    except httpx.HTTPError as e:
+        logger.error("HTTP error in update_my_profile: %s", e)
+        error_msg = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                error_msg = e.response.json().get("message", str(e))
+            except Exception:
+                pass
+        return {"status": "error", "error_message": f"Failed to update profile: {error_msg}"}
+    except Exception as e:
+        logger.exception("Unexpected error in update_my_profile")
+        return {"status": "error", "error_message": f"Failed to update profile: {str(e)}"}
+
 

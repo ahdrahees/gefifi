@@ -29,14 +29,12 @@
 
 	// State for dynamic positioning
 	let dropdownElement: HTMLDivElement | undefined = $state();
-	let actualPosition = $derived(position);
-	let actualPlacement = $derived(placement);
+	let actualPosition = $state(position);
+	let actualPlacement = $state(placement);
 
-	// Reactive statements
+	// Sync with props when they change
 	$effect(() => {
 		actualPosition = position;
-	});
-	$effect(() => {
 		actualPlacement = placement;
 	});
 
