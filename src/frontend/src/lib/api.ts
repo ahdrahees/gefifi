@@ -298,9 +298,7 @@ const apiClient = {
 	uploadFile: (
 		formData: FormData
 	): Promise<{ filePath: string; fileName: string; message?: string; [key: string]: any }> => {
-		// Note: The backend /api/upload is currently NOT authenticated.
-		// If it were, requiresAuth would be true.
-		return request('/upload', 'POST', formData, false, true);
+		return request('/upload', 'POST', formData, true, true);
 	},
 
 	// --- Chat File Upload ---
@@ -341,7 +339,7 @@ const apiClient = {
 
 	// --- Work Requests ---
 	getWorkRequests: (): Promise<WorkRequestResponse[]> => {
-		return request<WorkRequestResponse[]>('/work-requests', 'GET');
+		return request<WorkRequestResponse[]>('/work-requests', 'GET', undefined, true);
 	},
 	getWorkRequestsByCustomerId: (customerId: string): Promise<WorkRequestResponse[]> => {
 		return request<WorkRequestResponse[]>(
@@ -355,7 +353,7 @@ const apiClient = {
 		return request<WorkRequestResponse>('/work-requests', 'POST', data, true);
 	},
 	getWorkRequestById: (id: string): Promise<WorkRequestResponse> => {
-		return request<WorkRequestResponse>(`/work-requests/${id}`, 'GET');
+		return request<WorkRequestResponse>(`/work-requests/${id}`, 'GET', undefined, true);
 	},
 
 	// --- Material Requests ---
@@ -379,7 +377,7 @@ const apiClient = {
 
 	// --- Users ---
 	getExperts: (): Promise<AuthUser[]> => {
-		return request<AuthUser[]>('/users/experts', 'GET');
+		return request<AuthUser[]>('/users/experts', 'GET', undefined, true);
 	},
 	updateUserProfile: (data: UserProfileUpdateData): Promise<UpdateProfileResponse> => {
 		// Check if avatar file is provided AND it's a new file (not just the existing avatar)
@@ -406,7 +404,7 @@ const apiClient = {
 		}
 	},
 	getSuppliers: (): Promise<AuthUser[]> => {
-		return request<AuthUser[]>('/users/suppliers', 'GET');
+		return request<AuthUser[]>('/users/suppliers', 'GET', undefined, true);
 	},
 	getUserById: (userId: string): Promise<AuthUser> => {
 		// This should be an authenticated request as only logged-in users should be fetching profiles.

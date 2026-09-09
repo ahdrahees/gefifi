@@ -41,35 +41,62 @@ async function checkAndExpireMaterialRequests(requests: MaterialRequest[]): Prom
 	);
 }
 
-// GET all material requests-
-// fix optimize this function
-// /material-requests?customerId=${customerId} for customer
-// /material-requests for experts
-router.get('/material-requests', async (req: Request, res: Response) => {
-	try {
-		const { customerId } = req.query as { customerId?: string };
-		let materialRequests = await materialRequestsDB.getAll();
+// --- Material Request Endpoints ---
+// Authenticated users can only see their own requests or open requests (for suppliers)
+router.get(
+	'/material-requests',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { customerId } = req.query as { customerId?: string };
+			let materialRequests = await materialRequestsDB.getAll();
 
-		// Auto-expire requests before returning
-		materialRequests = await checkAndExpireMaterialRequests(materialRequests);
+			// Auto-expire requests before returning
+			materialRequests = await checkAndExpireMaterialRequests(materialRequests);
 
-		if (customerId) {
-			materialRequests = materialRequests.filter(
-				(request: MaterialRequest) => request.customerId === customerId
+			// Authorization: Users can only query their own customerId or see open requests
+			if (customerId) {
+				// Only allow querying your own requests
+				if (customerId !== user.id) {
+					return res
+						.status(403)
+						.json({ message: 'Forbidden. You can only view your own material requests.' });
+				}
+				materialRequests = materialRequests.filter(
+					(request: MaterialRequest) => request.customerId === customerId
+				);
+			} else {
+				// For suppliers: show open requests + requests they're involved in
+				// For customers: show only their own requests
+				if (user.userType === 'customer') {
+					materialRequests = materialRequests.filter(
+						(request: MaterialRequest) => request.customerId === user.id
+					);
+				} else {
+					// Suppliers/experts can see open requests or requests they're interested in/invited to
+					materialRequests = materialRequests.filter(
+						(request: MaterialRequest) =>
+							request.status === 'open' ||
+							request.customerId === user.id ||
+							request.interestedSuppliers?.includes(user.id) ||
+							request.invitedSuppliers?.includes(user.id)
+					);
+				}
+			}
+
+			const sortedMaterialRequests = materialRequests.sort(
+				(a: MaterialRequest, b: MaterialRequest) =>
+					new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 			);
+			res.status(200).json(sortedMaterialRequests);
+		} catch (error: unknown) {
+			console.error('Error fetching material requests:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to fetch material requests.', error: errorMessage });
 		}
-
-		const sortedMaterialRequests = materialRequests.sort(
-			(a: MaterialRequest, b: MaterialRequest) =>
-				new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-		);
-		res.status(200).json(sortedMaterialRequests);
-	} catch (error: unknown) {
-		console.error('Error fetching material requests:', error);
-		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-		res.status(500).json({ message: 'Failed to fetch material requests.', error: errorMessage });
 	}
-});
+);
 
 // POST a new material request
 router.post(
@@ -158,27 +185,44 @@ router.post(
 	}
 );
 
-// GET a single material request by ID
-router.get('/material-requests/:id', async (req: Request, res: Response) => {
-	try {
-		const materialRequestId = req.params.id;
-		if (!materialRequestId) {
-			return res.status(400).json({ message: 'Material request ID parameter is required.' });
+router.get(
+	'/material-requests/:id',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const materialRequestId = req.params.id;
+			if (!materialRequestId) {
+				return res.status(400).json({ message: 'Material request ID parameter is required.' });
+			}
+			let materialRequest = await materialRequestsDB.findById(materialRequestId);
+			if (!materialRequest) {
+				return res.status(404).json({ message: 'Material request not found.' });
+			}
+			// Run auto-expiration check
+			const expiredRequests = await checkAndExpireMaterialRequests([materialRequest]);
+			materialRequest = expiredRequests[0];
+
+			// Authorization: only customer, interested suppliers, invited suppliers, or suppliers viewing open requests
+			const isCustomer = user.id === materialRequest.customerId;
+			const isInterestedSupplier = materialRequest.interestedSuppliers?.includes(user.id);
+			const isInvitedSupplier = materialRequest.invitedSuppliers?.includes(user.id);
+			const isSupplierViewingOpen = user.userType === 'supplier' && materialRequest.status === 'open';
+
+			if (!isCustomer && !isInterestedSupplier && !isInvitedSupplier && !isSupplierViewingOpen) {
+				return res
+					.status(403)
+					.json({ message: 'Forbidden. You do not have access to this material request.' });
+			}
+
+			res.status(200).json(materialRequest);
+		} catch (error: unknown) {
+			console.error(`Error fetching material request ${req.params.id}:`, error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to fetch material request.', error: errorMessage });
 		}
-		let materialRequest = await materialRequestsDB.findById(materialRequestId);
-		if (!materialRequest) {
-			return res.status(404).json({ message: 'Material request not found.' });
-		}
-		// Run auto-expiration check
-		const expiredRequests = await checkAndExpireMaterialRequests([materialRequest]);
-		materialRequest = expiredRequests[0];
-		res.status(200).json(materialRequest);
-	} catch (error: unknown) {
-		console.error(`Error fetching material request ${req.params.id}:`, error);
-		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-		res.status(500).json({ message: 'Failed to fetch material request.', error: errorMessage });
 	}
-});
+);
 
 // PUT /api/material-requests/:id - Update material request
 router.put(

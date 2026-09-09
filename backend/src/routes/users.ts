@@ -11,11 +11,8 @@ const usersDB = new FirestoreCollection<User>('users');
 
 const router = Router();
 
-// fix add authentication middleware
-// router.use(authenticateToken);
-
 // --- User List Endpoints ---
-router.get('/users/experts', async (_req: Request, res: Response) => {
+router.get('/users/experts', authenticateToken, async (_req: Request, res: Response) => {
 	try {
 		const allUsers = await usersDB.getAll();
 		const experts = allUsers
@@ -33,8 +30,7 @@ router.get('/users/experts', async (_req: Request, res: Response) => {
 	}
 });
 
-// fix add authentication middleware
-router.get('/users/suppliers', async (_req: Request, res: Response) => {
+router.get('/users/suppliers', authenticateToken, async (_req: Request, res: Response) => {
 	try {
 		const allUsers = await usersDB.getAll();
 		const suppliers = allUsers
@@ -52,9 +48,8 @@ router.get('/users/suppliers', async (_req: Request, res: Response) => {
 	}
 });
 
-// fix add authentication middleware
 // --- Get User by ID Endpoint ---
-router.get('/users/:userId', async (req: Request, res: Response) => {
+router.get('/users/:userId', authenticateToken, async (req: Request, res: Response) => {
 	try {
 		const userId = req.params.userId;
 		if (!userId) {

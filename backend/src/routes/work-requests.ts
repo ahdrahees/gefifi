@@ -40,34 +40,61 @@ async function checkAndExpireWorkRequests(requests: WorkRequest[]): Promise<Work
 }
 
 // --- Work Request Endpoints ---
-// /work-requests?customerId=${customerId} for customer
-// /work-requests for experts
-router.get('/work-requests', async (req: Request, res: Response) => {
-	try {
-		const { customerId } = req.query as { customerId?: string };
-		let workRequests = await workRequestsDB.getAll();
+// Authenticated users can only see their own requests or open requests (for experts)
+router.get(
+	'/work-requests',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const { customerId } = req.query as { customerId?: string };
+			let workRequests = await workRequestsDB.getAll();
 
-		// Check and auto-expire requests
-		workRequests = await checkAndExpireWorkRequests(workRequests);
+			// Check and auto-expire requests
+			workRequests = await checkAndExpireWorkRequests(workRequests);
 
-		// If a customerId is provided, filter the work requests
-		if (customerId) {
-			workRequests = workRequests.filter(
-				(request: WorkRequest) => request.customerId === customerId
+			// Authorization: Users can only query their own customerId or see open requests
+			if (customerId) {
+				// Only allow querying your own requests
+				if (customerId !== user.id) {
+					return res
+						.status(403)
+						.json({ message: 'Forbidden. You can only view your own work requests.' });
+				}
+				workRequests = workRequests.filter(
+					(request: WorkRequest) => request.customerId === customerId
+				);
+			} else {
+				// For experts/suppliers: show open requests + requests they're involved in
+				// For customers: show only their own requests
+				if (user.userType === 'customer') {
+					workRequests = workRequests.filter(
+						(request: WorkRequest) => request.customerId === user.id
+					);
+				} else {
+					// Experts can see open requests or requests they're interested in/invited to
+					workRequests = workRequests.filter(
+						(request: WorkRequest) =>
+							request.status === 'open' ||
+							request.customerId === user.id ||
+							request.interestedExperts?.includes(user.id) ||
+							request.invitedExperts?.includes(user.id)
+					);
+				}
+			}
+
+			const sortedWorkRequests = workRequests.sort(
+				(a: WorkRequest, b: WorkRequest) =>
+					new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 			);
+			res.status(200).json(sortedWorkRequests);
+		} catch (error: unknown) {
+			console.error('Error fetching work requests:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to fetch work requests.', error: errorMessage });
 		}
-
-		const sortedWorkRequests = workRequests.sort(
-			(a: WorkRequest, b: WorkRequest) =>
-				new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-		);
-		res.status(200).json(sortedWorkRequests);
-	} catch (error: unknown) {
-		console.error('Error fetching work requests:', error);
-		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-		res.status(500).json({ message: 'Failed to fetch work requests.', error: errorMessage });
 	}
-});
+);
 
 router.post(
 	'/work-requests',
@@ -150,27 +177,45 @@ router.post(
 	}
 );
 
-// fix this endpoint vulnerability (controlled access needed)
-router.get('/work-requests/:id', async (req: Request, res: Response) => {
-	try {
-		const workRequestId = req.params.id;
-		if (!workRequestId) {
-			return res.status(400).json({ message: 'Work request ID parameter is required.' });
+router.get(
+	'/work-requests/:id',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const workRequestId = req.params.id;
+			if (!workRequestId) {
+				return res.status(400).json({ message: 'Work request ID parameter is required.' });
+			}
+			let workRequest = await workRequestsDB.findById(workRequestId);
+			if (!workRequest) {
+				return res.status(404).json({ message: 'Work request not found.' });
+			}
+			// Run auto-expiration check
+			const expiredRequests = await checkAndExpireWorkRequests([workRequest]);
+			workRequest = expiredRequests[0];
+
+			// Authorization: only customer, interested experts, or invited experts can view
+			const isCustomer = user.id === workRequest.customerId;
+			const isInterestedExpert = workRequest.interestedExperts?.includes(user.id);
+			const isInvitedExpert = workRequest.invitedExperts?.includes(user.id);
+			// Experts can view open requests to express interest
+			const isExpertViewingOpen = user.userType === 'expert' && workRequest.status === 'open';
+
+			if (!isCustomer && !isInterestedExpert && !isInvitedExpert && !isExpertViewingOpen) {
+				return res
+					.status(403)
+					.json({ message: 'Forbidden. You do not have access to this work request.' });
+			}
+
+			res.status(200).json(workRequest);
+		} catch (error: unknown) {
+			console.error(`Error fetching work request ${req.params.id}:`, error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to fetch work request.', error: errorMessage });
 		}
-		let workRequest = await workRequestsDB.findById(workRequestId);
-		if (!workRequest) {
-			return res.status(404).json({ message: 'Work request not found.' });
-		}
-		// Run auto-expiration check
-		const expiredRequests = await checkAndExpireWorkRequests([workRequest]);
-		workRequest = expiredRequests[0];
-		res.status(200).json(workRequest);
-	} catch (error: unknown) {
-		console.error(`Error fetching work request ${req.params.id}:`, error);
-		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-		res.status(500).json({ message: 'Failed to fetch work request.', error: errorMessage });
 	}
-});
+);
 
 // PUT /api/work-requests/:id - Update work request
 router.put(

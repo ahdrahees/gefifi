@@ -69,6 +69,7 @@ console.log('--- END DIAGNOSTIC LOGGING ---');
 // Import API routes
 import apiRoutes, { chatFileUpload } from './routes';
 import { uploadFile, uploadAudioFile, uploadChatAttachment } from './file-storage';
+import { authenticateToken, AuthenticatedRequest } from './auth';
 
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
@@ -167,36 +168,44 @@ app.use('/api', apiRoutes);
 
 // --- File Upload Endpoint ---
 // This endpoint now uses our file-storage service to handle the upload.
-app.post('/api/upload', upload.single('file'), async (req: Request, res: Response) => {
-	try {
-		if (!req.file) {
-			return res.status(400).json({ message: 'No file uploaded. Please select a file to upload.' });
+app.post(
+	'/api/upload',
+	authenticateToken,
+	upload.single('file'),
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			if (!req.file) {
+				return res
+					.status(400)
+					.json({ message: 'No file uploaded. Please select a file to upload.' });
+			}
+
+			// The file-storage service handles whether to save locally or to GCS
+			const { filePath, fileName } = await uploadFile(req.file);
+
+			res.status(200).json({
+				message: 'File uploaded successfully!',
+				filePath: filePath, // This is now a full URL in production, or a relative path in dev
+				fileName: fileName,
+				originalName: req.file.originalname,
+				mimeType: req.file.mimetype,
+				size: req.file.size
+			});
+		} catch (error: unknown) {
+			console.error('File upload endpoint error:', error);
+			const message =
+				error instanceof Error ? error.message : 'An unknown error occurred during file upload.';
+			res.status(500).json({ message });
 		}
-
-		// The file-storage service handles whether to save locally or to GCS
-		const { filePath, fileName } = await uploadFile(req.file);
-
-		res.status(200).json({
-			message: 'File uploaded successfully!',
-			filePath: filePath, // This is now a full URL in production, or a relative path in dev
-			fileName: fileName,
-			originalName: req.file.originalname,
-			mimeType: req.file.mimetype,
-			size: req.file.size
-		});
-	} catch (error: unknown) {
-		console.error('File upload endpoint error:', error);
-		const message =
-			error instanceof Error ? error.message : 'An unknown error occurred during file upload.';
-		res.status(500).json({ message });
 	}
-});
+);
 
 // --- Voice Message Upload Endpoint ---
 app.post(
 	'/api/chat/:chatId/upload-voice',
+	authenticateToken,
 	audioUpload.single('voice'),
-	async (req: Request, res: Response) => {
+	async (req: AuthenticatedRequest, res: Response) => {
 		try {
 			if (!req.file) {
 				return res
@@ -238,8 +247,9 @@ app.post(
 // --- Chat File Attachment Upload Endpoint ---
 app.post(
 	'/api/chat/:chatId/upload-file',
+	authenticateToken,
 	chatFileUpload.single('file'),
-	async (req: Request, res: Response) => {
+	async (req: AuthenticatedRequest, res: Response) => {
 		try {
 			if (!req.file) {
 				return res
@@ -307,93 +317,96 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 	res.status(500).json({ message: 'An unexpected error occurred on the server.' });
 });
 
-// --- Test Audio Storage Endpoint ---
-app.get('/api/test-audio-storage', async (req: Request, res: Response) => {
-	try {
-		console.log('[Test] Testing audio storage configuration...');
-		console.log(`[Test] GCS_AUDIO_BUCKET_NAME: ${process.env.GCS_AUDIO_BUCKET_NAME}`);
-		console.log(`[Test] FIREBASE_PROJECT_ID: ${process.env.FIREBASE_PROJECT_ID}`);
-
-		// This will trigger the lazy initialization of the audio storage client
-		const testPath = 'test-chat/test-message.webm';
-		console.log(`[Test] Testing signed URL generation for path: ${testPath}`);
-
-		// Import the function here to avoid early initialization
-		const { getSignedAudioUrl } = await import('./file-storage');
-
+// Test endpoints only available in development
+if (process.env.NODE_ENV !== 'production') {
+	// --- Test Audio Storage Endpoint ---
+	app.get('/api/test-audio-storage', async (req: Request, res: Response) => {
 		try {
-			const signedUrl = await getSignedAudioUrl(testPath, 1);
-			console.log('[Test] ✅ Audio storage client initialized successfully!');
-			res.status(200).json({
-				success: true,
-				message: 'Audio storage is configured correctly',
-				bucketName: process.env.GCS_AUDIO_BUCKET_NAME,
-				projectId: process.env.FIREBASE_PROJECT_ID,
-				testSignedUrl: signedUrl.substring(0, 100) + '...' // Show partial URL for security
-			});
-		} catch (storageError) {
-			console.error('[Test] ❌ Audio storage configuration error:', storageError);
-			res.status(500).json({
-				success: false,
-				message: 'Audio storage configuration issue',
-				error: storageError instanceof Error ? storageError.message : 'Unknown error',
-				bucketName: process.env.GCS_AUDIO_BUCKET_NAME,
-				projectId: process.env.FIREBASE_PROJECT_ID
-			});
-		}
-	} catch (error) {
-		console.error('[Test] Test endpoint error:', error);
-		res.status(500).json({
-			success: false,
-			message: 'Test endpoint error',
-			error: error instanceof Error ? error.message : 'Unknown error'
-		});
-	}
-});
+			console.log('[Test] Testing audio storage configuration...');
+			console.log(`[Test] GCS_AUDIO_BUCKET_NAME: ${process.env.GCS_AUDIO_BUCKET_NAME}`);
+			console.log(`[Test] FIREBASE_PROJECT_ID: ${process.env.FIREBASE_PROJECT_ID}`);
 
-// --- Test GCP Bucket Upload Endpoint ---
-app.post(
-	'/api/test-gcp-upload',
-	audioUpload.single('voice'),
-	async (req: Request, res: Response) => {
-		try {
-			if (!req.file) {
-				return res.status(400).json({ message: 'No audio file provided for GCP upload test.' });
+			// This will trigger the lazy initialization of the audio storage client
+			const testPath = 'test-chat/test-message.webm';
+			console.log(`[Test] Testing signed URL generation for path: ${testPath}`);
+
+			// Import the function here to avoid early initialization
+			const { getSignedAudioUrl } = await import('./file-storage');
+
+			try {
+				const signedUrl = await getSignedAudioUrl(testPath, 1);
+				console.log('[Test] ✅ Audio storage client initialized successfully!');
+				res.status(200).json({
+					success: true,
+					message: 'Audio storage is configured correctly',
+					bucketName: process.env.GCS_AUDIO_BUCKET_NAME,
+					projectId: process.env.FIREBASE_PROJECT_ID,
+					testSignedUrl: signedUrl.substring(0, 100) + '...' // Show partial URL for security
+				});
+			} catch (storageError) {
+				console.error('[Test] ❌ Audio storage configuration error:', storageError);
+				res.status(500).json({
+					success: false,
+					message: 'Audio storage configuration issue',
+					error: storageError instanceof Error ? storageError.message : 'Unknown error',
+					bucketName: process.env.GCS_AUDIO_BUCKET_NAME,
+					projectId: process.env.FIREBASE_PROJECT_ID
+				});
 			}
-
-			console.log('[Test GCP] Testing direct GCP bucket upload...');
-			console.log(`[Test GCP] File: ${req.file.originalname}, Size: ${req.file.size} bytes`);
-
-			const testChatId = 'test-chat-' + Date.now();
-			const testMessageId = 'test-message-' + Date.now();
-
-			// Import the function here
-			const { uploadAudioFile } = await import('./file-storage');
-
-			// No need to force production mode - always uploads to GCS now
-			const { filePath, fileName } = await uploadAudioFile(req.file, testChatId, testMessageId);
-			console.log('[Test GCP] ✅ File uploaded to GCP bucket successfully!');
-			console.log(`[Test GCP] File path: ${filePath}`);
-
-			res.status(200).json({
-				success: true,
-				message: 'File uploaded to GCP bucket successfully',
-				filePath: filePath,
-				fileName: fileName,
-				bucketName: process.env.GCS_AUDIO_BUCKET_NAME,
-				chatId: testChatId,
-				messageId: testMessageId
-			});
 		} catch (error) {
-			console.error('[Test GCP] Upload error:', error);
+			console.error('[Test] Test endpoint error:', error);
 			res.status(500).json({
 				success: false,
-				message: 'GCP upload test failed',
+				message: 'Test endpoint error',
 				error: error instanceof Error ? error.message : 'Unknown error'
 			});
 		}
-	}
-);
+	});
+
+	// --- Test GCP Bucket Upload Endpoint ---
+	app.post(
+		'/api/test-gcp-upload',
+		audioUpload.single('voice'),
+		async (req: Request, res: Response) => {
+			try {
+				if (!req.file) {
+					return res.status(400).json({ message: 'No audio file provided for GCP upload test.' });
+				}
+
+				console.log('[Test GCP] Testing direct GCP bucket upload...');
+				console.log(`[Test GCP] File: ${req.file.originalname}, Size: ${req.file.size} bytes`);
+
+				const testChatId = 'test-chat-' + Date.now();
+				const testMessageId = 'test-message-' + Date.now();
+
+				// Import the function here
+				const { uploadAudioFile } = await import('./file-storage');
+
+				// No need to force production mode - always uploads to GCS now
+				const { filePath, fileName } = await uploadAudioFile(req.file, testChatId, testMessageId);
+				console.log('[Test GCP] ✅ File uploaded to GCP bucket successfully!');
+				console.log(`[Test GCP] File path: ${filePath}`);
+
+				res.status(200).json({
+					success: true,
+					message: 'File uploaded to GCP bucket successfully',
+					filePath: filePath,
+					fileName: fileName,
+					bucketName: process.env.GCS_AUDIO_BUCKET_NAME,
+					chatId: testChatId,
+					messageId: testMessageId
+				});
+			} catch (error) {
+				console.error('[Test GCP] Upload error:', error);
+				res.status(500).json({
+					success: false,
+					message: 'GCP upload test failed',
+					error: error instanceof Error ? error.message : 'Unknown error'
+				});
+			}
+		}
+	);
+}
 
 // --- Start Server ---
 // Listen on all network interfaces in containers.
