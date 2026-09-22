@@ -140,7 +140,7 @@
 	});
 
 	// Reactive check when text changes - but with debounce to prevent juggling
-	let checkTimeout: number | NodeJS.Timeout | undefined = $state();
+	let checkTimeout: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		if (text && isVisible && containerElement) {
 			clearTimeout(checkTimeout);
@@ -157,9 +157,7 @@
 
 <span
 	bind:this={containerElement}
-	class="inline-block overflow-hidden rounded-md bg-slate-600/30 {maxWidthClasses} {className}"
-	class:px-3={shouldMarquee}
-	class:px-1.5={!shouldMarquee}
+	class="inline-block overflow-hidden rounded-md bg-slate-600/30 px-1.5 {maxWidthClasses} {className}"
 	style={finalMaxWidth ? `max-width: ${finalMaxWidth};` : ''}
 >
 	{#if shouldMarquee && !disabled}

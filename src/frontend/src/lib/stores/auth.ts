@@ -4,6 +4,7 @@ import apiClient, { ApiError } from '$lib/api'; // Import the API client and Api
 import type { AuthUser } from '$lib/types'; // Import central AuthUser type
 import { auth } from '$lib/firebase'; // Import the central Firebase auth service
 import { signInWithCustomToken, signOut } from 'firebase/auth';
+import { resetAgentState } from '$lib/states/agent.svelte';
 export type { AuthUser }; // Re-export AuthUser for other modules
 
 export interface AuthState {
@@ -53,6 +54,9 @@ async function updateAuthData(
 	user: AuthUser | null,
 	error: string | null = null
 ) {
+	// Reset agent session state whenever authentication state changes (logout or re-login)
+	resetAgentState();
+
 	const newAuthState: AuthState = {
 		isAuthenticated: !!(token && user),
 		user,

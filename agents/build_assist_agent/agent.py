@@ -1,9 +1,11 @@
 import logging
 import os
-from typing import Any
+from typing import Any, AsyncGenerator
+from contextlib import aclosing
 
 import jwt
-from google.adk.agents import Agent
+from google.adk.agents import BaseAgent, Agent
+from google.adk.agents.invocation_context import InvocationContext
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.apps import App
 from google.adk.models.lite_llm import LiteLlm
@@ -13,51 +15,25 @@ from google.adk.plugins.save_files_as_artifacts_plugin import SaveFilesAsArtifac
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.load_artifacts_tool import load_artifacts_tool
 from google.adk.tools.tool_context import ToolContext
+from google.adk.runners import Event
 from google.genai import types
 
-from build_assist_agent.tools.find_professionals import (
-    find_a_user_by_id,
-    find_experts,
-    find_suppliers,
-    find_users_by_ids,
-    invite_expert_to_expert_request,
-    invite_supplier_to_material_request,
-    get_my_profile,
-)
-from build_assist_agent.tools.material_request import (
-    create_material_request,
-    get_a_material_request_of_user_with_request_id,
-    get_user_material_requests,
-    get_active_material_requests_of_user,
-    update_material_request,
-    update_material_request_attachments,
-    update_material_request_status,
-    update_material_request_status_tool_guardrail,
-    get_current_datetime,
-)
-from build_assist_agent.tools.quote import get_quotes_for_request
-from build_assist_agent.tools.chat import (
-    get_user_chats,
-    get_chat_messages,
-    send_chat_message,
-)
-from build_assist_agent.tools.contract import draft_contract
-
-# Load environment variables from .env file
-from . import config
-from .auth_types import AuthData
-from .tools.expert_request import (
-    create_expert_request,
+# Import tool guardrails
+from build_assist_agent.tools.expert_request import (
     create_expert_request_tool_guardrail,
-    get_a_expert_request_of_user_with_request_id,
-    get_active_user_expert_requests,
-    get_user_expert_requests,
-    update_expert_request,
-    update_expert_request_image,
-    update_expert_request_status,
     update_expert_request_status_tool_guardrail,
     update_expert_request_tool_guardrail,
 )
+from build_assist_agent.tools.material_request import (
+    update_material_request_status_tool_guardrail,
+)
+
+# Import sub-agents
+from build_assist_agent.sub_agents.customer_agent import customer_agent
+from build_assist_agent.sub_agents.expert_agent import expert_agent
+from build_assist_agent.sub_agents.supplier_agent import supplier_agent
+
+from .auth_types import AuthData
 
 # Configure basic logging level based on environment (defaults to INFO in production)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -102,7 +78,6 @@ def verify_auth_token(auth_token: str) -> AuthData | None:
         decoded = jwt.decode(auth_token, jwt_secret, algorithms=["HS256"])
 
         user_id = decoded.get("id")
-        # email = decoded.get("email")
         user_type = decoded.get("userType")
 
         if user_id is None:
@@ -127,7 +102,6 @@ def verify_auth_token(auth_token: str) -> AuthData | None:
 
 
 ######
-
 
 # callback
 async def auth_before_agent_callback(
@@ -170,26 +144,16 @@ async def auth_before_agent_callback(
             parts=[types.Part(text="Authentication failed. Invalid or expired token.")],
         )
 
-    # ✅ ONLY store auth_data in persistent state (not sensitive, doesn't expire)
+    # store auth_data in persistent state
     callback_context.state["auth_data"] = auth_data
-    # ❌ DO NOT store auth_token in persistent state for security reasons:
-    # - Token is passed via state_delta (transient) and should not be persisted
-    # - Storing tokens increases security risk if session is compromised
-    # - Tokens expire and shouldn't be reused across requests
-    # - Token is still accessible via callback_context.state.get("auth_token")
-    #   during THIS invocation (due to state_delta merge)
 
     # In development mode, we need to persist the auth token in the state
-    # to simulate the state_delta behavior across requests
     if DEV_MODE and auth_token:
         callback_context.state["auth_token"] = auth_token
 
     logger.info(
         "auth_before_agent_callback: User %s authenticated successfully", auth_data['user_id']
     )
-
-    # available_files = await callback_context.list_artifacts()
-    # print(f"Files[auth_before_agent_callback]: available files: {available_files}")
 
     return None  # Proceed with normal execution
 
@@ -203,10 +167,9 @@ async def auth_before_model_callback(
     """
     agent_name = (
         callback_context.agent_name
-    )  # Get the name of the agent whose model call is being intercepted
+    )
     logger.debug("auth_before_model_callback: running for agent: %s", agent_name)
 
-    # The token should be passed from your app as state_delta in api call. If it is a development environment we will get token from environment variable
     auth_token: str | None = (
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
@@ -238,22 +201,11 @@ async def auth_before_model_callback(
             )
         )
 
-    # ✅ ONLY store user_id in persistent state (not sensitive, doesn't expire)
     callback_context.state["auth_data"] = auth_data
-
-    # ❌ DO NOT store auth_token in persistent state for security reasons:
-    # - Token is passed via state_delta (transient) and should not be persisted
-    # - Storing tokens increases security risk if session is compromised
-    # - Tokens expire and shouldn't be reused across requests
-    # - Token is still accessible via callback_context.state.get("auth_token")
-    #   during THIS invocation (due to state_delta merge)
 
     logger.info(
         "before_model_callback: User %s authenticated successfully", auth_data['user_id']
     )
-
-    # available_files = await callback_context.list_artifacts()
-    # print(f"Files[before_model_callback]: available files: {available_files}")
 
     return None  # Proceed with normal execution
 
@@ -264,16 +216,10 @@ async def before_tool_callback(
 ) -> dict[str, Any] | None:
     """
     Inject auth_token and user_id into tool calls.
-
-    Note: auth_token is accessible here even though we don't persist it, because
-    it was passed via state_delta and is merged into the current invocation's state.
     """
-
-    # Get user_id from persistent state (stored in before_model_callback or before_tool_callback)
     auth_data: AuthData = tool_context.state.get("auth_data")
     user_id = auth_data["user_id"]
 
-    # The token should be passed from your app as state_delta in api call. If it is a development environment we will get token from environment variable
     auth_token: str | None = (
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
@@ -284,12 +230,9 @@ async def before_tool_callback(
         "before_tool_callback: running for tool: %s with user_id: %s", tool.name, user_id
     )
 
-    # Check if user_id and auth_token are present (all tool relay on this to call backend)
     if not user_id or not auth_token:
         return {"status": "error", "error_message": "Authentication required"}
 
-    # Automatically add auth_token to tool arguments if the tool needs it
-    # This allows your tools to receive the token without user explicitly providing it
     if "auth_token" in args:
         args["auth_token"] = auth_token
 
@@ -297,7 +240,6 @@ async def before_tool_callback(
         args["user_id"] = user_id
 
     available_files = await tool_context.list_artifacts()
-
     logger.debug("before_tool_callback: available files: %s", available_files)
 
     return await run_tool_specific_guardrail(tool, args, tool_context)
@@ -324,87 +266,58 @@ async def run_tool_specific_guardrail(
         return await update_material_request_status_tool_guardrail(
             tool, args, tool_context
         )
-
-    logger.debug(
-        "run_tool_specific_guardrail: no specific guardrail found for tool: %s", tool.name
-    )
     return None
 
 
-root_agent = Agent(
-    name="customer_assist_agent",
-    # LiteLLM model options (choose one):
-    # - Gemini: "gemini-2.0-flash", "gemini-1.5-pro"
-    # - OpenAI: "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"
-    # - Claude: "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"
-    # - Local: "ollama/llama3", "ollama/mistral"
-    model=LiteLlm(model=MODEL_ENV_PASSED),
-    description=(
-        "help customer to create and edit expert/work request, material request, contract. "
-        "Specialized assistant for CUSTOMERS on the GEFIFI construction platform. "
-        "Helps customers create and manage expert requests (AKA work requests) for construction projects, "
-        "Handles all customer-facing construction project needs from initial request creation to project completion."
-    ),
-    instruction=(
-        "You are a helpful, conversational, and highly efficient customer assistant for the GEFIFI construction platform. "
-        "Your goal is to help customers manage their expert/work requests, material requests, quotes, chats, contracts, and invite professionals with minimal friction.\n\n"
-        "Core Conversational Principles:\n"
-        "1. Avoid interrogation: Do not ask for details one-by-one. Batch your questions and ask for missing fields together.\n"
-        "2. Infer smart defaults: If you need contextual data, proactively fetch it:\n"
-        "   - Use the `get_current_datetime` tool to resolve dates (e.g. today's date, calculating deadlines, expiration dates).\n"
-        "   - Use the `get_my_profile` tool to retrieve the user's name and saved location to default the location/address fields.\n"
-        "   - Infer the request category (e.g. 'Plumbing' for plumbing work) based on the user's description instead of asking them to choose.\n"
-        "3. Confirm before executing: Present a clean, structured summary of fields to the customer (for creating requests or drafting contracts) and ask for their confirmation before calling the creation/drafting tools.\n"
-        "4. Chat & Quote Awareness: View active chats, read/send messages, and display submitted quotes when requested by the customer.\n"
-        "5. ID Abstraction (CRITICAL): Never show raw UUIDs (e.g., chat IDs, participant user IDs, or request IDs) to the user. They are technical and unfriendly. Always describe conversations, requests, or people using their human-readable name/title. Match the user's requests to the correct ID internally from the list of chats/requests and perform tool actions silently.\n"
-        "6. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
-    ),
-    tools=[
-        load_artifacts_tool,
-        # Context and Utility Tools
-        get_current_datetime,
-        get_my_profile,
-        # Expert Request Tools
-        create_expert_request,
-        get_user_expert_requests,
-        get_active_user_expert_requests,
-        get_a_expert_request_of_user_with_request_id,
-        update_expert_request,
-        update_expert_request_image,
-        update_expert_request_status,
-        # Material Request Tools
-        create_material_request,
-        get_user_material_requests,
-        get_active_material_requests_of_user,
-        get_a_material_request_of_user_with_request_id,
-        update_material_request,
-        update_material_request_attachments,
-        update_material_request_status,
-        # User interaction tools
-        find_experts,
-        find_suppliers,
-        find_a_user_by_id,
-        find_users_by_ids,
-        invite_expert_to_expert_request,
-        invite_supplier_to_material_request,
-        # Quote Tools
-        get_quotes_for_request,
-        # Chat Tools
-        get_user_chats,
-        get_chat_messages,
-        send_chat_message,
-        # Contract Tools
-        draft_contract,
-    ],
-    # Register authentication callbacks
+class RoleRouterAgent(BaseAgent):
+    """
+    Programmatic router agent that delegates execution directly to the sub-agent
+    matching the user's authenticated type (customer, expert, supplier).
+    """
+
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        auth_data = ctx.session.state.get("auth_data", {})
+        user_type = auth_data.get("user_type") if auth_data else None
+
+        logger.info("RoleRouterAgent: Routing conversation for userType: '%s'", user_type)
+
+        target_agent = None
+        for sub in self.sub_agents:
+            if sub.name == f"{user_type}_agent":
+                target_agent = sub
+                break
+
+        # Fallback to customer_agent if no userType matches
+        if not target_agent:
+            logger.warning("RoleRouterAgent: Target sub-agent '%s_agent' not found. Defaulting to customer_agent.", user_type)
+            for sub in self.sub_agents:
+                if sub.name == "customer_agent":
+                    target_agent = sub
+                    break
+
+        if not target_agent:
+            logger.error("RoleRouterAgent: No valid sub-agents registered.")
+            return
+
+        async with aclosing(target_agent.run_async(ctx)) as agen:
+            async for event in agen:
+                yield event
+
+
+# Register tool callback to sub-agents
+customer_agent.before_tool_callback = before_tool_callback
+expert_agent.before_tool_callback = before_tool_callback
+supplier_agent.before_tool_callback = before_tool_callback
+
+# Instantiate root agent
+root_agent = RoleRouterAgent(
+    name="gefifi_router_agent",
+    sub_agents=[customer_agent, expert_agent, supplier_agent],
     before_agent_callback=auth_before_agent_callback,
-    before_tool_callback=before_tool_callback,
 )
 
-# build_assist_agent
-
 app = App(
-    name="build_assist_agent",  # name should be the agent directory name
+    name="build_assist_agent",
     root_agent=root_agent,
     plugins=[SaveFilesAsArtifactsPlugin()],
 )

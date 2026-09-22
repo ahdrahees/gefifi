@@ -20,31 +20,25 @@ This document tracks all user actions in the GEFIFI platform and their current A
 
 ```mermaid
 graph TD
-    subgraph "Current State"
-        U["Customer (Frontend)"] --> BA["build_assist_agent<br/>(customer_assist_agent)<br/>Model: gemini-3.1-flash-lite"]
-        BA --> T1["expert_request.py<br/>8 tools"]
-        BA --> T2["material_request.py<br/>6 tools"]
-        BA --> T3["find_professionals.py<br/>6 tools"]
-        BA --> BE["GEFIFI Backend API"]
+    subgraph "Multi-Agent Zero-Token Router Architecture"
+        U["User (JWT Bearer Token)"] --> RA["RoleRouterAgent<br/>(Programmatic Router, 0 LLM Tokens)"]
+        RA -->|userType: 'customer'| CA["customer_agent<br/>(Work & Material Requests, Discovery, Quotes, Contracts)"]
+        RA -->|userType: 'expert'| EA["expert_agent<br/>(Browse Requests, Express Interest, Submit Quotes, Negotiate)"]
+        RA -->|userType: 'supplier'| SA["supplier_agent<br/>(Browse Requests, Express Interest, Submit Material Quotes, Negotiate)"]
+        
+        CA --> BE["GEFIFI Express Backend API"]
+        EA --> BE
+        SA --> BE
     end
-
-    subgraph "Not Yet Built"
-        E["Expert (Frontend)"] -.-> EA["Expert Agent<br/>(planned)"]
-        S["Supplier (Frontend)"] -.-> SA["Supplier Agent<br/>(planned)"]
-    end
-
-    style EA fill:#555,stroke:#888,stroke-dasharray: 5 5
-    style SA fill:#555,stroke:#888,stroke-dasharray: 5 5
 ```
 
 ### Key Facts
-- **Agent Name**: `build_assist_agent` (root agent internally named `customer_assist_agent`)
+- **Agent Name**: `build_assist_agent` (Root Agent: `gefifi_router_agent`)
+- **Sub-agents**: `customer_agent`, `expert_agent`, `supplier_agent`
 - **Framework**: Google ADK (Agent Development Kit) in Python
 - **Model**: `gemini/gemini-3.1-flash-lite` (configurable via `LLM_MODEL` env)
-- **Auth**: JWT token verification via `before_agent_callback` and `before_tool_callback`
-- **Guardrails**: Tool-specific input validation guardrails for create/update/status operations
-- **Plugins**: `SaveFilesAsArtifactsPlugin` for file handling
-- **Code**: [agent.py](file:///Users/r4h335/.gemini/antigravity/worktrees/gefifi/analyze-user-types/agents/build_assist_agent/agent.py)
+- **Auth**: Programmatic routing via decoded JWT `userType` in session state (`ctx.session.state['auth_data']`)
+- **Code**: [agent.py](file:///Users/r4h335/Workspace/gefifi/agents/build_assist_agent/agent.py)
 
 ---
 
@@ -74,8 +68,7 @@ graph TD
 | `update_material_request_attachments` | Add/remove file attachments | `GET + PUT /api/material-requests/:id` | ❌ |
 | `update_material_request_status` | Update material request status | `PUT /api/material-requests/:id/status` | ✅ `update_material_request_status_tool_guardrail` |
 
-> [!WARNING]
-> **Dead Code**: `get_active_material_requests_of_user` is defined in [material_request.py:L434](file:///Users/r4h335/.gemini/antigravity/worktrees/gefifi/analyze-user-types/agents/build_assist_agent/tools/material_request.py#L434) but is **never imported or registered** in `agent.py`. It should be wired up or removed.
+| `get_active_material_requests_of_user` | List active material requests only | `GET /api/material-requests?customerId=` + client filter | ❌ |
 
 #### User Interaction / Discovery Tools (6 tools)
 | Tool Function | Purpose | Backend Endpoint | Guardrail |
@@ -86,6 +79,17 @@ graph TD
 | `find_users_by_ids` | Batch fetch users by IDs | `GET /api/users/:userId` × N (concurrent) | ❌ |
 | `invite_expert_to_expert_request` | Invite expert + send message | `POST /api/work-requests/:id/invite` + `POST /api/users/interest` | ❌ |
 | `invite_supplier_to_material_request` | Invite supplier + send message | `POST /api/material-requests/:id/invite` + `POST /api/users/interest` | ❌ |
+
+#### Quotes, Contracts & Communication Tools (6 tools)
+| Tool Function | Purpose | Backend Endpoint | Guardrail |
+| :--- | :--- | :--- | :--- |
+| `get_quotes_for_request` | Fetch quotes submitted for work or material request | `GET /api/quotes/request/:id` | ❌ |
+| `draft_contract` | Create draft contract with expert/supplier | `POST /api/contracts` | ✅ Active contract guardrail check |
+| `get_user_chats` | List all active chat conversations | `GET /api/chat` | ❌ |
+| `get_chat_messages` | Read messages within a chat thread | `GET /api/chat/:id/messages` | ❌ |
+| `send_chat_message` | Send message in chat thread | `POST /api/chat/:id/messages` | ❌ |
+| `get_current_datetime` | Get current ISO timestamp and formatted date | Local system utility | ❌ |
+| `get_my_profile` | Retrieve authenticated user's own profile info | `GET /api/users/:userId` | ❌ |
 
 ---
 
@@ -152,42 +156,31 @@ graph TD
 > [!NOTE]
 > No agent exists for Experts yet. The following maps Expert actions to their automation feasibility.
 
-| # | Expert Action | Automation | Human Intervention? | Notes |
+| # | Expert Action | Automation | Human Intervention? | Tool Status |
 | :--- | :--- | :---: | :---: | :--- |
-| 1 | Browse open work requests | 🔧 | No | `GET /api/work-requests` — fully automatable |
-| 2 | View single work request detail | 🔧 | No | `GET /api/work-requests/:id` |
-| 3 | Express interest in work request | 🔧 | Maybe | `POST /api/users/interest` — agent can draft message, user confirms |
-| 4 | Submit a quote | 🚫 | **Yes** | `POST /api/quotes` — requires expert to set amount, terms, validity |
-| 5 | Revise a quote | 🚫 | **Yes** | `POST /api/quotes/:id/revise` — pricing decision |
-| 6 | Delete a quote | 🚫 | **Yes** | `DELETE /api/quotes/:id` — needs confirmation |
-| 7 | View own quotes | 🔧 | No | `GET /api/quotes/request/:requestId` |
-| 8 | Comment on contract | 🔧 | Maybe | Agent can draft, expert reviews before posting |
-| 9 | Sign contract | 🚫 | **Yes** | Legally binding, must be explicit human action |
-| 10 | Update project work status | 🚫 | **Yes** | `PUT /api/projects/:id/status` — progress verification |
-| 11 | Chat with customer | 🔧 | Maybe | Agent can draft responses |
-| 12 | Update own profile | 🔧 | No | `PUT /api/users/me/profile` |
+| 1 | Browse open work requests | ✅ | No | `browse_expert_requests` |
+| 2 | Express interest in work request | ✅ | Maybe | `express_interest_in_expert_request` |
+| 3 | Submit a quote | ✅ | **Yes** | `submit_expert_quote` (with user confirmation) |
+| 4 | View own quotes | ✅ | No | `get_quotes_for_request` |
+| 5 | Request contract revision | ✅ | Maybe | `request_contract_revision` |
+| 6 | Sign contract | 🚫 | **Yes** | Legally binding, human signature required |
+| 7 | Chat with customer | ✅ | No | `get_user_chats`, `send_chat_message` |
+| 8 | View & Update own profile | ✅ | No | `get_my_profile`, `update_my_profile` |
 
 ---
 
-## 5. Supplier Actions: Agent Coverage Matrix (Not Yet Built)
+## 5. Supplier Actions: Agent Coverage Matrix
 
-> [!NOTE]
-> No agent exists for Suppliers yet. The following maps Supplier actions to their automation feasibility.
-
-| # | Supplier Action | Automation | Human Intervention? | Notes |
+| # | Supplier Action | Automation | Human Intervention? | Tool Status |
 | :--- | :--- | :---: | :---: | :--- |
-| 1 | Browse open material requests | 🔧 | No | `GET /api/material-requests` — fully automatable |
-| 2 | View single material request detail | 🔧 | No | `GET /api/material-requests/:id` |
-| 3 | Express interest in material request | 🔧 | Maybe | `POST /api/users/interest` — agent drafts message |
-| 4 | Submit a quote | 🚫 | **Yes** | `POST /api/quotes` — requires pricing and terms |
-| 5 | Revise a quote | 🚫 | **Yes** | `POST /api/quotes/:id/revise` — pricing decision |
-| 6 | Delete a quote | 🚫 | **Yes** | `DELETE /api/quotes/:id` — needs confirmation |
-| 7 | View own quotes | 🔧 | No | `GET /api/quotes/request/:requestId` |
-| 8 | Comment on contract | 🔧 | Maybe | Agent can draft |
-| 9 | Sign contract | 🚫 | **Yes** | Legally binding, must be human action |
-| 10 | Update project material status (dispatch/deliver) | 🚫 | **Yes** | Physical action verification needed |
-| 11 | Chat with customer | 🔧 | Maybe | Agent can draft responses |
-| 12 | Update own profile | 🔧 | No | `PUT /api/users/me/profile` |
+| 1 | Browse open material requests | ✅ | No | `browse_material_requests` |
+| 2 | Express interest in material request | ✅ | Maybe | `express_interest_in_material_request` |
+| 3 | Submit a quote | ✅ | **Yes** | `submit_material_quote` (with user confirmation) |
+| 4 | View own quotes | ✅ | No | `get_quotes_for_request` |
+| 5 | Request contract revision | ✅ | Maybe | `request_contract_revision` |
+| 6 | Sign contract | 🚫 | **Yes** | Legally binding, human signature required |
+| 7 | Chat with customer | ✅ | No | `get_user_chats`, `send_chat_message` |
+| 8 | View & Update own profile | ✅ | No | `get_my_profile`, `update_my_profile` |
 
 ---
 
@@ -267,7 +260,30 @@ It provides no guidance on:
 
 ---
 
-## 9. Architectural Recommendations
+## 9. Frontend Pages & Agent Chat UI Audit
+
+### Frontend `my-requests` Page & Subpage Actions
+Analysis of automatable agent capabilities on `/my-requests` and `/my-requests/[id]`:
+
+| Page / Component | User Action | Agent Tool Mapping | Status |
+| :--- | :--- | :--- | :---: |
+| **`/my-requests` List** | Filter requests by status tab / search query | `browse_expert_requests`, `browse_material_requests` | ✅ Implemented |
+| **`/my-requests/[id]` (Quotations Tab)** | Submit a quote for work / material request | `submit_expert_quote`, `submit_material_quote` | ✅ Implemented |
+| **`/my-requests/[id]` (Quotations Tab)** | View submitted quotes | `get_quotes_for_request` | ✅ Implemented |
+| **`/my-requests/[id]` (Actions Tab)** | Progress work status (`contracted` → `in_progress` → `completed`) | `update_work_component_progress` | 🔧 Automatable |
+| **`/my-requests/[id]` (Actions Tab)** | Progress material delivery (`ordered` → `contracted` → `completed`) | `update_material_delivery_progress` | 🔧 Automatable |
+| **`/my-requests/[id]` (Actions Tab)** | Issue contract revision requests | `request_contract_revision` | ✅ Implemented |
+| **`/my-requests/[id]` (Actions Tab)** | Chat with customer / Send status update message | `get_user_chats`, `send_chat_message` | ✅ Implemented |
+
+### Agent Chat UI Visibility Analysis
+- **Current Limitation**: In `src/frontend/src/routes/(app)/+layout.svelte`, `showAgentFAB` and `/agent` navigation link are currently restricted to `userType === 'customer'`.
+- **Enabling Agent Chat for Experts & Suppliers**:
+  - Update `types: ['customer']` to `types: ['all']` in `navLinks` array for `/agent`.
+  - Remove `currentAuth.user?.userType === 'customer'` check from `showAgentFAB` derived property in `+layout.svelte`.
+
+---
+
+## 10. Architectural Recommendations
 
 ### Recommendation 1: Add Utility Tools (Quick Win)
 
@@ -354,16 +370,25 @@ instruction=(
 | Priority | Tool to Build / Task | For Agent | Effort | Impact | Status |
 | :---: | :--- | :--- | :---: | :---: | :---: |
 | 🔴 P0 | `get_current_datetime` | Customer | Low | High | ✅ **Done** |
-| 🔴 P0 | `get_my_profile` | All | Low | High | ✅ **Done** |
-| 🔴 P0 | Improve system prompt | Customer | Low | High | ✅ **Done** |
+| 🔴 P0 | `get_my_profile` & `update_my_profile` | All | Low | High | ✅ **Done** |
+| 🔴 P0 | Multi-Agent `RoleRouterAgent` (Zero-Token Routing) | All | High | High | ✅ **Done** |
+| 🔴 P0 | Improve system prompt & smart category/location inference | Customer | Low | High | ✅ **Done** |
+| 🔴 P0 | **Unblock Agent Chat UI for Experts & Suppliers** in `+layout.svelte` | Expert / Supplier | Low | High | 🔧 **Pending** |
 | 🟡 P1 | `get_quotes_for_request` | Customer | Medium | High | ✅ **Done** |
-| 🟡 P1 | `view_projects` | Customer | — | — | ❌ **Deleted** |
-| 🟡 P1 | `view_chats` | Customer | Medium | Medium | ✅ **Done** |
-| 🟢 P2 | `draft_contract` (with human confirm) | Customer | High | High | ✅ **Done** |
-| 🟢 P2 | Expert Agent (new) | Expert | High | High | 🔧 |
-| 🟢 P2 | Supplier Agent (new) | Supplier | High | High | 🔧 |
-| 🔵 P3 | `accept_quote` (with human confirm) | Customer | Medium | High | 🔧 |
-| 🔵 P3 | `sign_contract` (with human confirm) | All | Medium | High | 🔧 |
+| 🟡 P1 | `view_chats` & `send_chat_message` | All | Medium | Medium | ✅ **Done** |
+| 🟢 P2 | `draft_contract` (with active contract validation) | Customer | High | High | ✅ **Done** |
+| 🟢 P2 | `browse_expert_requests` (profile-aware matching) | Expert | High | High | ✅ **Done** |
+| 🟢 P2 | `browse_material_requests` (category-aware matching) | Supplier | High | High | ✅ **Done** |
+| 🟢 P2 | `express_interest_in_expert_request` | Expert | Medium | High | ✅ **Done** |
+| 🟢 P2 | `express_interest_in_material_request` | Supplier | Medium | High | ✅ **Done** |
+| 🟢 P2 | `submit_expert_quote` & `submit_material_quote` | Expert / Supplier | High | High | ✅ **Done** |
+| 🟢 P2 | `request_contract_revision` | All | Medium | High | ✅ **Done** |
+| 🔵 P3 | `accept_quote` & `reject_quote` (with human confirmation) | Customer | Medium | High | 🔧 **Pending** |
+| 🔵 P3 | `revise_quote` & `delete_quote` (with human confirmation) | Expert / Supplier | Medium | High | 🔧 **Pending** |
+| 🔵 P3 | `sign_contract` (with human confirmation) | All | Medium | High | 🔧 **Pending** |
+| 🟣 P4 | `update_work_execution_status` (`in_progress`, `completed`) | Expert | Medium | Medium | 🔧 **Pending** |
+| 🟣 P4 | `update_material_delivery_status` (`ordered`, `completed`) | Supplier | Medium | Medium | 🔧 **Pending** |
+| 🟣 P4 | `update_contract_status` (`completed`, `cancelled`, `disputed`) | Customer | Medium | Medium | 🔧 **Pending** |
 
 ---
 
@@ -372,7 +397,7 @@ instruction=(
 > - Signing contracts (legally binding)
 > - Accepting/rejecting quotes (financial commitment)
 > - Creating contracts (high-stakes terms)
-> - Updating project status to "Completed" (payment trigger)
+> - Updating project/work status to "Completed" (payment release trigger)
 > - Marking disputes
 > 
 > These should follow a **"draft → preview → confirm"** pattern where the agent prepares the action and the user explicitly approves it.
