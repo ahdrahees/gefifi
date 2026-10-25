@@ -173,3 +173,61 @@ async def draft_contract(
             "status": "error",
             "error_message": f"Failed to draft contract. Reason error: {str(e)}",
         }
+
+
+async def request_contract_revision(
+    contract_id: str,
+    comment: str,
+    tool_context: ToolContext,
+) -> dict[str, Any]:
+    """
+    Request revisions or post comments on a draft contract.
+
+    Use this tool when an expert, supplier, or customer wants to request changes/revisions to contract terms or add comments to a contract.
+
+    Args:
+        contract_id (str): The ID of the contract to request revisions on.
+        comment (str): Detailed explanation of the requested changes or terms revision.
+
+    Returns:
+        dict: Status, updated contract details, and summary message.
+    """
+    print(f"TOOL[request_contract_revision]: posting revision request comment for contract {contract_id}")
+    try:
+        token: str = tool_context.state.get("auth_token")
+
+        body = {
+            "comment": comment.strip(),
+            "type": "revision_request",
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            }
+            response = await client.post(
+                f"{API_BASE_URL}/api/contracts/{contract_id}/comments",
+                json=body,
+                headers=headers,
+            )
+            result = response.raise_for_status().json()
+
+        print(f"TOOL[request_contract_revision]: revision request posted successfully")
+        return {
+            "status": "success",
+            "contract": result.get("contract"),
+            "message": "Contract revision request submitted successfully.",
+        }
+    except httpx.HTTPError as e:
+        print(f"ERROR@ TOOL[request_contract_revision]: HTTP error - {e}")
+        error_msg = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                error_msg = e.response.json().get("message", str(e))
+            except Exception:
+                pass
+        return {"status": "error", "error_message": f"Failed to request contract revision: {error_msg}"}
+    except Exception as e:
+        print(f"ERROR@ TOOL[request_contract_revision]: Unexpected error - {str(e)}")
+        return {"status": "error", "error_message": f"Failed to request contract revision: {str(e)}"}
