@@ -2,7 +2,7 @@
 
 > **Purpose:** The single reference for who can do what, on which entity, in which state, through which channel.  
 > **Rule:** If an action is not in this matrix, it is denied by default. Add it here before implementing it.  
-> **Companions:** [README.md](README.md), [engineering-rules.md](engineering-rules.md), [rewrite-playbook.md](rewrite-playbook.md), [AGENTS.md](AGENTS.md).
+> **Companions:** [README.md](README.md), [engineering-rules.md](engineering-rules.md), [rewrite-playbook.md](rewrite-playbook.md), [verification-rubric.md](verification-rubric.md), [AGENTS.md](AGENTS.md).
 
 ---
 
@@ -102,7 +102,24 @@ Every action passes through all layers, in order:
 | `request.attachment.add` | — | O | — | — | — | — | Draft/open; upload policy |
 | `request.attachment.remove` | — | O | — | — | — | — | Draft/open; audit |
 
-### 4.3 Quotes
+### 4.3 Site visits and address release
+
+| Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
+|---|---|---|---|---|---|---|---|
+| `siteVisit.request` | — | O | A | A | — | — | Customer owner or invited/interested provider; request open/under review |
+| `siteVisit.schedule` | — | O | — | — | — | — | Customer confirms time; provider notified |
+| `siteVisit.reschedule` | — | P | P | P | — | — | Both parties notified; audit |
+| `siteVisit.cancel` | — | P | P | P | ✓ | — | Revokes any address release; audit |
+| `siteVisit.checkIn` | — | — | P | P | — | — | Scheduled provider; within window |
+| `siteVisit.checkOut` | — | — | P | P | — | — | Checked-in provider; notes/photos optional |
+| `siteVisit.noShow` | — | P | — | — | ✓ | — | After visit window + grace; reason |
+| `siteVisit.address.release` | — | O | — | — | — | — | Customer consent recorded; one provider; expires after visit + 2h; audited |
+| `siteVisit.address.revoke` | — | O | — | — | ✓ | — | Immediate; audit |
+| `siteVisit.get` | — | P | P | P | R | — | Participant; address only if currently released |
+
+**Address-release rule:** the customer releases the exact address to **one provider** for **one bounded window** (visit start to visit end + 2 hours), with a consent record, a view log, and immediate revocation. The provider never sees the exact address on the public request, in discovery, or in another provider's visit.
+
+### 4.4 Quotes
 
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
@@ -111,23 +128,23 @@ Every action passes through all layers, in order:
 | `quote.withdraw` | — | — | O | O | — | — | Own quote; not accepted |
 | `quote.compare` | — | O | — | — | ✓ | R | Own request; masked provider contact |
 | `quote.accept` | — | O | — | — | — | H | Own request; quote submitted/under_review; not expired; atomic |
-| `quote.reject` | — | O | — | — | — | — | Own request; not accepted |
+| `quote.reject` | — | O | — | — | — | H | Own request; not accepted; notifies provider |
 | `quote.expire` | — | — | — | — | — | — | Service only; validity passed |
 
-### 4.4 Contracts
+### 4.5 Contracts
 
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
-| `contract.draft` | — | O | — | — | — | ⚠ | Accepted quote; total matches; both parties verified |
+| `contract.draft` | — | O | — | — | — | — | Accepted quote; total matches; both parties verified. Not an agent tool in MVP. |
 | `contract.updateDraft` | — | O | — | — | — | — | Draft only; new version |
 | `contract.requestRevision` | — | P | P | P | — | — | Before signing; comment required |
-| `contract.sign` | — | P | P | P | — | H | Current version; OTP; party; not already signed |
+| `contract.sign` | — | P | P | P | — | H | Current version; dual OTP; party; not already signed |
 | `contract.cancel` | — | P | P | P | ✓ | — | Pre-sign or mutual; reason; audit |
 | `contract.get` | — | P | P | P | ✓ | R | Participant; masked fields |
-| `contract.downloadCertificate` | — | P | P | P | ✓ | — | Signed contract only |
+| `contract.getCertificate` | — | P | P | P | ✓ | — | Signed contract only; HTML + SHA-256; no PDF in MVP |
 | `contract.link` | — | O | — | — | ✓ | — | Same customer; visibility rule |
 
-### 4.5 Milestones and payments
+### 4.6 Milestones and payments
 
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
@@ -140,19 +157,27 @@ Every action passes through all layers, in order:
 | `payment.record` | — | O | — | — | ✓ | — | Offline reference; immutable ledger |
 | `payment.flag` | — | P | P | P | ✓ | — | Duplicate/mismatch; audit |
 
-### 4.6 Chat and files
+### 4.7 Chat, presence, and voice
 
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
 | `chat.thread.get` | — | P | P | P | R | R | Participant; masked contact |
-| `chat.message.send` | — | P | P | P | — | ✓ | Participant; content filter; labelled if agent |
+| `chat.message.draft` | — | — | — | — | — | ✓ | Agent only; returns text, delivers nothing |
+| `chat.message.send` | — | P | P | P | — | H | Participant; content filter; `client_message_id` idempotency |
 | `chat.message.deleteOwn` | — | O | O | O | — | — | Sender only; tombstone |
 | `chat.attachment.upload` | — | P | P | P | — | — | Participant; upload policy |
+| `chat.voice.upload` | — | P | P | P | — | — | Participant; audio MIME, ≤5 min, ≤10 MB |
+| `chat.voice.play` | — | P | P | P | R | — | Participant; signed short-lived URL |
+| `chat.presence.update` | — | P | P | P | — | — | Participant; heartbeat; TTL 45s |
+| `chat.typing.set` | — | P | P | P | — | — | Participant; TTL 5s; not stored as history |
+| `chat.read.mark` | — | P | P | P | — | — | Participant; monotonic `last_read_message_id` |
 | `chat.thread.mute` | — | P | P | P | — | — | Participant |
+| `chat.thread.block` | — | P | P | P | — | — | Participant; contract/dispute access preserved |
+| `chat.message.report` | — | P | P | P | — | — | Any participant; audit |
 | `file.download` | — | O | P | P | R | — | Owning entity; signed URL |
 | `file.deleteOwn` | — | O | O | O | — | — | Unattached only; audit |
 
-### 4.7 Admin
+### 4.8 Admin
 
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
@@ -166,7 +191,7 @@ Every action passes through all layers, in order:
 | `admin.audit.view` | — | — | — | — | R | — | PII masked |
 | `admin.impersonate` | — | — | — | — | S | — | Consent + banner + time limit |
 
-### 4.8 Agent and approvals
+### 4.9 Agent and approvals
 
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
@@ -177,7 +202,9 @@ Every action passes through all layers, in order:
 | `pendingAction.reject` | — | O | — | — | — | — | Owner; pending |
 | `pendingAction.list` | — | O | — | — | — | — | Own actions |
 
-### 4.9 Service
+**Agent column meaning:** the column is the policy ceiling, not the MVP tool list. The customer agent exposes only the five tools in README §7.3 (`request.createDraft`, `request.updateDraft`, `request.publish`, `quote.compare`, `profile.get`). Other `R` entries are internal reads used by those tools and are never separately callable by the model.
+
+### 4.10 Service
 
 | Action | Guest | Customer | Expert | Supplier | Admin | Service | Guard |
 |---|---|---|---|---|---|---|---|
@@ -190,26 +217,30 @@ Every action passes through all layers, in order:
 
 ## 5. Field-level visibility
 
-| Field | Guest | Counterparty before contract | Counterparty after contract | Admin | Agent |
-|---|---|---|---|---|---|
-| Display name | Public | Full | Full | Full | Full |
-| Phone | — | Masked (`98****3210`) | Full | Full (logged) | Masked |
-| Email | — | Masked | Full | Full (logged) | Masked |
-| Exact address | — | Approximate area only | Full | Full (logged) | Masked |
-| Geo point | — | Approximate (neighbourhood) | Full | Full | — |
-| Request budget | — | Published budget only | Published budget only | Full | Published budget only |
-| Quote amount (own) | — | Full | Full | Full | Full (own request) |
-| Competing quotes | — | — | — | Full | Summary only, no identity |
-| Contract terms | — | — | Full | Full (logged) | Summary only |
-| Signature/OTP data | — | — | Own signature | Full (logged) | — |
-| Payment reference | — | — | Participants | Full (logged) | — |
-| Verification docs | — | — | — | Full (logged) | — |
-| Audit log | — | — | — | Read-only | — |
-| Internal notes | — | — | — | Full | — |
-| Consent records | — | — | Own | Full (logged) | — |
-| WhatsApp opt-in | — | — | Own | Full | — |
+| Field | Guest | Before contract | During released site visit | After contract | Admin | Agent |
+|---|---|---|---|---|---|---|
+| Display name | Public | Full | Full | Full | Full | Full |
+| Phone | — | Masked (`98****3210`) | Released provider only (coordination; logged) | Full | Full (logged) | Masked |
+| Email | — | Masked | Masked | Full | Full (logged) | Masked |
+| Exact address | — | Approximate area only | Released provider only; time-bound; every view logged | Full | Full (logged) | Masked |
+| Geo point | — | Approximate (neighbourhood) | Exact only during release | Full | Full | — |
+| Request budget | — | Published budget only | Published budget only | Published budget only | Full | Published budget only |
+| Quote amount (own) | — | Full | Full | Full | Full | Full (own request) |
+| Competing quotes | — | — | — | — | Full | Summary only, no identity |
+| Contract terms | — | — | — | Full | Full (logged) | Summary only |
+| Signature/OTP data | — | — | — | Own signature | Full (logged) | — |
+| Payment reference | — | — | — | Participants | Full (logged) | — |
+| Verification docs | — | — | — | — | Full (logged) | — |
+| Chat messages | — | Participants | Participants | Participants | Logged reason only | Own thread only |
+| Voice notes | — | Participants | Participants | Participants | Logged reason only | — |
+| Audit log | — | — | — | — | Read-only | — |
+| Internal notes | — | — | — | — | Full | — |
+| Consent records | — | Own | Own | Own | Full (logged) | — |
+| WhatsApp opt-in | — | — | — | Own | Full | — |
 
 **Rule:** masking happens in the DTO layer. A hidden field must not be serialized at all, not merely hidden in the UI.
+
+**Address rule:** a released address is never a field on the request DTO. It is served only by `siteVisit.get` while `released_at <= now() < expires_at` and `revoked_at IS NULL`, and only to the provider on that visit.
 
 ---
 
@@ -230,7 +261,22 @@ Every action passes through all layers, in order:
 | `contracted`/`in_progress` | `disputed` | Either party | Dispute opened |
 | `disputed` | `completed`/`cancelled` | Admin | Resolution recorded |
 
-### 6.2 Quote
+**Material requests** reuse the same guards and add `quoting`, `ordered`, and `delivered` between `open` and `completed`; there is no quote acceptance without a verified supplier.
+
+### 6.2 Site visit
+
+| From | To | Who | Guard |
+|---|---|---|---|
+| `requested` | `scheduled` | Customer owner | Time agreed; provider invited/interested in the request |
+| `requested` | `cancelled` | Customer / provider | — |
+| `scheduled` | `completed` | Provider | Check-in and check-out recorded |
+| `scheduled` | `no_show` | Customer / admin | Visit window + 15-minute grace passed |
+| `scheduled` | `cancelled` | Customer / provider | Revokes any address release |
+| `completed`/`no_show`/`cancelled` | — | — | Terminal |
+
+**Address release is not a state.** It is a consent + release event that is valid only while the visit is `scheduled`: `released_at <= now() < expires_at` and `revoked_at IS NULL`. It expires at visit end + 2 hours, is revoked on cancel/no-show, and is scoped to one provider.
+
+### 6.3 Quote
 
 | From | To | Who | Guard |
 |---|---|---|---|
@@ -242,7 +288,7 @@ Every action passes through all layers, in order:
 | `submitted` | `superseded` | Provider owner | Revision creates new version |
 | `accepted` | — | — | Terminal; contract created |
 
-### 6.3 Contract
+### 6.4 Contract
 
 | From | To | Who | Guard |
 |---|---|---|---|
@@ -256,7 +302,7 @@ Every action passes through all layers, in order:
 | `signed`/`in_progress` | `disputed` | Either party | Reason |
 | `disputed` | `terminated`/`cancelled` | Admin | Resolution |
 
-### 6.4 Milestone
+### 6.5 Milestone
 
 | From | To | Who | Guard |
 |---|---|---|---|
@@ -266,25 +312,30 @@ Every action passes through all layers, in order:
 | `pending`/`requested`/`paid` | `disputed` | Either party | Reason |
 | `disputed` | `paid`/`confirmed`/`cancelled` | Admin | Resolution |
 
-### 6.5 Dispute
+### 6.6 Dispute
 
 | From | To | Who | Guard |
 |---|---|---|---|
 | `open` | `under_review` | Admin | Assign/reason |
-| `under_review` | `resolved` | Admin | Resolution note |
+| `under_review` | `resolved` | Admin | Resolution note; back-office only in MVP |
 | `resolved` | `closed` | System/Admin | Both parties notified |
 
-### 6.6 Provider verification
+**MVP note:** the admin dispute view is read-only in the product. Resolution is recorded manually through the back-office action (or SQL) with a reason and an audit event; there is no dispute-resolution UI.
+
+### 6.7 Provider verification
 
 | From | To | Who | Guard |
 |---|---|---|---|
 | `unverified` | `pending` | Provider owner | Documents uploaded |
-| `pending` | `verified` | Admin | Documents valid; reason |
-| `pending` | `rejected` | Admin | Reason; provider may resubmit |
+| `rejected` | `pending` | Provider owner | Resubmission allowed after fixing the reason |
+| `pending` | `verified` | Admin | Documents valid; reason; 24–48h SLA |
+| `pending` | `rejected` | Admin | Reason required; provider may resubmit |
 | `verified` | `suspended` | Admin | Reason; revoke quote ability |
-| `suspended` | `verified` | Admin | Reason |
+| `suspended` | `verified` | Admin | Reason; re-verification if documents expired |
 
-### 6.7 PendingAction
+**Verification rule:** the queue is live from Week 1–3 and uses SQL/Retool if the UI is not ready. Documents are reviewed by a human; no Aadhaar. See [verification-rubric.md](verification-rubric.md).
+
+### 6.8 PendingAction
 
 | From | To | Who | Guard |
 |---|---|---|---|
@@ -306,18 +357,23 @@ Every action passes through all layers, in order:
 - Server-rendered route guards are UX only; the action still re-checks.
 - No sensitive data in `localStorage`.
 - Logout revokes the session; role switch re-checks the active role.
+- Chat uses an authenticated SSE stream scoped to one thread; every message is persisted before it is emitted, and reconnect uses `Last-Event-ID`.
+- Voice notes are recorded in the browser, uploaded to pre-signed R2 URLs, and played through signed, participant-scoped URLs.
 
 ### 7.2 Agent
 
 - Authenticated user session; no anonymous agent.
+- Customer-only in MVP, with **5 tools**: `request.createDraft`, `request.updateDraft`, `request.publish`, `quote.compare`, `profile.get`.
 - Tools are generated from the action catalog; no hand-written HTTP wrappers.
 - Risk tier is enforced by the runtime, not the prompt.
 - `HUMAN_ONLY` actions are removed from the tool list **and** rejected server-side.
 - `NEEDS_APPROVAL` creates an immutable `PendingAction`; the agent cannot approve it.
+- **External messages are draft-only.** `chat.message.draft` returns text and delivers nothing; `chat.message.send` is `HUMAN_ONLY`.
 - Every tool call is audited with model, tokens, latency, and cost.
 - The agent may read only what the user may read; DTOs are already masked.
 - Prompt injection from messages/files is data, never instructions.
 - Budgets: max steps, max tokens, max wall time; stop with a fallback.
+- Per-user and per-thread kill switch; disabling cancels in-flight tool calls.
 
 ### 7.3 MCP (post-MVP)
 
@@ -329,13 +385,15 @@ Every action passes through all layers, in order:
 
 ### 7.4 Magic links / WhatsApp cards
 
-- Token: 256-bit random, hashed at rest, scoped to user + purpose + request, expires in 7 days, revocable.
-- Read-only access by default; mutating actions require a fresh single-use token.
-- No role escalation; the token maps to one user and one purpose.
+- Token: 256-bit random, hashed at rest, scoped to user + purpose + request, bound to the phone number, with one active token per user/purpose.
+- Read access token expires in **24–72 hours**; revocable at any time.
+- Mutating actions require a fresh **15-minute single-use** token plus step-up OTP.
+- Read-only access by default; no role escalation; the token maps to one user and one purpose.
 - Rate limit by token and phone.
 - Every use is audited.
 - WhatsApp webhook verifies Meta's signature and deduplicates by message ID.
-- STOP/opt-out is honored immediately.
+- Marketing vs utility opt-in is stored separately; STOP/opt-out is honored immediately.
+- Outbound only in MVP; no inbound button automation.
 
 ### 7.5 Cron / outbox / service
 
@@ -350,8 +408,9 @@ Every action passes through all layers, in order:
 - Admin role + step-up for destructive actions.
 - Reason required for verification decisions, suspension, disputes, impersonation.
 - Impersonation: user consent, visible banner, time limit, full audit.
-- Admin cannot read private contract/chat content without a logged reason (MVP: read-only dispute view).
+- Admin cannot read private contract/chat/voice content without a logged reason (MVP: read-only dispute view).
 - Admin actions are never available through the agent.
+- Provider verification is manual from Week 1–3 with a 24–48h SLA; no Aadhaar.
 
 ---
 
@@ -383,6 +442,26 @@ Every action passes through all layers, in order:
 | **PM22** | PendingAction payload changed | Hash mismatch; `409`; new action required. |
 | **PM23** | Admin access to private documents | Logged; reason; time-bound. |
 | **PM24** | Consent withdrawn | Non-essential processing stops; legal records retained. |
+| **PM25** | Customer releases address for a site visit | Only the provider on that visit sees the exact address; other shortlisted providers still see the approximate area. |
+| **PM26** | Released address link is forwarded | Provider-bound, signed, expiring; another user gets `403`; every view is logged. |
+| **PM27** | Visit is cancelled after release | Release is revoked immediately; provider loses exact-address access. |
+| **PM28** | Provider does not show up | `no_show`; release revoked/expired; both parties notified; no automatic penalty in MVP. |
+| **PM29** | Consent for address release is withdrawn | Release revoked; provider loses access; audit event recorded. |
+| **PM30** | Agent tries to send a chat message | Blocked (`HUMAN_ONLY`); it can only return a draft. |
+| **PM31** | Agent draft contains a phone number, link, price, or commitment | Content filter flags it; human must edit/send; nothing is delivered automatically. |
+| **PM32** | Agent tries to publish without approval | `PendingAction` created; no request write until the human approves. |
+| **PM33** | Non-participant opens a chat SSE stream | `403`; participation is re-checked on connect and on heartbeat. |
+| **PM34** | Non-participant tries to play a voice note | `403`; signed URL is participant-scoped and short-lived. |
+| **PM35** | Message send is retried | `client_message_id` + idempotency; one row, same response. |
+| **PM36** | Magic-link read token is used after 72 hours | `401`; a new link is required. |
+| **PM37** | Magic-link mutation token is reused | Blocked; a fresh 15-minute token + step-up OTP is required. |
+| **PM38** | Provider is suspended mid-quote | Cannot submit/revise; existing quote is visible; acceptance is blocked until reinstated or the quote is rejected. |
+| **PM39** | Admin resolves a dispute without a reason | Blocked; reason and audit required. |
+| **PM40** | Certificate requested before both signatures | `404`/`403`; only a signed contract has a certificate. |
+| **PM41** | Customer tries to confirm their own payment | Blocked; `milestone.confirmReceipt` is provider-only. |
+| **PM42** | Provider tries to mark a milestone paid | Blocked; `milestone.markPaid` is customer-only. |
+| **PM43** | Agent tries to read another customer's thread | DTO scoping returns `404`; never leak existence. |
+| **PM44** | User is suspended while an SSE stream is open | Stream closes on the next heartbeat; mutations return `403`. |
 
 ---
 
@@ -406,6 +485,10 @@ Minimum test cases per action:
 8. Suspended/deleted user → 403.
 9. Expired token/link → 401.
 10. Duplicate/idempotent call → same result, one write.
+11. Agent draft → no external delivery; agent send → 403.
+12. Non-participant chat/SSE/voice access → 403/404.
+13. Address release outside the visit window → 403.
+14. Verification/suspension state blocks quote and acceptance as specified.
 
 CI must fail if a permission test is missing for a new action. The matrix is not documentation-only; it is executable.
 
@@ -416,9 +499,12 @@ CI must fail if a permission test is missing for a new action. The matrix is not
 - [ ] Action is in the matrix with roles, risk, and guard.
 - [ ] Ownership/participation checks are server-side.
 - [ ] State guard is explicit.
-- [ ] DTO masks fields by role.
-- [ ] Agent risk tier is correct.
+- [ ] DTO masks fields by role, including address release.
+- [ ] Agent risk tier is correct; external messages are draft-only.
 - [ ] Audit event records actor, action, entity, and outcome.
 - [ ] Permission tests cover allowed and denied cases.
 - [ ] No client-supplied identity or role is trusted.
 - [ ] Admin/support paths are logged and least-privilege.
+- [ ] Magic-link TTLs and single-use mutation tokens are enforced.
+- [ ] Chat presence/typing TTL, read receipts, and voice authorization are tested.
+- [ ] Site-visit consent, release scope, expiry, and revocation are tested.

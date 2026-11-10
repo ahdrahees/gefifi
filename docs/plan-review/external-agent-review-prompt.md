@@ -1,6 +1,8 @@
 # External Review Prompt — Gefifi v3 Plans
 
 > **How to use:** Give this entire document to the external reviewing agent, along with read access to the repository. Ask it to write its review to `docs/plan-review/external/2026-11-03-agent-review.md` and to **not** modify any plan file.
+>
+> **Status:** This prompt was executed on 2026-11-08 against the pre-revision plan. It is kept as a record, not as current scope. The revised plan is in `docs/plan/made-by-opencode/`, and the disposition of each review item is in README §16. In particular, full real-time chat and voice notes are now non-negotiable MVP scope, and the certificate is HTML, not PDF.
 
 ---
 

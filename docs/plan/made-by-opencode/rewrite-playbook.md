@@ -2,7 +2,7 @@
 
 > **Purpose:** How to get from v2 to v3 without a big-bang rewrite, scope creep, or a second failed stack.  
 > **Audience:** Founder + AI coding agents.  
-> **Companion docs:** [README.md](README.md) (architecture), [engineering-rules.md](engineering-rules.md) (code and edge cases), [permissions-matrix.md](permissions-matrix.md) (roles and state transitions), [AGENTS.md](AGENTS.md) (agent operating contract — copy it to the v3 repo root on Day 1).
+> **Companion docs:** [README.md](README.md) (architecture), [engineering-rules.md](engineering-rules.md) (code and edge cases), [permissions-matrix.md](permissions-matrix.md) (roles and state transitions), [acquisition-plan.md](acquisition-plan.md) (pre-code sprint), [verification-rubric.md](verification-rubric.md) (provider checks), [legal-and-payments-checklist.md](legal-and-payments-checklist.md) (launch legal), [AGENTS.md](AGENTS.md) (agent operating contract — copy it to the v3 repo root on Day 1).
 
 ---
 
@@ -22,6 +22,10 @@ These are non-negotiable. If a rule blocks progress, change the rule in an ADR �
 | **R8** | **Every PR deployable.** `main` is always shippable; feature flags hide incomplete work. | Rollback stays trivial. |
 | **R9** | **No data migration.** Clean start. Recreate beta users manually if needed. | v2 is a prototype; a migration pipeline is a tax on a rewrite. |
 | **R10** | **The plan is the source of truth.** If reality changes, update the plan and the ADR in the same PR. | Prevents documentation drift. |
+| **R11** | **Acquisition before code.** Complete the two-week concierge sprint in [acquisition-plan.md](acquisition-plan.md) before Week 1. | A marketplace with no supply or demand is a CRUD app. |
+| **R12** | **MVP scope is frozen.** Full real-time chat + voice notes are in; reviews, projects, PostGIS, supply agent, PDF certificate, and custom admin UI are out. | Scope creep is the biggest schedule risk. |
+| **R13** | **No legal overclaim.** Say "electronic acceptance with audit trail", never "65B", "admissible", or "eSign". | The wrong statute creates false confidence and regulatory risk. |
+| **R14** | **External messages are draft-only for the agent.** A human taps send. | The most socially dangerous action is talking to the counterparty. |
 
 ---
 
@@ -70,13 +74,15 @@ Put a README note on the v2 repo: **"Frozen. v3 lives at <url>."**
 
 - [ ] GitHub repository `gefifi-v3` with branch protection on `main`.
 - [ ] Cloudflare account + Workers Paid plan ($5).
-- [ ] Supabase project in **AWS ap-south-1 (Mumbai)**; confirm PostGIS is available.
+- [ ] Supabase project in **AWS ap-south-1 (Mumbai)**; confirm PostGIS is available; enable PITR.
 - [ ] Sentry project (browser + Workers).
 - [ ] Domain/DNS access (`gefifi.in` or the chosen domain).
-- [ ] WhatsApp Business account + Meta Cloud API app (or MSG91/Interakt) — start verification now.
-- [ ] SMS provider + DLT registration if SMS OTP fallback is needed.
+- [ ] WhatsApp Business account + Meta Cloud API app (or MSG91/Interakt) — start verification on **Day 1**.
+- [ ] SMS provider + DLT registration on **Day 1**.
 - [ ] Google Cloud OAuth client for Google login.
 - [ ] LLM provider key (Gemini/OpenAI/Anthropic) behind AI Gateway.
+- [ ] Retool/SQL access for the manual verification queue and admin fallback.
+- [ ] Legal counsel engaged for the contract template, BSA 2023 framing, stamp duty, GST/TCS, DPDP, and intermediary posture.
 - [ ] Password manager and a documented secret-rotation process.
 
 ### Monorepo
@@ -140,18 +146,22 @@ install → typecheck → lint → unit → integration (Postgres) → build →
 
 | Day | Outcome |
 |---|---|
-| **1** | Repo, accounts, ADRs 0001–0007, v2 frozen, plan docs committed. |
-| **2** | Monorepo skeleton, TypeScript/ESLint/Prettier, CI, first preview deploy. |
-| **3** | Supabase Postgres + Drizzle schema v1 (`user`, `profiles`, `audit_events`, `outbox_events`, `idempotency_keys`), migration, seed. |
-| **4** | Better Auth: Google login, phone OTP stub, session, onboarding, role selection. |
-| **5** | `defineAction` runtime: Zod input/output, auth context, role/ownership guards, risk tier, audit + outbox, idempotency. |
-| **6** | First real action: `request.createDraft`; API route; UI form; validation errors. |
-| **7** | `request.publish` + `request.browse`; list/detail pages; empty/loading/error states. |
-| **8** | Integration tests for actions + E2E for login → draft → publish → list. |
-| **9** | Sentry, structured logs, request IDs, feature flags, basic rate limiting, docs. |
-| **10** | Demo the walking skeleton; measure CI time; update the plan; cut anything that is not on the critical path. |
+| **1** | Freeze v2 and tag `v2-final`; create the v3 repo with branch protection; open Supabase Mumbai, Cloudflare, Sentry, R2, and the domain; **start Meta Business verification and DLT**; make 5 provider calls. |
+| **2** | Monorepo skeleton, TypeScript/ESLint/Prettier, CI fast lane, first preview deploy, Hono health check, Drizzle + Postgres connection, first migration. |
+| **3** | Better Auth: Google login, phone OTP, session, onboarding, role selection, consent capture; make 5 more provider calls. |
+| **4** | `defineAction` runtime: Zod input/output, auth context, role/ownership guards, risk tier, audit + outbox, idempotency; one sample action end-to-end. |
+| **5** | Schema v1: users/roles, profiles, addresses, consent_records, requests, request_items, site_visits, quotes, quote_line_items, contracts, contract_versions, contract_signatures, contract_events, contract_certificates, milestones, payment_records, disputes, chat_threads/messages/reads/presence/typing, otp_challenges, webhook_events, whatsapp_contacts, magic_links, notifications, agent_threads/messages/pending_actions, usage_events, audit/outbox/idempotency. |
+| **6** | `request.createDraft` + `request.publish` + R2 photo upload + mobile-first UI; make 5 provider calls. |
+| **7** | Provider browse/interest + manual verification queue (SQL/Retool) + seed 10 pre-verified providers. |
+| **8** | Quote submit/compare + quote acceptance transaction + contract draft; concurrency and idempotency tests. |
+| **9** | Contract signing with OTP challenge + hash chain + HTML certificate; tamper and replay tests. |
+| **10** | WhatsApp utility template + magic-link card on staging; run one real end-to-end request with a real provider and customer; measure CI, latency, and cost; update the plan. |
 
 **Day-10 gate:** if the walking skeleton is not working end-to-end, stop and fix the foundation. Do not start marketplace features.
+
+**Do not spend all 10 days coding.** Spend at least 10 hours in the first 10 days talking to providers and customers. The code is not the risk; the empty marketplace is.
+
+Chat and voice notes start in Weeks 6–7, not in the first 10 days.
 
 ---
 
@@ -169,6 +179,7 @@ A slice spec is one page:
 - **Permissions:** roles, ownership, field-level visibility.
 - **State transitions:** allowed from/to, guards.
 - **Edge cases:** concurrency, retries, expiry, duplicates, empty states.
+- **Channels:** web, agent, WhatsApp, magic link, service; note any external side effect.
 - **Analytics:** events/metrics to emit.
 - **Rollout:** feature flag, migration order, rollback.
 - **Out of scope:** what this slice does not do.
@@ -195,6 +206,8 @@ A slice spec is one page:
 - [ ] E2E test covers the critical path.
 - [ ] Rollback tested or trivially safe.
 - [ ] Analytics events emitted.
+- [ ] OTP challenges, webhook dedupe, and WhatsApp opt-in covered where relevant.
+- [ ] Chat changes cover SSE reconnect, presence/typing TTL, and voice authorization.
 
 ---
 
@@ -204,17 +217,17 @@ A slice spec is one page:
 |---|---|---|---|
 | **S0** | Walking skeleton: health, auth stub, one sample action, one page, deploy | — | 0 |
 | **S1** | Auth + onboarding: Google, phone OTP, roles, consent | S0 | 1 |
-| **S2** | Customer request: draft, publish, list, detail, attachments | S1 | 2 |
-| **S3** | Provider discovery: PostGIS matching, profile, express interest, invite | S2 | 2 |
-| **S4** | Quotes: submit, revise, line items, validity, compare | S3 | 2 |
+| **S2** | Customer request: draft, publish, list, detail, attachments, **site visits + address release** | S1 | 2 |
+| **S3** | Provider discovery: city/pincode/category filters, profile, express interest, invite, **manual verification queue** | S2 | 2 |
+| **S4** | Quotes: submit, revise, simple line items, validity, compare | S3 | 2 |
 | **S5** | Quote acceptance: atomic accept, reject others, contract draft | S4 | 2 |
-| **S6** | Contract draft: versions, comments, terms, hash | S5 | 3 |
-| **S7** | Signing: dual OTP, signatures, hash chain, PDF certificate | S6 | 3 |
-| **S8** | Milestones: schedule, offline UPI ledger, confirm/dispute | S7 | 3 |
-| **S9** | Chat: thread per request × provider, text/files/voice, timeline | S2 | 4 |
-| **S10** | Agent: Core 9 tools, approval cards, evals, budgets | S5, S6 | 5 |
-| **S11** | WhatsApp supply: templates, webhook, magic links, SSR cards | S3, S4 | 5 |
-| **S12** | Admin, reviews, hardening, launch | S7–S11 | 6 |
+| **S6** | **Chat + voice:** threads, SSE, presence, typing, read receipts, text/files/images/voice, unread, block/mute | S2, S3 | 3 |
+| **S7** | Contract draft: versions, comments, terms, hash | S5 | 3 |
+| **S8** | Signing: dual OTP, signatures, hash chain, **HTML certificate** | S7 | 3 |
+| **S9** | Milestones: schedule, offline UPI ledger, customer marks paid, provider confirms, dispute | S8 | 3 |
+| **S10** | Agent: **Core 5 tools**, approval cards, evals, budgets, draft-only external messages | S5, S7 | 4 |
+| **S11** | WhatsApp supply: templates, webhook dedupe, magic links, SSR cards, opt-in/STOP | S3, S4 | 4 |
+| **S12** | Admin, hardening, UAT, launch | S8–S11 | 5 |
 
 **Rule:** each slice must be independently deployable behind a flag. If a slice needs three other unfinished slices to demo, it is too big.
 
@@ -251,6 +264,7 @@ Mine v2 for behaviour, then mark each item in v3. Do not copy implementation.
 - [ ] Edit while open.
 - [ ] List/detail/cancel/expire.
 - [ ] Supplier interest and quotes.
+- [ ] Material states `quoting` and `ordered` preserved (or explicitly declared out of scope).
 
 ### Discovery
 
@@ -258,54 +272,60 @@ Mine v2 for behaviour, then mark each item in v3. Do not copy implementation.
 - [ ] Find suppliers by category/location.
 - [ ] Invite provider.
 - [ ] Express interest.
-- [ ] Radius matching (new: PostGIS).
+- [ ] City/pincode/category filters in MVP. PostGIS radius matching is deferred.
 
 ### Quotes
 
 - [ ] Submit quote with amount, validity, terms, files.
-- [ ] Revise quote (versioning).
+- [ ] Revise quote (versioning; v2 `revised` maps to `superseded` + new version).
 - [ ] Compare quotes side by side.
 - [ ] Accept/reject; reject others atomically.
 - [ ] Expire quotes.
-- [ ] Line items for material quotes (new).
-- [ ] Tax/GST fields (new).
+- [ ] Simple line items for material quotes.
+- [ ] One `tax_mode` + `tax_rate_bp`; no HSN/per-line GST in MVP.
+- [ ] Quote messages preserved or explicitly declared out of scope.
 
 ### Contracts
 
 - [ ] Draft from accepted quote.
-- [ ] Revision comments.
+- [ ] Revision comments and signature-time comments/attachments.
 - [ ] Both parties sign.
 - [ ] Active-contract guard.
 - [ ] Status transitions.
 - [ ] Terms hash + immutable versions (new).
 - [ ] Dual OTP signature (new).
-- [ ] PDF audit certificate (new).
+- [ ] HTML audit certificate (new); PDF deferred.
 
 ### Chat and files
 
 - [ ] Thread per request × provider.
 - [ ] Text messages.
 - [ ] Images/files.
-- [ ] Voice notes (store/play, no transcription).
+- [ ] Voice notes (record/upload/store/play, no transcription).
 - [ ] System timeline cards.
-- [ ] Presence/typing (post-MVP; SSE/polling in MVP).
-- [ ] R2 uploads.
+- [ ] Presence, typing, read receipts, unread counts (MVP).
+- [ ] SSE reconnect with `Last-Event-ID`.
+- [ ] Block/mute, tombstone, PII filter.
+- [ ] R2 uploads with EXIF stripping.
 
 ### Agent
 
-- [ ] Customer agent with Core 9 tools.
+- [ ] Customer agent with **Core 5 tools**.
 - [ ] Approval cards for risky actions.
+- [ ] Draft-only external messages.
 - [ ] No unapproved writes in CI.
 - [ ] Token/cost metering.
+- [ ] Kill switch.
 - [ ] Hinglish/English support.
 
 ### Admin
 
-- [ ] Provider verification queue.
+- [ ] Provider verification queue (manual SQL/Retool from Week 1).
 - [ ] User suspension.
 - [ ] Dispute read-only view.
 - [ ] Category manager.
 - [ ] Audit log view.
+- [ ] Reviews are deferred; do not build moderation in MVP.
 
 ---
 
@@ -368,12 +388,15 @@ Stop and ask if a decision is not in the spec.
 ### Before cutover
 
 - [ ] Staging UAT with 5–10 real users (customers + providers).
-- [ ] WhatsApp templates approved; opt-in/STOP tested on real devices.
-- [ ] Contract signing + PDF certificate tested end-to-end.
+- [ ] WhatsApp templates approved; marketing vs utility opt-in/STOP tested on real devices.
+- [ ] Contract signing + **HTML certificate** tested end-to-end.
+- [ ] **Full chat + voice notes** tested on a mid-range Android over 4G: send/receive, presence, typing, read receipts, reconnect, upload/playback.
+- [ ] Site visit + address release tested with a real provider and customer.
 - [ ] Offline UPI ledger tested by both parties.
-- [ ] Backups + restore drill.
+- [ ] Backups + **PITR restore drill**; RPO ≤15 min, RTO ≤4h.
 - [ ] Sentry alerts, uptime checks, on-call expectation.
-- [ ] Legal pages: ToS, privacy, intermediary disclaimer, consent.
+- [ ] Legal pages: ToS, privacy, intermediary disclaimer, consent, retention.
+- [ ] Legal counsel sign-off on the contract template and BSA 2023 framing.
 - [ ] Support channel and incident runbook.
 
 ### Cutover day
@@ -382,8 +405,8 @@ Stop and ask if a decision is not in the spec.
 2. Freeze writes on v2.
 3. Export v2 reference data only if needed (no bulk migration).
 4. Point DNS to v3.
-5. Run smoke tests: login, create request, submit quote, accept, sign, milestone.
-6. Watch Sentry, error rate, and queue lag for 2 hours.
+5. Run smoke tests: login, create request, submit quote, accept, sign, milestone, chat, voice note, site visit.
+6. Watch Sentry, error rate, SSE connections, and queue lag for 2 hours.
 7. Keep v2 read-only for 30 days.
 
 ### Rollback
@@ -391,6 +414,7 @@ Stop and ask if a decision is not in the spec.
 - DNS back to v2 (if v2 is still deployed).
 - v3 Worker rollback to the previous version.
 - Database: restore PITR only if data corruption; prefer forward-fix.
+- Chat: messages are in Postgres, so an SSE outage loses no data; clients reconnect with `Last-Event-ID`.
 
 ---
 
@@ -401,7 +425,7 @@ Stop and ask if a decision is not in the spec.
 | **Monday** | Pick the slice; write/refresh the spec; list edge cases. |
 | **Tuesday–Thursday** | Implement with agents; tests alongside; deploy preview daily. |
 | **Friday** | Demo, measure, update metrics, cut scope if needed. |
-| **Every PR** | Typecheck, lint, unit, integration, E2E (critical), agent evals, preview. |
+| **Every PR** | Typecheck, lint, unit, fast action contracts, preview. Full integration/E2E nightly. |
 
 ### Weekly questions
 
@@ -410,24 +434,21 @@ Stop and ask if a decision is not in the spec.
 3. What can we delete or defer?
 4. What broke, and what test would have caught it?
 5. Is the supply side getting quotes fast enough?
+6. Is chat adoption and first-response time healthy?
 
 ---
 
 ## 11. When behind schedule
 
-Cut in this order:
+Use the 2-week buffer first. If still behind, cut in this order:
 
-1. Reviews/ratings.
-2. Voice notes.
-3. PDF certificate (HTML + hash first).
-4. Custom admin UI (use SQL/Retool).
-5. WhatsApp button replies (outbound + magic link only).
-6. Material line items (single amount + notes).
-7. Agent scope (5 tools instead of 9).
-8. Chat (request comments + WhatsApp).
-9. WhatsApp entirely (web-only; last resort).
+1. WhatsApp button replies / inbound automation (already out).
+2. Material line items → single amount + notes.
+3. Agent scope → 3 tools (create draft, publish approval, compare quotes).
+4. Custom admin screens → SQL/Retool.
+5. WhatsApp entirely (web-only; last resort).
 
-Never cut: auth, permissions, audit, idempotency, backups, contract hash, or the quote-acceptance transaction.
+**Never cut:** auth, permissions, audit, idempotency, backups/PITR, contract hash/versions, the quote-acceptance transaction, provider verification, DPDP consent, WhatsApp opt-in/STOP, legal review, rollback, **full real-time chat, presence, typing, SSE, and voice notes**.
 
 ---
 
@@ -436,7 +457,9 @@ Never cut: auth, permissions, audit, idempotency, backups, contract hash, or the
 - One codebase, one database, one deploy pipeline.
 - A customer can go from request to signed contract without leaving the product.
 - A provider can quote from a WhatsApp link on a budget phone.
-- The agent can draft and recommend, but never commit a high-risk action.
+- A customer and provider can chat in real time, see presence/typing, exchange voice notes, and reconnect without losing messages.
+- A provider can visit the site after a consented, audited address release.
+- The agent can draft and recommend, but never commit a high-risk action or send an external message.
 - Every mutation is auditable and idempotent.
 - CI blocks unsafe writes and permission regressions.
 - The team can ship a slice in days, not weeks.
