@@ -1040,6 +1040,8 @@ The external review at [../../plan-review/external/2026-11-03-agent-review.md](.
 
 **Founder override:** full real-time chat, presence, typing, read receipts, SSE, and voice notes are non-negotiable MVP scope. The rest of the review’s cuts are adopted as defaults and can be revisited only with a written scope change.
 
+**Second opinion:** a fresh review prompt tailored to this revision is at [../../plan-review/external-agent-review-prompt-v2.md](../../plan-review/external-agent-review-prompt-v2.md). Use it with a different agent/model; the original prompt is a historical record.
+
 ---
 
 ## Appendix A — ADR summary
