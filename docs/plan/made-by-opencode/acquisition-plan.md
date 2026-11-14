@@ -62,7 +62,7 @@ A “written commitment” is a WhatsApp or email message from the provider that
 
 - Pick one city, three categories, and 3–4 pincodes.
 - Write the one-sentence promise and the provider value proposition.
-- Create a spreadsheet with two tabs: `Providers` and `Requests`.
+- Create the private tracker from the [acquisition templates](../../research/acquisition-templates/README.md) (or a spreadsheet with `Providers` and `Requests` tabs). Copy the CSVs to `docs/research/private/`; do not fill the committed templates.
 - Create a business WhatsApp number and a simple call log.
 - Confirm and log the founder's available hours. 10–15 hours/week is the minimum; 15–20 is safer for the 100/50/20/15/2 workload. If the hours are not there, narrow the wedge rather than skipping follow-up.
 
@@ -204,7 +204,7 @@ Start the rewrite only if **all** are true:
 
 - [ ] One city and three categories are chosen and written down.
 - [ ] 100 named providers are in the list.
-- [ ] 25 providers have been called; 50 by the end of the sprint.
+- [ ] 25 providers have been called in Week −2; 50 by the end of Week −1.
 - [ ] 10 providers have given a written “quote within 24 hours” commitment.
 - [ ] Actual 24-hour quote responses from the 10 manual sends are recorded and reviewed; poor response narrows the wedge before code.
 - [ ] 20 real customer requests are collected, with photos and budgets where possible.
@@ -238,8 +238,10 @@ Acquisition does not stop on Week 1.
 
 ## 10. Artefacts to keep
 
-- `docs/research/acquisition-summary.md` — anonymised counts, objections, quotes, pricing signals.
-- `docs/research/provider-list.csv` — private, not committed; or a CRM link.
-- `docs/research/customer-requests.md` — anonymised request archetypes.
+- [acquisition-summary.md](../../research/acquisition-summary.md) — anonymised counts, gate scoreboard, objections, quotes, pricing signals.
+- [provider-tracker.csv](../../research/acquisition-templates/provider-tracker.csv) — copy to `docs/research/private/`; never commit names, phones, or documents.
+- [request-tracker.csv](../../research/acquisition-templates/request-tracker.csv) — copy to `docs/research/private/`; never commit names, phones, or exact addresses.
+- [outreach-scripts.md](../../research/acquisition-templates/outreach-scripts.md) — call, WhatsApp, customer, and consent scripts.
+- [customer-requests.md](../../research/customer-requests.md) — anonymised request archetypes.
 - Updated [verification-rubric.md](verification-rubric.md) based on the documents providers actually have.
 - Updated [README.md](README.md) §2 if the city or categories change.

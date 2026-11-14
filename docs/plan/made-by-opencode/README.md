@@ -963,7 +963,7 @@ If still behind after using the 2-week buffer, cut in this order:
 
 | Decision | Owner | Deadline |
 |---|---|---|
-| Launch city + three categories, with 100 named providers and 20 requests | Founder | **Before Week 1** |
+| Launch city + three categories, with 100 named providers and 20 requests (track in [acquisition-summary.md](../../research/acquisition-summary.md)) | Founder | **Before Week 1** |
 | All-in monthly budget: $150–200 infra / $250–350 all-in vs a lower web-only plan | Founder | Before Week 1 |
 | WhatsApp provider: Meta Cloud API vs MSG91/Interakt, plus fallback | Founder | **Day 1** |
 | SMS provider + DLT registration | Founder | Day 1 |

@@ -1,0 +1,1 @@
+request_id,date_collected,category,description_short,area,pincode,photos_count,budget_min_inr,budget_max_inr,budget_confidence,urgency,customer_type,preferred_contact,consent_to_contact,consent_scope,consent_source,consent_at,opt_out_at,site_visit_willing,agreement_willing,pricing_reaction,sent_to_providers,quotes_received,accepted_quote_inr,status,notes

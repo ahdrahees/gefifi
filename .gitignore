@@ -35,6 +35,11 @@ vite.config.ts.timestamp-*
 # Notes
 **/notes
 
+# Private acquisition data (names, phones, exact addresses, documents)
+docs/research/private/
+docs/research/provider-list.csv
+docs/research/request-working-list.csv
+
 # GCP credentials
 
 # Ignore uploaded files in backend/uploads
