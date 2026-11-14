@@ -45,11 +45,12 @@ If the data says a different city or category is easier to seed, change the wedg
 | Providers called | **25** in Week −2, **50** by end of Week −1 | The list is reachable |
 | Conversations completed | ≥ 25 | Providers will talk |
 | Written “I will quote within 24 hours” commitments | **10** | Supply will respond |
+| Quotes received within 24h from the 10 manual sends | **Record; no fixed target** | Commitments become behavior |
 | Real customer requests | **20** | Demand exists now |
 | Requests with photos and a budget range | ≥ 12 | Requests are actionable |
 | Customers willing to try a paid/commission model | ≥ 5 | Pricing has a pulse |
 | Site visits or ride-alongs observed | ≥ 2 | The visit flow is real |
-| Providers with documents ready | ≥ 15 | Verification will not block launch |
+| Providers with document readiness confirmed | ≥ 15 | Verification will not block launch |
 
 A “written commitment” is a WhatsApp or email message from the provider that names the category and area and says they will quote within 24 hours. A verbal “sounds good” does not count. “Send me leads” does not count.
 
@@ -63,7 +64,7 @@ A “written commitment” is a WhatsApp or email message from the provider that
 - Write the one-sentence promise and the provider value proposition.
 - Create a spreadsheet with two tabs: `Providers` and `Requests`.
 - Create a business WhatsApp number and a simple call log.
-- Confirm the founder has 10–15 hours per week for the sprint.
+- Confirm and log the founder's available hours. 10–15 hours/week is the minimum; 15–20 is safer for the 100/50/20/15/2 workload. If the hours are not there, narrow the wedge rather than skipping follow-up.
 
 ### Day 3–5: build the provider list
 
@@ -165,7 +166,7 @@ Record the answer, the category, and the provider’s size. Do not collect money
 - Send each committed provider one real request (with the customer’s consent) and measure response time.
 - Ask 5 customers to review 2–3 provider profiles and say who they would choose and why.
 - Run at least 2 site visits or ride-alongs; observe how the address is shared and what the provider does on site.
-- Collect documents from the 15 most likely providers; explain the verification SLA and the 24–48h review.
+- Collect document **readiness** from the 15 most likely providers (which documents they can provide); explain the verification SLA and the 24–48h review. Do not collect identity images until a secure intake exists. If documents arrive early, use an access-controlled folder with a deletion register.
 - Update the list: committed, follow-up, no, wrong category.
 
 ---
@@ -205,8 +206,9 @@ Start the rewrite only if **all** are true:
 - [ ] 100 named providers are in the list.
 - [ ] 25 providers have been called; 50 by the end of the sprint.
 - [ ] 10 providers have given a written “quote within 24 hours” commitment.
+- [ ] Actual 24-hour quote responses from the 10 manual sends are recorded and reviewed; poor response narrows the wedge before code.
 - [ ] 20 real customer requests are collected, with photos and budgets where possible.
-- [ ] 15 providers have documents ready or in progress.
+- [ ] 15 providers have confirmed document readiness (they know which documents they can provide).
 - [ ] The top five objections and top five buying triggers are written down.
 - [ ] A pricing hypothesis is written down and has at least 5 customer reactions.
 - [ ] The founder has observed at least 2 site visits or ride-alongs.
@@ -225,7 +227,7 @@ Acquisition does not stop on Week 1.
 
 | Cadence | Activity |
 |---|---|
-| Weekly | 10 provider calls; 2 provider onboardings; 5 customer conversations |
+| Weekly | 10 provider calls; 2 provider onboardings; 5 customer conversations; reserve verification time separately |
 | Weekly | Review quote rate, time to first quote, and provider activation |
 | Bi-weekly | One site visit or ride-along |
 | Monthly | Pricing and objection review; update the plan |

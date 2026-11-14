@@ -11,7 +11,7 @@
 | # | Rule | Consequence |
 |---|---|---|
 | **N1** | **Postgres is the only source of truth** for business state, chat, agent state, approvals, audit, and outbox. | No Firestore, no Convex, no Durable Object SQLite, no in-memory state as truth. |
-| **N2** | **Every mutation goes through an action.** Routes, UI, agent, MCP, cron, and webhooks are all callers. | No route handler writes business data directly. |
+| **N2** | **Every mutation goes through an action.** Routes, UI, agent, MCP, cron, webhooks, and back-office tools are all callers. Direct SQL is read-only for operations. | No route handler writes business data directly. |
 | **N3** | **The server enforces permissions and risk.** The client and the prompt are untrusted. | A hidden button is not a permission. A system prompt is not a guardrail. |
 | **N4** | **Actions return DTOs, never raw database rows.** | Prevents field leaks and accidental coupling. |
 | **N5** | **Every mutation is idempotent.** | Retries, double taps, and webhook replays must be safe. |
@@ -115,6 +115,7 @@ type ActionDefinition<I, O> = {
 | **A15** | Any breaking change to an action schema needs a version bump or a migration path. |
 | **A16** | Agent/MCP callers use the same action and the same policy; no separate "agent endpoint." |
 | **A17** | Cron/webhook callers use a service actor with explicit scopes; they do not impersonate a user. |
+| **A18** | An approved `PendingAction` is executed as a delegated capability bound to the approving user and the approved subject content hash. The service actor may execute it only with that approval ID; it cannot originate a user-only action. |
 
 ### 4.2 API routes
 
@@ -158,14 +159,16 @@ type ActionDefinition<I, O> = {
 | **D24** | Every query has a bounded result. Use `LIMIT` even for "all" queries. |
 | **D25** | Use transactions for multi-row invariants; do not rely on eventual consistency for money/contracts. |
 | **D26** | `site_visits` own address release: consent record, released_at, expires_at, revoked_at, provider scope. Never release an address by editing `requests`. |
-| **D27** | `otp_challenges` are single-use, hashed, purpose-bound, entity/version-bound, expiring, and attempt-limited. Never store the raw code. |
+| **D27** | `otp_challenges` are single-use, hashed, purpose-bound, entity/version-bound, expiring, and attempt-limited. Never store the raw code. Consume atomically with `UPDATE ... WHERE consumed_at IS NULL RETURNING`; zero rows is a conflict. |
 | **D28** | `webhook_events` has a unique `(provider, external_id)`; verify signature and timestamp before processing. |
 | **D29** | `whatsapp_contacts` stores marketing and utility opt-in separately, plus STOP timestamp and source. |
 | **D30** | `chat_presence` and `chat_typing` are short-lived rows with TTL; never treat them as durable history. |
 | **D31** | Voice notes use `attachments` with `kind='voice'`, duration, MIME, size, and R2 key; playback URLs are signed and participant-scoped. |
-| **D32** | Every query for chat is thread-scoped and indexed by `(thread_id, created_at, id)`; no unbounded message history. |
+| **D32** | Every query for chat is thread-scoped and indexed by `(thread_id, seq)`; no unbounded message history. |
 | **D33** | Retention is explicit per table: contracts/audit 8 years, chat 2 years, verification docs 1 year after offboarding, analytics 24 months, backups 30 days. |
 | **D34** | Deletion anonymizes PII but preserves contract, audit, and payment records required by law. |
+| **D35** | Every persistent chat item (message or system card) gets a per-thread `seq` allocated from `chat_threads.last_seq` while locking the thread row. Read receipts are monotonic `chat_reads.last_read_seq` updates, not separate log rows. SSE reconnect uses `(thread_id, seq)`; deduplicate by message/event ID. Presence/typing are expiring snapshots, not log events. |
+| **D36** | Unread counts derive from each participant's monotonic `last_read_seq`; do not maintain independent counters that can drift. |
 
 ### 5.1 Transaction template
 
@@ -217,8 +220,8 @@ Never call an external service (WhatsApp, LLM, email) inside the transaction. Wr
 | **P20** | Log authorization failures with actor, action, entity, and reason; do not log the sensitive payload. |
 | **P21** | A site visit releases the exact address to one provider for a bounded time, with customer consent, audit, and revocation. |
 | **P22** | The agent never sends an external message. `chat.message.send` is `HUMAN_ONLY`; `chat.message.draft` is `SAFE_WRITE` and delivers nothing. |
-| **P23** | Chat participants only: thread access requires participation in the underlying request/contract. Block/mute preserves contract access but stops messages. |
-| **P24** | Voice note playback URLs are signed, short-lived, and checked against thread participation on every request. |
+| **P23** | Chat participants only: thread access requires participation in the underlying request/contract. Mute suppresses notifications only; block denies sends; both preserve contract/audit access. |
+| **P24** | Voice note playback uses a signed URL issued only after a server-side thread-participation check, with a 60-second TTL; the URL is bearer until expiry. The client fetches the clip once into a blob before playback. Direct R2 object URLs are denied. |
 
 ---
 
@@ -279,7 +282,7 @@ Each row is a rule plus the test that must exist. This list is not exhaustive; a
 | # | Edge case | Rule | Test |
 |---|---|---|---|
 | **EC29** | Oversized/wrong-type upload | Pre-signed URL constraints + server validation; reject. | 50MB PDF → `413`. |
-| **EC30** | Malicious file | MIME sniff, checksum, no execution, virus scan post-MVP. | EICAR test file → quarantine. |
+| **EC30** | Malicious file | MIME sniff, checksum, no inline execution, quarantine until verified; virus scan post-MVP. | EICAR file → quarantined; served as an attachment with safe headers. |
 | **EC31** | PII in chat | Mask phone/email until contract signed or a site-visit address is released; agent context redacted. | "Call 98765..." → masked. |
 | **EC32** | WhatsApp STOP/opt-out | Honor immediately; no marketing templates; transactional messages follow policy. | STOP → no next template. |
 | **EC33** | Chat message deleted | Tombstone; preserve audit; no hard delete. | Delete → tombstone. |
@@ -323,15 +326,18 @@ Each row is a rule plus the test that must exist. This list is not exhaustive; a
 | # | Edge case | Rule | Test |
 |---|---|---|---|
 | **EC53** | Duplicate message send | `client_message_id` + idempotency; one row, same response. | Retry → one message. |
-| **EC54** | Out-of-order or missed events | Server order by `(created_at, id)`; SSE reconnect with `Last-Event-ID` backfills. | Drop connection → no missing message. |
+| **EC54** | Out-of-order or missed events | Server assigns a per-thread `seq` under a thread lock; SSE reconnect uses `(thread_id, seq)` and backfills; dedupe by event ID. | Delayed commit or reconnect → no missing or reordered message. |
 | **EC55** | SSE disconnect / reconnect storm | Exponential backoff + jitter; cap concurrent streams per user. | Reconnect → one stream, no duplicate events. |
 | **EC56** | Stale presence or typing | TTL expiry (presence 45s, typing 5s); client hides after TTL. | Kill heartbeat → offline/typing stops. |
 | **EC57** | Voice upload fails mid-way | Pre-signed URL + completion action; incomplete upload is not a message. | Abort upload → no message row. |
 | **EC58** | Oversized/invalid audio | MIME allowlist, max 5 min / 10 MB, server validation. | 20 MB file → `413`. |
 | **EC59** | Voice playback by non-participant | Signed, short-lived URL checked against thread participation. | Other user → `403`. |
 | **EC60** | Message edited/deleted | No edit in MVP; delete is a tombstone; audit retained. | Delete → tombstone, audit intact. |
-| **EC61** | Blocked/muted counterparty | Messages denied; contract/dispute access preserved. | Block → send denied. |
+| **EC61** | Blocked/muted counterparty | Mute suppresses notifications only; block denies sends; contract/dispute access preserved. | Mute → notifications stop, send allowed; block → send denied. |
 | **EC62** | Agent drafts an external message | Draft is returned to the human; nothing is delivered; send is `HUMAN_ONLY`. | Agent draft → no outbound row; send attempt → `403`. |
+| **EC63** | Draft changes after a `PendingAction` is proposed | Bind approval to the subject revision/content hash; a safe write that changes the subject marks the approval `stale`. | Edit draft after proposal → approval `409`; publish uses approved content only. |
+| **EC64** | Kill switch during a tool call | Check the kill-switch epoch before each tool call and before commit; report already-committed results. | Disable mid-call → no new commit; committed row reported. |
+| **EC65** | Concurrent signature/OTP replay | Atomic OTP consume and unique `(contract_id, version, signer_id)`; lock the contract. | Two parallel signs → one signature, one `409`. |
 
 ---
 
@@ -373,14 +379,14 @@ Each row is a rule plus the test that must exist. This list is not exhaustive; a
 | **S15** | Admin access is least-privilege, logged, and reviewed. |
 | **S16** | Dependency updates are reviewed; lockfile committed; automated audit in CI. |
 | **S17** | DPDP: consent records, purpose limitation, retention schedule, deletion/export, breach runbook. |
-| **S18** | Contracts: immutable versions, SHA-256 terms hash, dual OTP, hash-chained events, **HTML certificate**. Label it "electronic acceptance with audit trail"; no Section 65B, no "admissible evidence" claim, no Aadhaar eSign claim. |
+| **S18** | Contracts: immutable versions, canonical RFC 8785 terms, SHA-256 terms hash, dual OTP, hash-chained events (`SHA-256(prev_hash || canonical_event_json)`), stored certificate bytes hash, **HTML certificate**. Label it "electronic acceptance with audit trail"; no Section 65B, no "admissible evidence" claim, no Aadhaar eSign claim. |
 | **S19** | Payments: no escrow or fund custody; offline UPI ledger only; reserve platform-fee fields; state clearly that Gefifi does not hold, route, or guarantee funds. |
 | **S20** | Incident response: who is paged, how to roll back, how to notify users, how to preserve evidence. |
-| **S21** | Strip EXIF/GPS from uploaded images; validate MIME/content; virus scan post-MVP. |
+| **S21** | Strip EXIF/GPS from uploaded images; validate MIME/content; quarantine unverified files and serve them as attachments; virus scan post-MVP. |
 | **S22** | Magic links: `noindex`, `Referrer-Policy: no-referrer`, phone + request binding, one active token, 24–72h read, 15-minute mutation. |
 | **S23** | Retention is enforced per table, not aspirational: contracts/audit 8 years, chat 2 years, verification docs 1 year after offboarding, analytics 24 months, backups 30 days. |
 | **S24** | PITR at launch; RPO ≤15 min, RTO ≤4h; restore drill before launch and quarterly. |
-| **S25** | Voice notes: audio MIME allowlist, max 5 min / 10 MB, signed playback, participant check, no transcription. |
+| **S25** | Voice notes: audio MIME allowlist, max 5 min / 10 MB, signed playback issued after a participant check with a 60-second TTL; client fetches once into a blob; no transcription. |
 | **S26** | SSE endpoints authenticate the session, scope to one thread, and re-check participation on connect. |
 
 ---
@@ -394,14 +400,14 @@ Each row is a rule plus the test that must exist. This list is not exhaustive; a
 | **T3** | E2E tests for the critical flows: signup → request → quote → accept → contract → sign → milestone. |
 | **T4** | Every permission rule has a test for allowed and denied cases. |
 | **T5** | Every edge case in §7 has a regression test once implemented. |
-| **T6** | Agent evals: 15–20 golden conversations, mocked in CI, live-model nightly; zero unapproved writes is a hard gate. |
+| **T6** | Agent evals: 15–20 golden conversations, mocked in CI; the same adversarial set runs against the pinned live model before launch and nightly after; zero unapproved writes is a hard gate. Include stale approval, draft mutation, parallel calls, budget timeout, Hinglish, malicious files, and kill races. |
 | **T7** | Use factories/fixtures; tests create their own data and clean up. |
 | **T8** | Freeze time and IDs in tests; no reliance on wall-clock ordering. |
 | **T9** | Do not mock the database for transaction/concurrency tests. |
 | **T10** | Critical paths require 100% branch coverage of policy/state transitions; overall core target ≥ 80%. |
 | **T11** | No snapshot-only tests for business logic. Snapshots are for stable UI structure only. |
 | **T12** | Flaky tests are quarantined and fixed within 48h; never retried into green. |
-| **T13** | Performance tests for quote acceptance and chat before launch; PostGIS radius is post-MVP. |
+| **T13** | Focused performance tests for quote acceptance and SSE/voice before launch; broad load tests are post-MVP; PostGIS radius is post-MVP. |
 | **T14** | Accessibility checks (axe) are post-MVP; keep a mobile viewport check in MVP. |
 | **T15** | A bug fix starts with a failing test that reproduces it. |
 | **T16** | Chat tests: duplicate send, out-of-order events, SSE reconnect with backfill, presence/typing TTL, read receipts, block/mute. |
@@ -452,7 +458,7 @@ Each row is a rule plus the test that must exist. This list is not exhaustive; a
 | **AI19** | Run typecheck, lint, unit, integration, and relevant E2E before proposing a PR. |
 | **AI20** | A human reviews every diff; the agent's summary is not evidence. |
 | **AI21** | Never send an external message from the agent. Produce a draft; the human sends. |
-| **AI22** | Respect the per-user and per-thread kill switch; stop immediately when disabled. |
+| **AI22** | Respect the per-user and per-thread kill switch; check the epoch before each tool call and before commit, and report already-committed work. |
 | **AI23** | Never include phone numbers, links, prices, or commitments in a draft without a visible human review. |
 | **AI24** | Chat/SSE changes must test reconnect, duplicate delivery, presence/typing TTL, and voice authorization. |
 

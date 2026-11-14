@@ -48,10 +48,11 @@ The MVP uses **electronic acceptance with an audit trail**, not Aadhaar eSign an
 
 - [ ] Contract template covers: parties, scope, site address (released only for the visit), price and tax, milestones, timeline, change orders, cancellation, warranty, safety, insurance, dispute process, governing law, jurisdiction, and notices.
 - [ ] Both parties accept the same immutable terms version.
-- [ ] SHA-256 hash of the canonical terms is stored.
-- [ ] Dual OTP: each signer receives a single-use OTP bound to user + purpose + contract version; expiry and attempt limits enforced.
-- [ ] `contract_events` is an append-only hash chain (`prev_hash`, `event_hash`).
-- [ ] The certificate is **HTML**, includes the terms hash, signer details, timestamps, IP/device/user agent, and the event chain; no PDF in MVP.
+- [ ] Terms are canonicalized as RFC 8785 JSON; SHA-256 hash of the canonical terms is stored.
+- [ ] Dual OTP: each signer receives a single-use OTP bound to user + purpose + contract version; expiry and attempt limits enforced. Consume atomically; zero rows is a conflict.
+- [ ] One signature per party per version (`unique (contract_id, version, signer_id)`); the contract row is locked during signing.
+- [ ] `contract_events` is an append-only hash chain: `event_hash = SHA-256(prev_hash || canonical_event_json)`, genesis `prev_hash` is 64 zeros.
+- [ ] The certificate is **HTML**, includes the terms hash, signer details, timestamps, IP/device/user agent, and the event chain; the exact bytes are stored and hashed; no PDF in MVP.
 - [ ] Copy says “electronic acceptance with audit trail”; never “Section 65B”, “admissible evidence”, “legally binding e-signature”, or “Aadhaar eSign”.
 - [ ] BSA 2023 s.63 framing is reviewed by counsel; do not claim a court will admit the record.
 - [ ] Contract versions are immutable; revisions create a new version and invalidate prior signatures.
@@ -59,6 +60,8 @@ The MVP uses **electronic acceptance with an audit trail**, not Aadhaar eSign an
 - [ ] Audit records are retained for 8 years.
 
 **Stamp duty:** counsel/CA to confirm whether the work contract, quotation, or certificate attracts stamp duty in Maharashtra, and how e-stamping is handled for an electronic instrument. Do not assume “digital means no stamp duty”.
+
+**Formation and attribution:** counsel to confirm contract formation/attribution and applicable IT Act exclusions separately from BSA s.63. Do not obtain a real acceptance before template and stamp clearance.
 
 **Owner:** Founder + counsel. **Deadline:** Before Week 8; template frozen before signing goes live.
 
@@ -79,7 +82,7 @@ The MVP uses **electronic acceptance with an audit trail**, not Aadhaar eSign an
 - [ ] Chargeback/dispute process, even for offline payments.
 - [ ] Fraud warnings: never pay a provider before a site visit or written scope; never pay to a personal account that does not match the verified name.
 
-**Tax:** CA to confirm GST on any platform/commission fee, TCS under the GST e-commerce provisions (s.52 CGST) and Income Tax s.194-O, invoicing, and whether Gefifi is an e-commerce operator even without processing payments. Do not invoice or collect commission until confirmed.
+**Tax:** CA to confirm GST on any platform/commission fee, TCS under the GST e-commerce provisions (s.52 CGST) and Income Tax s.194-O, invoicing, and whether Gefifi is an e-commerce operator even without processing payments. Confirm who invoices for work versus materials and the provider/customer tax-invoice responsibilities. Do not invoice or collect commission until confirmed.
 
 ---
 
@@ -89,6 +92,7 @@ The MVP uses **electronic acceptance with an audit trail**, not Aadhaar eSign an
 - [ ] Record consent with version, purpose, timestamp, IP, and user agent.
 - [ ] Purpose limitation: verification, matching, chat, contracts, payments, support, and safety.
 - [ ] Data minimisation: no Aadhaar, no full bank credentials, no exact address on public requests.
+- [ ] Pre-code document collection uses an access-controlled intake and a deletion register; collect readiness first, not identity images.
 - [ ] Data principal rights: access, correction, erasure, grievance, and consent withdrawal.
 - [ ] Retention schedule enforced in code (see §8).
 - [ ] Breach response: detect, contain, assess, notify, and record; counsel to confirm notification duties and timelines.
@@ -144,7 +148,7 @@ The MVP uses **electronic acceptance with an audit trail**, not Aadhaar eSign an
 | Voice notes | 2 years | Same as chat |
 | Verification documents | 1 year after offboarding | Delete after; keep decision metadata |
 | Support tickets | 3 years | PII-minimised |
-| Analytics events | 24 months | No PII |
+| Analytics events | 24 months | No direct PII; pseudonymous IDs treated as personal data |
 | Backups | 30 days | PITR 7 days; encrypted |
 | Consent records | Life of account + 8 years | Proof of consent |
 

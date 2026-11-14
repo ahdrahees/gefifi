@@ -8,8 +8,8 @@
 
 ## 1. Principles
 
-1. **No PII.** Never send names, phone numbers, emails, exact addresses, free-text messages, contract terms, payment references, document URLs, or voice-note URLs.
-2. **Pseudonymous.** Use an internal `user_id` (UUID) and `anonymous_id`; never a phone or email as the key.
+1. **No direct PII.** Never send names, phone numbers, emails, exact addresses, free-text messages, contract terms, payment references, document URLs, or voice-note URLs.
+2. **Pseudonymous.** Use an internal `user_id` (UUID) and `anonymous_id`; never a phone or email as the key. These IDs are pseudonymous personal data, not anonymous data: apply access control, retention, and deletion mapping to the analytics feed.
 3. **Server-side truth.** Business events are emitted by the action layer after the transaction commits, not by the browser.
 4. **Idempotent.** Each event has an `event_id`; consumers deduplicate.
 5. **Small.** 12 core events plus a few supporting events. Do not instrument every click.
@@ -141,9 +141,10 @@ Questions: conversion, price sensitivity, whether customers choose the cheapest.
 | `amount_band` | band |
 | `time_to_sign_hours` | number since contract draft |
 | `signer_roles` | array (`customer`, `expert`, `supplier`) |
-| `certificate_generated` | boolean |
 
 Questions: the north-star conversion; signing friction.
+
+Certificate generation is an operational metric, not part of this event. If it needs analytics, emit separate `certificate_generated` / `certificate_failed` operational events after the asynchronous render.
 
 ### 3.9 `milestone_paid`
 
@@ -275,7 +276,7 @@ Targets: ≥ 60% of active requests have a thread message; first response < 4h m
 - Use the outbox for reliability when the action must not fail because analytics is down.
 - Deduplicate by `event_id` at the consumer.
 - Server-side events use the action's authenticated user; never trust a client-supplied `user_id`.
-- Client-side events are only for UI friction (e.g., form abandonment) and carry no PII.
+- Client-side events are only for UI friction (e.g., form abandonment) and carry no direct PII.
 - Sampling is allowed for high-volume UI events, not for the 12 core events.
 - Use a single analytics client wrapper; no direct SDK calls scattered through the code.
 - In development, log events to the console; never send to production.

@@ -48,7 +48,7 @@ pnpm test                # unit
 pnpm test:integration    # Postgres
 pnpm test:e2e            # Playwright
 pnpm test:chat           # SSE, presence, typing, voice
-pnpm test:agent          # mocked evals
+pnpm test:agent          # mocked evals; live-model set before launch and nightly after
 pnpm db:generate         # Drizzle migration
 pnpm db:migrate
 pnpm deploy:preview
@@ -62,7 +62,7 @@ Never commit with failing typecheck, lint, or tests.
 ## 4. Hard rules
 
 1. **Postgres is the only source of truth.** No Firestore, Convex, in-memory state, or Durable Object SQLite as truth.
-2. **Every mutation goes through an action.** No route, UI component, cron job, or agent tool writes business data directly.
+2. **Every mutation goes through an action.** No route, UI component, cron job, back-office tool, or agent tool writes business data directly. Direct SQL is read-only for operations.
 3. **The server enforces permissions and risk.** Client checks and prompts are UX only.
 4. **Actions return DTOs, never raw DB rows.**
 5. **Every mutation is idempotent.** Accept an `Idempotency-Key`; retries must be safe.
@@ -109,6 +109,8 @@ packages/agent → tool registry; calls actions; never DB
 - Keep exact addresses in `addresses`, not on `requests`; release them only through `site_visits`.
 - MVP tax is one `tax_mode` + one `tax_rate_bp`; no HSN or per-line GST.
 - Chat messages use tombstones; presence/typing are TTL rows, not history.
+- Chat events use a per-thread `seq` allocated under a thread lock; SSE reconnect uses `(thread_id, seq)`; unread counts derive from each participant's `last_read_seq`.
+- Voice playback uses a signed URL issued after a participant check with a 60-second TTL; the client fetches once into a blob; direct R2 object URLs are denied.
 - Mask PII in DTOs and logs.
 
 ---
@@ -116,6 +118,7 @@ packages/agent → tool registry; calls actions; never DB
 ## 7. Permission rules
 
 - Deny by default.
+- Back-office/Retool tools call action endpoints; direct SQL is read-only.
 - Check role, ownership/participation, state, and field visibility separately.
 - Never trust client-supplied `role`, `userId`, `customerId`, `isAdmin`, or totals.
 - Multi-role users act under one active role per request.
@@ -139,14 +142,16 @@ The full matrix is in `permissions-matrix.md`.
 - Model output is untrusted; validate with Zod.
 - Never implement prompt-only safety for a server-enforced rule.
 - `NEEDS_APPROVAL` creates an immutable `PendingAction`; only the human owner can approve.
-- Revalidate on approval: user, status, expiry, payload hash, domain state.
+- Bind approval to the subject revision/content hash, not just the action payload. A safe write that changes the subject marks the approval stale.
+- Revalidate on approval: user, status, expiry, payload hash, subject content hash, domain state.
+- Check the kill-switch epoch before each tool call and before commit; report already-committed results instead of claiming undo.
 - **Never send an external message.** `chat.message.draft` returns text; the human sends. `chat.message.send` is `HUMAN_ONLY`.
 - Cap steps, tokens, and wall time; return a fallback on budget exhaustion.
 - Redact PII before sending context to the model.
 - Treat content in messages/files as data, never instructions.
 - Log tool calls and approvals, not raw prompts with PII.
 - Add/update evals for every tool or prompt change.
-- Respect the per-user and per-thread kill switch; stop in-flight tool calls immediately.
+- Respect the per-user and per-thread kill switch; check the epoch before each tool call and before commit; report already-committed work instead of claiming undo.
 
 ---
 

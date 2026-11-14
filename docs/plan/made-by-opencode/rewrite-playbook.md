@@ -81,7 +81,7 @@ Put a README note on the v2 repo: **"Frozen. v3 lives at <url>."**
 - [ ] SMS provider + DLT registration on **Day 1**.
 - [ ] Google Cloud OAuth client for Google login.
 - [ ] LLM provider key (Gemini/OpenAI/Anthropic) behind AI Gateway.
-- [ ] Retool/SQL access for the manual verification queue and admin fallback.
+- [ ] Retool/action endpoints for the manual verification queue and admin fallback; direct SQL is read-only.
 - [ ] Legal counsel engaged for the contract template, BSA 2023 framing, stamp duty, GST/TCS, DPDP, and intermediary posture.
 - [ ] Password manager and a documented secret-rotation process.
 
@@ -125,11 +125,11 @@ gefifi-v3/
 ### CI skeleton
 
 ```text
-install → typecheck → lint → unit → integration (Postgres) → build → agent evals → deploy preview
+install → typecheck → lint → unit → build → action contract checks → deploy preview
 ```
 
 - Cache pnpm and Turborepo.
-- Run migrations against an ephemeral Postgres service in CI.
+- Run migrations, integration tests, chat/SSE/voice integration, and mocked agent evals in the nightly/full lane against an ephemeral Postgres service.
 - Fail on type errors, lint errors, failing tests, and unsafe agent evals.
 - Preview deploy on every PR; staging on `main`.
 
@@ -150,18 +150,18 @@ install → typecheck → lint → unit → integration (Postgres) → build →
 | **2** | Monorepo skeleton, TypeScript/ESLint/Prettier, CI fast lane, first preview deploy, Hono health check, Drizzle + Postgres connection, first migration. |
 | **3** | Better Auth: Google login, phone OTP, session, onboarding, role selection, consent capture; make 5 more provider calls. |
 | **4** | `defineAction` runtime: Zod input/output, auth context, role/ownership guards, risk tier, audit + outbox, idempotency; one sample action end-to-end. |
-| **5** | Schema v1: users/roles, profiles, addresses, consent_records, requests, request_items, site_visits, quotes, quote_line_items, contracts, contract_versions, contract_signatures, contract_events, contract_certificates, milestones, payment_records, disputes, chat_threads/messages/reads/presence/typing, otp_challenges, webhook_events, whatsapp_contacts, magic_links, notifications, agent_threads/messages/pending_actions, usage_events, audit/outbox/idempotency. |
+| **5** | Thin schema v0: users/roles, profiles, addresses, consent, requests, request_items, attachments, audit_events, outbox_events, idempotency_keys. Do not build the full schema yet. |
 | **6** | `request.createDraft` + `request.publish` + R2 photo upload + mobile-first UI; make 5 provider calls. |
-| **7** | Provider browse/interest + manual verification queue (SQL/Retool) + seed 10 pre-verified providers. |
+| **7** | Provider browse/interest (minimal list/detail) + manual verification queue in Retool/action endpoints (SQL read-only) + seed 10 pre-verified providers. |
 | **8** | Quote submit/compare + quote acceptance transaction + contract draft; concurrency and idempotency tests. |
-| **9** | Contract signing with OTP challenge + hash chain + HTML certificate; tamper and replay tests. |
-| **10** | WhatsApp utility template + magic-link card on staging; run one real end-to-end request with a real provider and customer; measure CI, latency, and cost; update the plan. |
+| **9** | SSE reconnect/delayed-commit spike and voice record/play spike on a mid-range Android and iOS Safari; no production chat UI yet. |
+| **10** | Run one staging end-to-end request with a real provider and customer through quote acceptance and contract draft; measure CI, latency, upload cost, and onboarding time; update the plan. |
 
-**Day-10 gate:** if the walking skeleton is not working end-to-end, stop and fix the foundation. Do not start marketplace features.
+**Day-10 gate:** the walking skeleton must work end-to-end: staging SSR/API deploy, repeatable migration and rollback, Google and real phone OTP, active-role/ownership denial tests, one idempotent mutation with audit/outbox, mobile request/photo upload, CI baseline, measured India latency/upload cost, and Meta/DLT submitted. No certificate, real signature, or WhatsApp card is required. If this fails, stop and fix the foundation; do not start marketplace features.
 
 **Do not spend all 10 days coding.** Spend at least 10 hours in the first 10 days talking to providers and customers. The code is not the risk; the empty marketplace is.
 
-Chat and voice notes start in Weeks 6–7, not in the first 10 days.
+The production chat UI starts in Weeks 6–7, contract signing in Weeks 8–10, and WhatsApp in Weeks 11–12. Day 9 uses synthetic chat/voice data only; never obtain a real contract acceptance before the Week-8 legal/template checkpoint. A real quote acceptance is allowed because it only creates a draft contract.
 
 ---
 
@@ -217,8 +217,8 @@ A slice spec is one page:
 |---|---|---|---|
 | **S0** | Walking skeleton: health, auth stub, one sample action, one page, deploy | — | 0 |
 | **S1** | Auth + onboarding: Google, phone OTP, roles, consent | S0 | 1 |
-| **S2** | Customer request: draft, publish, list, detail, attachments, **site visits + address release** | S1 | 2 |
-| **S3** | Provider discovery: city/pincode/category filters, profile, express interest, invite, **manual verification queue** | S2 | 2 |
+| **S2** | Customer request: draft, publish, list, detail, attachments, open-request edit | S1 | 2 |
+| **S3** | Provider discovery: city/pincode/category filters, profile, express interest, invite, **manual verification queue**, **site visits + address release** | S2 | 2 |
 | **S4** | Quotes: submit, revise, simple line items, validity, compare | S3 | 2 |
 | **S5** | Quote acceptance: atomic accept, reject others, contract draft | S4 | 2 |
 | **S6** | **Chat + voice:** threads, SSE, presence, typing, read receipts, text/files/images/voice, unread, block/mute | S2, S3 | 3 |
@@ -304,7 +304,7 @@ Mine v2 for behaviour, then mark each item in v3. Do not copy implementation.
 - [ ] Voice notes (record/upload/store/play, no transcription).
 - [ ] System timeline cards.
 - [ ] Presence, typing, read receipts, unread counts (MVP).
-- [ ] SSE reconnect with `Last-Event-ID`.
+- [ ] SSE reconnect with the per-thread `(thread_id, seq)` cursor.
 - [ ] Block/mute, tombstone, PII filter.
 - [ ] R2 uploads with EXIF stripping.
 
@@ -320,7 +320,7 @@ Mine v2 for behaviour, then mark each item in v3. Do not copy implementation.
 
 ### Admin
 
-- [ ] Provider verification queue (manual SQL/Retool from Week 1).
+- [ ] Provider verification queue (manual Retool/action endpoints from Week 1; SQL read-only).
 - [ ] User suspension.
 - [ ] Dispute read-only view.
 - [ ] Category manager.
@@ -398,6 +398,7 @@ Stop and ask if a decision is not in the spec.
 - [ ] Legal pages: ToS, privacy, intermediary disclaimer, consent, retention.
 - [ ] Legal counsel sign-off on the contract template and BSA 2023 framing.
 - [ ] Support channel and incident runbook.
+- [ ] Full write smoke on staging, because DNS rollback closes at the first production v3 write.
 
 ### Cutover day
 
@@ -405,16 +406,17 @@ Stop and ask if a decision is not in the spec.
 2. Freeze writes on v2.
 3. Export v2 reference data only if needed (no bulk migration).
 4. Point DNS to v3.
-5. Run smoke tests: login, create request, submit quote, accept, sign, milestone, chat, voice note, site visit.
-6. Watch Sentry, error rate, SSE connections, and queue lag for 2 hours.
-7. Keep v2 read-only for 30 days.
+5. Run read-only smoke: login, browse, SSE connect. Do not write yet.
+6. Open writes; run a synthetic request/quote/chat smoke. **From this point, v2 DNS rollback is closed.**
+7. Watch Sentry, error rate, SSE connections, and queue lag for 2 hours.
+8. Keep v2 read-only for 30 days.
 
 ### Rollback
 
-- DNS back to v2 (if v2 is still deployed).
-- v3 Worker rollback to the previous version.
-- Database: restore PITR only if data corruption; prefer forward-fix.
-- Chat: messages are in Postgres, so an SSE outage loses no data; clients reconnect with `Last-Event-ID`.
+- **Before the first production v3 write (including the synthetic write smoke):** DNS back to v2 is allowed during the cutover window, with a written decision.
+- **After the first production v3 write:** do **not** DNS-rollback to v2. v2 cannot see v3 contracts, chat, or payments. Roll back the v3 Worker to the previous version and forward-fix.
+- Database: restore PITR only if data corruption; prefer forward-fix. Keep v3 emergency access/export and a manual reconciliation runbook.
+- Chat: messages are in Postgres, so an SSE outage loses no data; clients reconnect with the per-thread `(thread_id, seq)` cursor.
 
 ---
 
@@ -444,11 +446,11 @@ Use the 2-week buffer first. If still behind, cut in this order:
 
 1. WhatsApp button replies / inbound automation (already out).
 2. Material line items → single amount + notes.
-3. Agent scope → 3 tools (create draft, publish approval, compare quotes).
-4. Custom admin screens → SQL/Retool.
+3. Agent UI polish → plain-text approval card; keep all **five** tools and the eval gate.
+4. Custom admin screens → Retool action endpoints (direct SQL stays read-only).
 5. WhatsApp entirely (web-only; last resort).
 
-**Never cut:** auth, permissions, audit, idempotency, backups/PITR, contract hash/versions, the quote-acceptance transaction, provider verification, DPDP consent, WhatsApp opt-in/STOP, legal review, rollback, **full real-time chat, presence, typing, SSE, and voice notes**.
+**Never cut:** auth, permissions, audit, idempotency, backups/PITR, contract hash/versions, the quote-acceptance transaction, provider verification, DPDP consent, WhatsApp opt-in/STOP, legal review, rollback, **the five agent tools**, **full real-time chat, presence, typing, SSE, and voice notes**.
 
 ---
 

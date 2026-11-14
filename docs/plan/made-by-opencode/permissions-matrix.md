@@ -76,7 +76,8 @@ Every action passes through all layers, in order:
 |---|---|---|---|---|---|---|---|
 | `auth.login` | ✓ | ✓ | ✓ | ✓ | ✓ | — | Rate limited |
 | `auth.logout` | — | ✓ | ✓ | ✓ | ✓ | — | Own session |
-| `profile.getOwn` | — | ✓ | ✓ | ✓ | ✓ | R | Own user |
+| `profile.get` | — | ✓ | ✓ | ✓ | ✓ | R | Own user; agent tool name is `profile.get` |
+| `provider.get` | ✓ | ✓ | ✓ | ✓ | ✓ | R | Public profile fields; masked contact; verified badge |
 | `profile.updateOwn` | — | ✓ | ✓ | ✓ | ✓ | — | Own user; validated fields |
 | `role.switch` | — | ✓ | ✓ | ✓ | ✓ | — | Role must be held |
 | `consent.record` | — | ✓ | ✓ | ✓ | ✓ | — | Own user; versioned |
@@ -91,15 +92,18 @@ Every action passes through all layers, in order:
 |---|---|---|---|---|---|---|---|
 | `request.createDraft` | — | O | — | — | — | ✓ | Customer; valid category/location |
 | `request.updateDraft` | — | O | — | — | — | ✓ | Draft only |
+| `request.updateOpen` | — | O | — | — | — | — | Open/under_review; no accepted quote; after the first quote only non-material fields (description, photos, preferred times); no scope/budget/category change; audit; content hash changes |
 | `request.publish` | — | O | — | — | — | ⚠ | Draft; completeness; not expired |
 | `request.cancel` | — | O | — | — | ✓ | — | No accepted quote; or via contract cancel |
 | `request.expire` | — | — | — | — | — | — | Service only; expiry date passed |
 | `request.browseOwn` | — | O | — | — | ✓ | R | Own requests; paginated |
 | `request.get` | — | O | P | P | ✓ | R | Owner, invited/interested provider, or admin |
+| `request.browseMatching` | — | — | A | A | — | — | Open requests matching city/pincode/category; no contact details; rate limited |
 | `request.inviteProvider` | — | O | — | — | — | — | Own request; provider active/verified |
 | `request.interest.express` | — | — | A | A | — | — | Open request; not own; rate limited |
 | `request.interest.withdraw` | — | — | O | O | — | — | Own interest; before acceptance |
-| `request.attachment.add` | — | O | — | — | — | — | Draft/open; upload policy |
+| `request.attachment.add` | — | O | — | — | — | — | Pre-signed upload; draft/open; upload policy |
+| `request.attachment.complete` | — | O | — | — | — | — | Completes upload; validates object, MIME/size/checksum; audit |
 | `request.attachment.remove` | — | O | — | — | — | — | Draft/open; audit |
 
 ### 4.3 Site visits and address release
@@ -108,12 +112,12 @@ Every action passes through all layers, in order:
 |---|---|---|---|---|---|---|---|
 | `siteVisit.request` | — | O | A | A | — | — | Customer owner or invited/interested provider; request open/under review |
 | `siteVisit.schedule` | — | O | — | — | — | — | Customer confirms time; provider notified |
-| `siteVisit.reschedule` | — | P | P | P | — | — | Both parties notified; audit |
+| `siteVisit.reschedule` | — | P | P | P | — | — | Both parties notified; audit; revokes old release; fresh release required |
 | `siteVisit.cancel` | — | P | P | P | ✓ | — | Revokes any address release; audit |
-| `siteVisit.checkIn` | — | — | P | P | — | — | Scheduled provider; within window |
+| `siteVisit.checkIn` | — | — | P | P | — | — | Scheduled/rescheduled provider; within window |
 | `siteVisit.checkOut` | — | — | P | P | — | — | Checked-in provider; notes/photos optional |
 | `siteVisit.noShow` | — | P | — | — | ✓ | — | After visit window + grace; reason |
-| `siteVisit.address.release` | — | O | — | — | — | — | Customer consent recorded; one provider; expires after visit + 2h; audited |
+| `siteVisit.address.release` | — | O | — | — | — | — | Customer consent recorded; one provider; fresh release after reschedule; expires after visit + 2h; audited |
 | `siteVisit.address.revoke` | — | O | — | — | ✓ | — | Immediate; audit |
 | `siteVisit.get` | — | P | P | P | R | — | Participant; address only if currently released |
 
@@ -124,8 +128,8 @@ Every action passes through all layers, in order:
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
 | `quote.submit` | — | — | A | A | — | — | Request open; verified provider; not own request; no duplicate active quote |
-| `quote.revise` | — | — | O | O | — | — | Own quote; request open; new version |
-| `quote.withdraw` | — | — | O | O | — | — | Own quote; not accepted |
+| `quote.revise` | — | — | O | O | — | — | Own quote; request open; submitted/under_review; new version |
+| `quote.withdraw` | — | — | O | O | — | — | Own quote; not accepted; sets `withdrawn`; audit |
 | `quote.compare` | — | O | — | — | ✓ | R | Own request; masked provider contact |
 | `quote.accept` | — | O | — | — | — | H | Own request; quote submitted/under_review; not expired; atomic |
 | `quote.reject` | — | O | — | — | — | H | Own request; not accepted; notifies provider |
@@ -138,7 +142,7 @@ Every action passes through all layers, in order:
 | `contract.draft` | — | O | — | — | — | — | Accepted quote; total matches; both parties verified. Not an agent tool in MVP. |
 | `contract.updateDraft` | — | O | — | — | — | — | Draft only; new version |
 | `contract.requestRevision` | — | P | P | P | — | — | Before signing; comment required |
-| `contract.sign` | — | P | P | P | — | H | Current version; dual OTP; party; not already signed |
+| `contract.sign` | — | P | P | P | — | H | Current version; dual OTP consumed atomically; party; one signature per version |
 | `contract.cancel` | — | P | P | P | ✓ | — | Pre-sign or mutual; reason; audit |
 | `contract.get` | — | P | P | P | ✓ | R | Participant; masked fields |
 | `contract.getCertificate` | — | P | P | P | ✓ | — | Signed contract only; HTML + SHA-256; no PDF in MVP |
@@ -165,16 +169,19 @@ Every action passes through all layers, in order:
 | `chat.message.draft` | — | — | — | — | — | ✓ | Agent only; returns text, delivers nothing |
 | `chat.message.send` | — | P | P | P | — | H | Participant; content filter; `client_message_id` idempotency |
 | `chat.message.deleteOwn` | — | O | O | O | — | — | Sender only; tombstone |
-| `chat.attachment.upload` | — | P | P | P | — | — | Participant; upload policy |
-| `chat.voice.upload` | — | P | P | P | — | — | Participant; audio MIME, ≤5 min, ≤10 MB |
-| `chat.voice.play` | — | P | P | P | R | — | Participant; signed short-lived URL |
+| `chat.attachment.upload` | — | P | P | P | — | — | Participant; pre-signed upload; upload policy |
+| `chat.attachment.complete` | — | P | P | P | — | — | Participant; validates object, MIME/size/checksum; audit |
+| `chat.voice.upload` | — | P | P | P | — | — | Participant; pre-signed upload; audio MIME, ≤5 min, ≤10 MB |
+| `chat.voice.complete` | — | P | P | P | — | — | Participant; validates duration/MIME/size/codec; audit |
+| `chat.voice.play` | — | P | P | P | R | — | Participant; signed URL issued after check; 60s TTL; direct R2 denied |
 | `chat.presence.update` | — | P | P | P | — | — | Participant; heartbeat; TTL 45s |
 | `chat.typing.set` | — | P | P | P | — | — | Participant; TTL 5s; not stored as history |
-| `chat.read.mark` | — | P | P | P | — | — | Participant; monotonic `last_read_message_id` |
-| `chat.thread.mute` | — | P | P | P | — | — | Participant |
-| `chat.thread.block` | — | P | P | P | — | — | Participant; contract/dispute access preserved |
+| `chat.read.mark` | — | P | P | P | — | — | Participant; monotonic `last_read_seq` |
+| `chat.thread.mute` | — | P | P | P | — | — | Participant; suppresses notifications only |
+| `chat.thread.block` | — | P | P | P | — | — | Participant; denies sends; contract/dispute access preserved |
+| `chat.thread.unblock` | — | P | P | P | — | — | Participant; audit |
 | `chat.message.report` | — | P | P | P | — | — | Any participant; audit |
-| `file.download` | — | O | P | P | R | — | Owning entity; signed URL |
+| `file.download` | — | O | P | P | R | — | Owning entity; signed URL; quarantine rules; safe content disposition |
 | `file.deleteOwn` | — | O | O | O | — | — | Unattached only; audit |
 
 ### 4.8 Admin
@@ -196,9 +203,9 @@ Every action passes through all layers, in order:
 | Action | Guest | Customer | Expert | Supplier | Admin | Agent | Guard |
 |---|---|---|---|---|---|---|---|
 | `agent.thread.start` | — | O | — | — | — | ✓ | Customer only in MVP |
-| `agent.message.send` | — | O | — | — | — | ✓ | Own thread; budget/rate limit |
+| `agent.message.send` | — | O | — | — | — | ✓ | User message to the agent thread, not an external send; own thread; budget/rate limit |
 | `agent.action.execute` | — | — | — | — | — | ✓ | Must map to an action + risk tier |
-| `pendingAction.approve` | — | O | — | — | — | — | Owner; not expired; hash match |
+| `pendingAction.approve` | — | O | — | — | — | — | Owner; not expired; payload and subject content hash match |
 | `pendingAction.reject` | — | O | — | — | — | — | Owner; pending |
 | `pendingAction.list` | — | O | — | — | — | — | Own actions |
 
@@ -269,12 +276,14 @@ Every action passes through all layers, in order:
 |---|---|---|---|
 | `requested` | `scheduled` | Customer owner | Time agreed; provider invited/interested in the request |
 | `requested` | `cancelled` | Customer / provider | — |
-| `scheduled` | `completed` | Provider | Check-in and check-out recorded |
-| `scheduled` | `no_show` | Customer / admin | Visit window + 15-minute grace passed |
-| `scheduled` | `cancelled` | Customer / provider | Revokes any address release |
+| `scheduled` | `rescheduled` | Customer / provider | Time agreed; revokes old release; audit |
+| `rescheduled` | `scheduled` | Customer owner | New time confirmed; fresh consent + release |
+| `scheduled`/`rescheduled` | `completed` | Provider | Check-in and check-out recorded |
+| `scheduled`/`rescheduled` | `no_show` | Customer / admin | Visit window + 15-minute grace passed |
+| `scheduled`/`rescheduled` | `cancelled` | Customer / provider | Revokes any address release |
 | `completed`/`no_show`/`cancelled` | — | — | Terminal |
 
-**Address release is not a state.** It is a consent + release event that is valid only while the visit is `scheduled`: `released_at <= now() < expires_at` and `revoked_at IS NULL`. It expires at visit end + 2 hours, is revoked on cancel/no-show, and is scoped to one provider.
+**Address release is not a state.** It is a consent + release event that is valid only while the visit is `scheduled` or `rescheduled`: `released_at <= now() < expires_at` and `revoked_at IS NULL`. It expires at visit end + 2 hours, is revoked on reschedule/cancel/no-show, and is scoped to one provider.
 
 ### 6.3 Quote
 
@@ -285,8 +294,10 @@ Every action passes through all layers, in order:
 | `submitted`/`under_review` | `accepted` | Customer owner | Not expired; atomic; one per request |
 | `submitted`/`under_review` | `rejected` | Customer owner / system | On accept or explicit reject |
 | `submitted`/`under_review` | `expired` | System | Validity passed |
+| `submitted`/`under_review` | `withdrawn` | Provider owner | Not accepted; audit |
 | `submitted` | `superseded` | Provider owner | Revision creates new version |
 | `accepted` | — | — | Terminal; contract created |
+| `withdrawn` | — | — | Terminal |
 
 ### 6.4 Contract
 
@@ -294,6 +305,7 @@ Every action passes through all layers, in order:
 |---|---|---|---|
 | `draft` | `awaiting_signatures` | Customer owner | Both parties verified; total matches quote |
 | `draft` | `revision_requested` | Either party | Comment required |
+| `awaiting_signatures` | `revision_requested` | Either party | Comment; invalidates existing signatures; new version required |
 | `revision_requested` | `draft` | Customer owner | New version created |
 | `awaiting_signatures` | `signed` | Both parties | Both signatures on current version |
 | `signed` | `in_progress` | System | Work started |
@@ -320,7 +332,7 @@ Every action passes through all layers, in order:
 | `under_review` | `resolved` | Admin | Resolution note; back-office only in MVP |
 | `resolved` | `closed` | System/Admin | Both parties notified |
 
-**MVP note:** the admin dispute view is read-only in the product. Resolution is recorded manually through the back-office action (or SQL) with a reason and an audit event; there is no dispute-resolution UI.
+**MVP note:** the admin dispute view is read-only in the product. Resolution is recorded manually through the back-office action with a reason and an audit event; there is no dispute-resolution UI, and direct SQL is read-only.
 
 ### 6.7 Provider verification
 
@@ -333,7 +345,7 @@ Every action passes through all layers, in order:
 | `verified` | `suspended` | Admin | Reason; revoke quote ability |
 | `suspended` | `verified` | Admin | Reason; re-verification if documents expired |
 
-**Verification rule:** the queue is live from Week 1–3 and uses SQL/Retool if the UI is not ready. Documents are reviewed by a human; no Aadhaar. See [verification-rubric.md](verification-rubric.md).
+**Verification rule:** the queue is live from Week 1–3 and uses Retool/action endpoints if the UI is not ready; direct SQL is read-only. Documents are reviewed by a human; no Aadhaar. See [verification-rubric.md](verification-rubric.md).
 
 ### 6.8 PendingAction
 
@@ -357,8 +369,8 @@ Every action passes through all layers, in order:
 - Server-rendered route guards are UX only; the action still re-checks.
 - No sensitive data in `localStorage`.
 - Logout revokes the session; role switch re-checks the active role.
-- Chat uses an authenticated SSE stream scoped to one thread; every message is persisted before it is emitted, and reconnect uses `Last-Event-ID`.
-- Voice notes are recorded in the browser, uploaded to pre-signed R2 URLs, and played through signed, participant-scoped URLs.
+- Chat uses an authenticated SSE stream scoped to one thread; every message is persisted before it is emitted, and reconnect uses the per-thread `(thread_id, seq)` cursor.
+- Voice notes are recorded in the browser, uploaded to pre-signed R2 URLs through a completion action, and played through signed URLs issued after a participant check with a 60-second TTL; the client fetches the clip once into a blob before playback.
 
 ### 7.2 Agent
 
@@ -373,7 +385,7 @@ Every action passes through all layers, in order:
 - The agent may read only what the user may read; DTOs are already masked.
 - Prompt injection from messages/files is data, never instructions.
 - Budgets: max steps, max tokens, max wall time; stop with a fallback.
-- Per-user and per-thread kill switch; disabling cancels in-flight tool calls.
+- Per-user and per-thread kill switch; the epoch is checked before each tool call and before commit. Already-committed results are reported as committed, not undone.
 
 ### 7.3 MCP (post-MVP)
 
@@ -462,6 +474,11 @@ Every action passes through all layers, in order:
 | **PM42** | Provider tries to mark a milestone paid | Blocked; `milestone.markPaid` is customer-only. |
 | **PM43** | Agent tries to read another customer's thread | DTO scoping returns `404`; never leak existence. |
 | **PM44** | User is suspended while an SSE stream is open | Stream closes on the next heartbeat; mutations return `403`. |
+| **PM45** | Customer edits an open request after a quote | Only non-material fields (description, photos, preferred times) may change once a quote exists; scope/budget/category changes require cancel and repost. Content hash changes; interested providers are notified; existing quotes remain valid for non-material edits. |
+| **PM46** | Chat is muted vs blocked | Mute suppresses notifications only; block denies sends; both preserve contract/audit access. |
+| **PM47** | Upload is completed without bytes | Completion action validates the object, MIME/size/checksum; `409` and no attachment row. |
+| **PM48** | Provider browses matching requests | Only open requests in the chosen city/pincode/category; no contact details; no competing-quote visibility. |
+| **PM49** | Visit is rescheduled after address release | Old release is revoked; a fresh consent and release are required for the new time. |
 
 ---
 

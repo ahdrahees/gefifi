@@ -3,7 +3,7 @@
 > **Purpose:** A manual, repeatable standard for verifying experts and suppliers before they can quote.  
 > **Owner:** Founder/ops. Reviewed with counsel before launch.  
 > **SLA:** First review within **24–48 hours** of a complete submission.  
-> **Tooling:** Admin queue if it exists; SQL/Retool from Week 1–3 if it does not.  
+> **Tooling:** Admin queue if it exists; Retool/action endpoints from Week 1–3 if it does not. Direct SQL is read-only.
 > **Hard rule:** **No Aadhaar.** No automated KYC, no OCR, no third-party identity API in the MVP.
 
 ---
@@ -28,7 +28,7 @@ A provider can be:
 
 ## 2. Required documents
 
-Collect the minimum needed. Store documents in R2 with admin-only signed access, encrypted at rest, and a retention rule.
+Collect the minimum needed. Store documents in R2 with admin-only signed access, encrypted at rest, and a retention rule. During the pre-code acquisition sprint, collect **readiness** rather than identity images until the secure intake exists. If documents arrive early, use an access-controlled folder with a deletion register.
 
 ### 2.1 Identity (one of)
 
@@ -86,7 +86,7 @@ An individual expert without a business registration can still be verified at th
 3. **Reference call (one).** Ask: how long have you known them, what work did they do, was it on time, any dispute, would you hire again.
 4. **Category check.** Ask two technical questions a competent provider should answer; record the answers. Do not turn this into a trade exam.
 5. **Service-area check.** Confirm the provider actually serves the pincodes they selected.
-6. **Rules acceptance.** Provider accepts: no cash demands before work, no off-platform pressure, no abusive behaviour, accurate quotes, site-visit consent, and dispute cooperation.
+6. **Rules acceptance.** Provider accepts: no unagreed or off-contract advance before work (signed mobilization/material advances are legitimate), no off-platform pressure, no abusive behaviour, accurate quotes, site-visit consent, and dispute cooperation.
 7. **Decision.** Approve or reject with a reason code. Record reviewer and timestamp.
 8. **Notify.** WhatsApp/email with the decision and next step. Verified providers get the badge and can quote.
 9. **Audit.** `provider_documents`, `provider_profiles.verification_status`, and `audit_events` all updated in one transaction.
@@ -194,4 +194,5 @@ Add a short “What verification means” page: identity, trade evidence, and ru
 - [ ] Documents are encrypted, admin-only, and retention-limited.
 - [ ] No Aadhaar is collected or stored.
 - [ ] Badge copy matches the level actually checked.
-- [ ] Weekly metrics: pending count, time to verify, rejection rate, suspension rate.
+- [ ] Weekly metrics: pending count, time to verify, median handling minutes per review, rejection rate, suspension rate.
+- [ ] Escalate or delegate if the queue exceeds 2–4 complete reviews per day; 10–50 total providers is feasible for a solo reviewer, 500 is not.

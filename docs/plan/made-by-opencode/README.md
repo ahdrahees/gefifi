@@ -84,7 +84,7 @@ v3 is a **clean rewrite** built on five rules:
 | **Frontend** | React 19 + React Router v7 | Best agent-UI ecosystem and hiring pool; shadcn/reui are React-first. |
 | **Channels** | All roles on web/PWA; experts and suppliers also get WhatsApp alerts + 1-tap signed mobile cards | Customers need screen space; supply needs zero-password, low-bandwidth access. |
 | **Cloud** | Cloudflare + Supabase Postgres (Mumbai) | Edge compute, cheap storage, low ops; database close to Indian users. |
-| **Infra budget** | $150–200/month infra; $250–350/month all-in | PITR alone is ~$100/month. Track WhatsApp/SMS/LLM and cost per signed contract. |
+| **Infra budget** | $150–200/month infra envelope (estimate $134–179); $250–350/month all-in envelope (estimate $206–349) | PITR alone is ~$100/month. Track WhatsApp/SMS/LLM and cost per signed contract. |
 | **Scope** | Cut MVP with full real-time chat, presence, typing, SSE, and voice notes (no transcription) | The founder has made full chat non-negotiable. Reviews, projects, PostGIS radius matching, supply agent, PDF certificate, and custom admin UI are deferred. |
 | **Acquisition** | Two-week pre-code concierge sprint | 100 named providers, 10 written quote commitments, 20 customer requests. No code before this list exists. |
 | **Agent scope** | Customer web agent with 5 tools; external messages are draft-only | Supply uses deterministic WhatsApp cards, not a chatbot. The agent never sends an external message itself. |
@@ -100,7 +100,7 @@ v3 is a **clean rewrite** built on five rules:
 
 | Area | MVP scope |
 |---|---|
-| **Identity** | Multi-role account (customer / expert / supplier / admin), active-role switching, Google login, phone OTP (WhatsApp primary, SMS fallback), provider verification with a manual queue from Week 2–3. |
+| **Identity** | Multi-role account (customer / expert / supplier / admin), active-role switching, Google login, phone OTP (WhatsApp primary, SMS fallback), provider verification with a manual queue from Week 1–3. |
 | **Requests** | Work requests and material requests with items, quantity/unit, approximate location, photos, attachments, expiry, open or invite-only visibility. |
 | **Site visits** | Request, schedule, address release with consent, check-in/check-out, notes/photos, no-show handling. Exact address is never on the public request. |
 | **Discovery** | City/pincode/category filters, expert/supplier profiles, invite and express-interest flows. PostGIS radius matching is deferred. |
@@ -110,12 +110,12 @@ v3 is a **clean rewrite** built on five rules:
 | **Chat** | Full real-time chat: one thread per request × provider; text, files, images, and voice notes (record/upload/store/play, no transcription); presence, typing, read receipts, unread counts, system timeline cards, block/mute. |
 | **Agent** | Customer web agent with 5 tools: create draft, update draft, publish (approval), compare quotes, get profile. External messages are drafts; the human sends. Approval cards for risky actions. |
 | **Supply channel** | WhatsApp utility templates + magic link + SSR mobile card (< 40KB) for lead alerts, quote submission/revision, and job tracking. Outbound only; no inbound button automation in MVP. |
-| **Admin** | Provider verification queue (minimal UI or SQL/Retool), read-only dispute timeline, category manager, user suspension, audit log view. |
+| **Admin** | Provider verification queue (minimal UI or Retool action endpoints; direct SQL is read-only), read-only dispute timeline, category manager, user suspension, audit log view. |
 | **Trust** | Verification badges and a manual verification rubric. Reviews and ratings are deferred. |
 | **Notifications** | In-app notifications, WhatsApp utility templates, transactional email (optional), SMS OTP fallback, new-message notification. |
-| **Files** | R2 pre-signed uploads; images, PDFs, DWG/DXF stored and previewed; audio for voice notes; no CAD parsing. |
+| **Files** | R2 pre-signed uploads; images, PDFs, and DWG/DXF stored; DWG/DXF download-only with metadata, no visual preview; audio for voice notes; unverified files quarantined; virus scan post-MVP. |
 | **Compliance** | DPDP consent records, privacy policy, data deletion/export, retention schedule, WhatsApp opt-in/STOP, DLT-registered SMS fallback. |
-| **Analytics** | 12 core events, one dashboard, no PII. See [analytics-events.md](analytics-events.md). |
+| **Analytics** | 12 core events, one dashboard, no direct PII; pseudonymous IDs treated as personal data. See [analytics-events.md](analytics-events.md). |
 
 ### 3.2 Out of scope (MVP)
 
@@ -127,7 +127,7 @@ v3 is a **clean rewrite** built on five rules:
 - Projects grouping.
 - PostGIS radius matching.
 - PDF audit certificate (HTML + hash in MVP).
-- Custom admin UI (SQL/Retool fallback).
+- Custom admin UI (Retool action endpoints; direct SQL is read-only).
 - Material tax/HSN, per-line GST, and multi-line tax complexity.
 - Supply agent and WhatsApp inbound button automation.
 - Public MCP server, action versioning, and a generated tool registry UI.
@@ -204,7 +204,7 @@ MCP    ─┘        │
 6. **Explicit state machines.** Illegal transitions are rejected in code, not hoped away.
 7. **Portable core.** `packages/core` must not import `cloudflare:*`. Platform code stays in thin adapters.
 8. **Buy the commodity.** Auth, UI primitives, error tracking, queues, and storage are bought, not built.
-9. **SSE is transport, not state.** Chat messages, presence, typing, and read receipts live in Postgres; an SSE disconnect loses no data and reconnects with `Last-Event-ID`.
+9. **SSE is transport, not state.** Chat messages, presence, typing, and read receipts live in Postgres; an SSE disconnect loses no data and reconnects with the per-thread `(thread_id, seq)` cursor.
 10. **External side effects are asynchronous.** WhatsApp, email, and notifications go through the outbox; never inside a database transaction.
 
 ---
@@ -332,9 +332,9 @@ Convex would be a reasonable choice for a realtime-heavy CRUD app with no geospa
 
 | Table | Purpose |
 |---|---|
-| `chat_threads` | One thread per request × provider. |
-| `chat_messages` | Text/file/image/voice/system messages; `duration_ms`, `waveform_json`, `attachment_id`, tombstone fields. |
-| `chat_reads` | Per-user `last_read_message_id` and unread counts per thread. |
+| `chat_threads` | One thread per request × provider; `last_seq` allocator and `last_message_at`. |
+| `chat_messages` | Text/file/image/voice/system messages with per-thread `seq`; `duration_ms`, `waveform_json`, `attachment_id`, tombstone fields. |
+| `chat_reads` | Per-user monotonic `last_read_seq` per thread; unread is derived, not stored as a counter. |
 | `chat_presence` | Per-user/per-thread presence with `last_seen_at` and a short TTL. |
 | `chat_typing` | Per-user/per-thread typing state with a short TTL; not historical. |
 | `notifications` | In-app/WhatsApp/email notifications and delivery status. |
@@ -410,19 +410,22 @@ Add a partial unique index: `unique (request_id) where status = 'accepted'`. Req
 
 **Sign a contract** (both parties, `HUMAN_ONLY` for the agent):
 
-1. Verify the signer is a party and the version is current.
-2. Verify the `otp_challenges` row belongs to this signer, purpose `contract_sign`, entity/version, has not expired, and has not been consumed.
-3. Insert `contract_signatures` with `otp_challenge_id`, IP, device, user agent, terms hash; if both parties have signed, set contract `signed`.
-4. Append a `contract_events` hash-chain row.
-5. Audit + outbox; generate the **HTML certificate** asynchronously (not PDF in MVP).
+1. Lock the contract row and verify the signer is a party and the version is current.
+2. Canonicalize the terms as RFC 8785 JSON; store `terms_hash = SHA-256(canonical terms)`.
+3. Verify the `otp_challenges` row belongs to this signer, purpose `contract_sign`, entity/version, has not expired, and has not been consumed.
+4. Consume the OTP atomically: `UPDATE otp_challenges SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL RETURNING id`; zero rows → `409`.
+5. Insert the signer's `contract_signatures` row with `otp_challenge_id`, IP, device, user agent, terms hash; enforce `unique (contract_id, version, signer_id)` so each party signs once per version. If both parties have signed, set contract `signed`.
+6. Append a `contract_events` row: `event_hash = SHA-256(prev_hash || canonical_event_json)`, genesis `prev_hash` is 64 zeros; lock the contract while allocating the chain position.
+7. Audit + outbox; render the **HTML certificate**, store the exact bytes in R2, and record `certificate_sha256` (not PDF in MVP).
 
 **Open a chat thread and send a message** (participants only):
 
 1. Verify the sender is a participant of the request/contract and the thread is not blocked.
-2. Insert `chat_messages` with `client_message_id` (idempotency), body, kind, attachment metadata.
-3. Update `chat_threads.last_message_at`; update unread counts for the other participants.
-4. Insert `audit_events` + `outbox_events` (notification, WhatsApp if offline).
-5. Commit; the SSE stream emits `message.created` to connected participants.
+2. Lock the `chat_threads` row, allocate `seq = last_seq + 1`, and update `last_seq`; this serializes per-thread ordering.
+3. Insert `chat_messages` with `client_message_id` (idempotency), `seq`, body, kind, attachment metadata. On a duplicate `client_message_id`, return the existing message with the same `seq`.
+4. Update `chat_threads.last_message_at`; do not maintain separate unread counters.
+5. Insert `audit_events` + `outbox_events` (notification, WhatsApp if offline).
+6. Commit; the SSE stream emits `message.created` with `(thread_id, seq)` to connected participants.
 
 **Request and complete a site visit** (customer and shortlisted provider):
 
@@ -494,9 +497,9 @@ The server, not the prompt, enforces the tier. `quote.accept` and `contract.sign
 
 Chat assistance is a UI affordance: the agent returns a draft string, the human edits and sends it. `chat.message.send` is not an agent tool in the MVP.
 
-Expert/supplier actions (`request.browseMatching`, `interest.express`, `quote.submit`, `quote.revise`) are **not** agent tools in the MVP. They are human actions on the web dashboard or WhatsApp card. The same action catalog makes a supply agent a post-MVP addition.
+Expert/supplier actions (`request.browseMatching`, `request.interest.express`, `quote.submit`, `quote.revise`) are **not** agent tools in the MVP. They are human actions on the web dashboard or WhatsApp card. The same action catalog makes a supply agent a post-MVP addition.
 
-**Kill switch:** a per-user and per-thread flag immediately disables agent calls, cancels in-flight tool calls, and returns a fallback message. It is server-side and does not depend on the model.
+**Kill switch:** a per-user and per-thread flag immediately disables new agent calls. A kill-switch epoch is checked before each tool call and again before commit; in-flight model runs are cancelled where possible. Already-committed results are reported as committed, not undone, and the fallback message is returned. It is server-side and does not depend on the model.
 
 ### 7.4 PendingAction semantics
 
@@ -504,13 +507,16 @@ Expert/supplier actions (`request.browseMatching`, `interest.express`, `quote.su
 |---|---|
 | `id`, `user_id`, `agent_thread_id`, `agent_message_id` | Identity and provenance. |
 | `action_name`, `payload_json`, `payload_hash` | Immutable payload; SHA-256 canonical JSON. |
+| `subject_type`, `subject_id`, `subject_version`, `content_hash` | The target entity and immutable snapshot the human is approving. For `request.publish`, hash the draft revision's normalized content, not just `requestId`. |
 | `summary` | Human-readable approval card text. |
 | `status` | `pending`, `approved`, `rejected`, `expired`, `stale`, `executed`, `failed`. |
 | `expires_at` | 15 minutes. |
 | `approved_by`, `approved_at`, `executed_at`, `execution_result`, `error` | Audit trail. |
 | `idempotency_key` | Single-use execution. |
 
-Approval checks: authenticated user, `approved_by = user_id`, status `pending`, not expired, payload hash unchanged, actor still authorized, domain state still valid. On failure return `409` with a machine-readable reason and mark `stale`/`expired`. Never execute a stale action.
+Approval checks: authenticated user, `approved_by = user_id`, status `pending`, not expired, payload hash and subject content hash unchanged, actor still authorized, domain state still valid. If a `SAFE_WRITE` changes a subject with a pending approval, mark that approval `stale`. On failure return `409` with a machine-readable reason and mark `stale`/`expired`. Never execute a stale action.
+
+Execution is performed synchronously by the approving human's authenticated request, or by a server-side delegated capability bound to that approval and subject hash. A service actor cannot originate execution of a user-only action.
 
 ### 7.5 Idempotency, audit, outbox
 
@@ -530,9 +536,11 @@ CI must fail if any of these break:
 4. **Prompt injection:** a malicious document/message cannot change the tool allowlist or risk tier, and cannot cause an external message to be sent.
 5. **Draft-only external messages:** an agent attempt to send a phone number, link, price, or commitment produces a draft, never a delivered message.
 6. **Budget:** token and latency budgets per scenario.
-7. **Kill switch:** disabling the agent stops tool calls immediately and returns a fallback.
+7. **Kill switch:** disabling the agent blocks new tool calls at the next epoch check, reports already-committed results, and returns a fallback.
+8. **Stale approval:** a draft changed after the proposal cannot be approved or published against the old summary.
+9. **Kill race:** disabling the agent between proposal and commit prevents the commit or reports it as already committed.
 
-Run mocked evals on every PR; run live-model evals nightly after launch. Start with 15–20 high-quality conversations, not 50+.
+Run mocked evals on every PR. Run the same adversarial set against the pinned live model before launch and nightly after. Include parallel calls, stale approval, budget timeout, Hinglish, malicious files, and kill races. Start with 15–20 high-quality conversations, not 50+.
 
 ---
 
@@ -571,7 +579,7 @@ SSR mobile card (< 40KB, no React)
    ├── request summary
    ├── custom quote form
    ├── quote revision
-   └── job tracker (all active leads)
+   └── job tracker for this request (all active leads live in the authenticated web dashboard)
 ```
 
 Security rules:
@@ -588,11 +596,11 @@ Security rules:
 
 Three screens in the same web app:
 
-1. Provider verification queue (documents, approve/reject, reason). Live from Week 2–3; use SQL/Retool if the UI lags.
+1. Provider verification queue (documents, approve/reject, reason). Live from Week 1–3; use Retool/action endpoints if the UI lags; direct SQL is read-only.
 2. Dispute timeline (read-only) + user suspension. Resolution is manual in MVP.
 3. Category manager + audit log view.
 
-If the timeline slips, use SQL/Retool for admin instead of building a framework.
+If the timeline slips, use Retool/action endpoints for admin instead of building a framework; direct SQL stays read-only.
 
 ---
 
@@ -617,24 +625,25 @@ If the timeline slips, use SQL/Retool for admin instead of building a framework.
 
 ### 9.2 Cost estimate (MVP, low volume)
 
-| Item | Monthly estimate |
-|---|---|
-| Cloudflare Workers Paid | $5 + usage |
-| Supabase Pro (Mumbai) | ~$25 |
-| Supabase PITR (7 days) | ~$100 |
-| R2 storage/operations (documents + voice notes) | $2–8 |
-| Sentry | $0–26 |
-| Domain + email | $2–5 |
-| WhatsApp conversations | $10–30 (volume- and category-dependent) |
-| SMS fallback | $2–10 |
-| LLM tokens (one pinned model) | $10–50 (cap it) |
-| **Infra subtotal** | **~$150–200** |
-| Variable WhatsApp/SMS/LLM + support buffer | ~$100–150 |
-| **All-in target** | **~$250–350** |
+| Item | Low/month | High/month |
+|---|---:|---:|
+| Cloudflare Workers Paid + usage | $5 | $15 |
+| Supabase Pro (Mumbai) | $25 | $25 |
+| Supabase PITR (7 days) | $100 | $100 |
+| R2 storage/operations (documents + voice notes) | $2 | $8 |
+| Sentry | $0 | $26 |
+| Domain + email | $2 | $5 |
+| **Fixed infrastructure** | **$134** | **$179** |
+| WhatsApp template messages (per-message pricing) | $10 | $30 |
+| SMS fallback | $2 | $10 |
+| LLM tokens (one pinned model, capped) | $10 | $50 |
+| **Variable channels** | **$22** | **$90** |
+| Support/tools buffer | $50 | $80 |
+| **All-in** | **$206** | **$349** |
 
-PITR is **mandatory at launch** because the product holds contracts and payment evidence. Track variable LLM/WhatsApp costs per request in `usage_events`; if they grow, raise prices or tighten budgets — do not hide them in infra.
+Plan at **$250–350/month all-in**; the low case leaves headroom and the high case requires volume caps. PITR is **mandatory at launch** because the product holds contracts and payment evidence. Track variable LLM/WhatsApp costs per request in `usage_events`; if they grow, raise prices or tighten budgets — do not hide them in infra.
 
-At 10 contracts in 90 days, the estimated all-in run cost is **$600–1,050**, or **$60–105 per signed contract before founder time**. This is an estimate, not a quote. Track it from the first contract.
+At 10 contracts in 90 days, three months at the **$250–350 planning envelope** costs **$750–1,050**, or **$75–105 per signed contract before founder time**. At the current low-case estimate the cost is lower; at the high case, review WhatsApp/LLM volume. This is an estimate, not a quote. Track it from the first contract.
 
 ### 9.3 Exit ramps
 
@@ -696,7 +705,7 @@ gefifi/
 - PR preview deploy for the web/API against the staging database.
 - Staging on every merge to `main`; production on a tagged release with manual approval.
 - Gradual Worker rollout (10% → 50% → 100%) + simple feature flags.
-- Rollback = redeploy the previous Worker version; migrations must be backwards-compatible.
+- Rollback = redeploy the previous Worker version; migrations must be backwards-compatible. After the first v3 production write, do **not** DNS-rollback to v2: v2 cannot see v3 contracts, chat, or payments. Roll back Worker versions and forward-fix; use the v3 export/reconciliation runbook.
 
 ### 10.3 CI pipeline
 
@@ -719,7 +728,7 @@ install (pnpm, cached)
 integration tests (Postgres service, migrations, action tests)
   → Playwright E2E (critical flows)
   → chat/SSE/voice integration
-  → agent evals (mocked, then live-model nightly)
+  → agent evals (mocked in CI; live-model before launch and nightly after)
   → staging deploy (main)
 ```
 
@@ -741,9 +750,9 @@ Targets: fast lane < 5 minutes; full lane < 20 minutes. Do not block every PR on
 | Unit | State machines, policy, money math, tax rounding, Zod schemas, pure helpers. |
 | Integration | Actions against real Postgres: transactions, constraints, idempotency, audit/outbox, OTP challenges, webhook dedupe. |
 | E2E | Playwright: signup → create request → quote → accept → contract → sign → milestone; plus chat send/receive. |
-| Chat | SSE connect/reconnect with `Last-Event-ID`, presence heartbeat/TTL, typing expiry, read receipts, duplicate/out-of-order messages, voice upload/playback authorization. |
+| Chat | SSE connect/reconnect with a per-thread sequence cursor and backfill, presence heartbeat/TTL, typing expiry, read receipts, duplicate/out-of-order/delayed-commit messages, voice upload/playback authorization. |
 | Contract | Action input/output schemas; no raw rows leak; role-specific DTOs. |
-| Agent | 15–20 mocked golden conversations in CI; live-model evals nightly. |
+| Agent | 15–20 mocked golden conversations in CI; the same adversarial set on the pinned live model before launch and nightly after. |
 | Security | BOLA/IDOR tests, upload validation, EXIF stripping, webhook signatures, rate limits, magic-link replay. |
 | Mobile | One Playwright mobile viewport check on the critical path. |
 
@@ -752,8 +761,8 @@ Load tests, Lighthouse 90, axe accessibility, and 24-hour smoke tests are post-M
 ### 10.6 Observability & SLOs
 
 - Sentry for errors (browser + Workers) with release/commit tracking.
-- Structured JSON logs: `request_id`, hashed `user_id`, action, latency, outcome; no PII.
-- AI Gateway dashboards for tokens, cost, latency, model fallback.
+- Structured JSON logs: `request_id`, hashed `user_id`, action, latency, outcome; no direct PII.
+- Basic AI Gateway token/cost/latency logs; fallback, caching, A/B, and custom dashboards are post-MVP.
 - Custom `usage_events` for per-user/per-request cost.
 - Uptime checks on login, request list, and quote acceptance (read-only synthetic).
 - Alerts: error rate, P95 latency, queue/outbox lag, DB connections, LLM spend.
@@ -779,8 +788,8 @@ MVP SLOs:
 - Exact addresses in a separate table; released only through `site_visits` with consent, expiry, revocation, and audit; phone/email masked until a contract is signed or an address is released for a site visit.
 - Rate limits on auth, OTP, request creation, quote submission, chat send/upload, and agent calls.
 - Turnstile on registration and request creation.
-- Pre-signed R2 uploads with MIME/size validation, checksum, **EXIF/GPS stripping**, and signed downloads; virus scan post-MVP.
-- Voice notes: audio MIME allowlist, max 5 minutes / 10 MB, signed playback URLs, no transcription.
+- Pre-signed R2 uploads with MIME/size validation, checksum, **EXIF/GPS stripping**, and signed downloads; unverified files are quarantined and served as attachments; virus scan post-MVP.
+- Voice notes: audio MIME allowlist, max 5 minutes / 10 MB, signed playback URLs issued after a participant check with a 60-second TTL; the client fetches the clip once into a blob before playback, so seeking does not need a fresh URL; no transcription.
 - Webhook signature verification and replay protection via `webhook_events`.
 - Magic links: 24–72h read, phone + request binding, one active token, `noindex`, 15-minute single-use mutation tokens.
 - Append-only audit log; admin access logged; break-glass reason codes.
@@ -796,11 +805,11 @@ MVP SLOs:
 - Prompts and agent config are versioned in `packages/agent`; changes go through PR review.
 - Tool registry is generated from the action catalog; no hand-written HTTP wrappers.
 - Model IDs are environment variables (`LLM_MODEL`), pinned in CI. One model at launch.
-- Evals: 15–20 golden conversations, zero unapproved writes, tool schema compliance, PII leakage, prompt injection, draft-only external messages, and budget.
+- Evals: 15–20 golden conversations, zero unapproved writes, tool schema compliance, PII leakage, prompt injection, draft-only external messages, budget, stale approval, and kill races. Run the adversarial set against the pinned live model before launch, then nightly.
 - Per-user token budgets and per-request cost tracking.
 - PII redaction before sending to the model; contact-info filter in chat and drafts.
 - Max agent steps, timeouts, and a hard stop when the budget is exceeded.
-- Per-user and per-thread kill switch; disabling the agent cancels in-flight tool calls.
+- Per-user and per-thread kill switch; disabling the agent blocks new tool calls at the next epoch check; already-committed results are reported, not undone.
 - AI Gateway dashboards, fallback, caching, and model A/B are post-MVP.
 
 ---
@@ -808,6 +817,8 @@ MVP SLOs:
 ## 11. Roadmap (18–20 weeks)
 
 > **Pre-code:** a two-week acquisition sprint (Week -2 to 0) per [acquisition-plan.md](acquisition-plan.md). Then **16 weeks build + 2 weeks buffer = 18 weeks baseline**. The allowed 2-week slip makes it **18 weeks build + 2 weeks buffer = 20 weeks**; it is not a silent extension. Full real-time chat and voice notes are non-negotiable. If a phase slips, use the buffer or the cut list in §11.3; do not extend the timeline beyond 20 weeks without re-planning.
+>
+> **Schedule risk:** the second opinion estimates chat +1–2 weeks and WhatsApp/agent +1–2 weeks. Do not compress admin/hardening or launch to absorb that. Use the 2-week allowance and plan the critical path at 20 weeks; if 18 weeks is mandatory, cut nonlocked scope first (material line items, agent UI polish, custom admin screens).
 
 | Week | Phase | Deliverable | Exit criteria |
 |---|---|---|---|
@@ -822,7 +833,7 @@ MVP SLOs:
 | **15–16** | Launch | Production setup, domain/DNS/secrets, PITR + restore drill, alerts, runbooks, legal pages, support channel, launch | Launch checklist complete; rollback tested; support live |
 | **17–18** | Buffer | Slip absorption, post-launch fixes, first-contract operations | 10 contracts in 90 days tracked; weekly acquisition cadence running |
 
-**Most likely slip:** Weeks 6–7 (chat/SSE/presence/voice) and Weeks 8–10 (contracts/signing). Protect them by keeping the WhatsApp and agent scope thin, and by not adding reviews, projects, PostGIS, or a supply agent.
+**Most likely slip:** Weeks 6–7 (chat/SSE/presence/voice; budget +1–2 weeks) and Weeks 11–12 (WhatsApp/agent; budget +1–2 weeks). Protect admin/hardening and launch by not taking their weeks; cut nonlocked scope or use the allowance to 20 weeks. Keep the WhatsApp and agent scope thin, and do not add reviews, projects, PostGIS, or a supply agent.
 
 ### 11.1 Weekly cadence
 
@@ -833,7 +844,7 @@ MVP SLOs:
 
 ### 11.2 Launch checklist
 
-- [ ] One city, three categories seeded; **50 verified providers onboarded**, with a named list and 10 written quote commitments.
+- [ ] One city, three categories seeded; **50 verified providers onboarded**, with a named list and 10 written quote commitments. The acquisition gate requires 15 with document readiness confirmed; close the gap through the weekly onboarding cadence and track the verified count weekly.
 - [ ] **20 real customer requests** collected before or during build.
 - [ ] Customer flow works on a mid-range Android over 4G.
 - [ ] **Full chat works:** send/receive, presence, typing, read receipts, reconnect, voice note upload/playback.
@@ -846,7 +857,7 @@ MVP SLOs:
 - [ ] Privacy policy, ToS, intermediary disclaimer, consent screens, retention schedule.
 - [ ] Legal review of the contract template, BSA 2023 framing, GST/TCS, stamp duty, and DPDP.
 - [ ] Support channel (WhatsApp/email) with a 24h first-response SLA and incident runbook.
-- [ ] Rollback rehearsed.
+- [ ] Worker rollback + v3 export/reconciliation rehearsed; no v2 DNS rollback after production writes.
 
 ### 11.3 Cut list
 
@@ -856,11 +867,11 @@ If still behind after using the 2-week buffer, cut in this order:
 
 1. WhatsApp button replies / inbound automation (already out).
 2. Material line items → single amount + notes.
-3. Agent scope → 3 tools (create draft, publish approval, compare quotes).
-4. Custom admin screens → SQL/Retool.
+3. Agent UI polish → plain-text approval card; keep all **five** tools and the eval gate.
+4. Custom admin screens → Retool action endpoints (direct SQL stays read-only).
 5. WhatsApp channel entirely → web-only (last resort; loses the supply bet).
 
-**Never cut:** auth, server-enforced permissions, audit, idempotency, backups/PITR, contract hash/versions, the quote-acceptance transaction, provider verification, DPDP consent, WhatsApp opt-in/STOP, legal review, rollback, **full real-time chat, presence, typing, SSE, and voice notes**.
+**Never cut:** auth, server-enforced permissions, audit, idempotency, backups/PITR, contract hash/versions, the quote-acceptance transaction, provider verification, DPDP consent, WhatsApp opt-in/STOP, legal review, rollback, **the five agent tools**, **full real-time chat, presence, typing, SSE, and voice notes**.
 
 ---
 
@@ -916,10 +927,10 @@ If still behind after using the 2-week buffer, cut in this order:
 
 ### 12.3 Cost
 
-- Infrastructure **$150–200/month** at MVP volume, including PITR.
-- All-in operating cost **$250–350/month**, including WhatsApp, SMS, LLM, and a support buffer.
+- Infrastructure **envelope $150–200/month** at MVP volume, including PITR; current estimate $134–179.
+- All-in operating **envelope $250–350/month**, including WhatsApp, SMS, LLM, and a support buffer; current estimate $206–349.
 - LLM + WhatsApp + SMS tracked per request in `usage_events`.
-- Cost per signed contract **$60–105 before founder time** at 10 contracts in 90 days. Track from the first contract.
+- Cost per signed contract **$75–105 before founder time** at 10 contracts in 90 days, at the $250–350/month planning envelope. Track from the first contract.
 - If the all-in budget cannot be funded, run web-only until revenue; do not skip PITR or legal review.
 
 ---
@@ -933,7 +944,7 @@ If still behind after using the 2-week buffer, cut in this order:
 | **Chat/SSE performance** | Laggy chat, connection limits | SSE with reconnect/backfill, presence/typing TTL, Postgres indexes, load check at MVP volume; Durable Objects/WebSockets only if measured. |
 | **Voice storage/cost** | R2 growth, playback latency | 5 min / 10 MB cap, MIME allowlist, signed playback, retention policy, per-thread storage budget. |
 | **WhatsApp/Meta verification delay** | Supply channel late | Start Meta verification + DLT on Day 1; SMS/phone/web fallback; web dashboard always works. |
-| **Provider verification deadlock** | No one can quote | Manual SQL/Retool queue from Week 1; 24–48h SLA; 10–20 pre-verified providers before first request. |
+| **Provider verification deadlock** | No one can quote | Manual Retool/action queue from Week 1; 24–48h SLA; 10–20 pre-verified providers before first request; direct SQL is read-only. |
 | **Workers CPU/memory limits** | Long jobs fail | Keep API requests small; HTML certificate instead of PDF; heavy work to Queues/Containers; measure. |
 | **DB latency from Workers** | Slow pages | Supabase Mumbai, Hyperdrive, Smart Placement; measure P95 from India. |
 | **Agent safety failure** | Wrong quote/contract/PII leak | Server-enforced tiers, `HUMAN_ONLY` for accept/sign/send, draft-only external messages, 15–20 evals, kill switch. |
@@ -961,6 +972,7 @@ If still behind after using the 2-week buffer, cut in this order:
 | Pricing hypothesis: commission, lead fee, customer fee, or free for 90 days | Founder | Week 2 |
 | Support and dispute process for the first 90 days | Founder | Week 2 |
 | Six months of runway, or a revenue/services bridge | Founder | Week 1 |
+| Weekly capacity: ≥30 build hours plus separate acquisition/verification/support hours, or a reduced scope | Founder | **Before Week 1** |
 | Voice note limits: max duration (5 min), max size (10 MB), MIME allowlist | Founder | Week 6 |
 | LLM provider/model and eval harness | Founder | Week 11 |
 | Analytics: SQL/Metabase vs PostHog | Founder | Week 12 |
@@ -994,7 +1006,7 @@ If still behind after using the 2-week buffer, cut in this order:
 ### Chat and voice
 
 - Message send is idempotent; duplicate and out-of-order events are handled.
-- SSE reconnects with `Last-Event-ID` and backfills missed messages.
+- SSE reconnects with the per-thread `(thread_id, seq)` cursor and backfills missed messages.
 - Presence and typing expire correctly; no stale indicators.
 - Read receipts and unread counts are correct per participant.
 - Voice notes upload, authorize, and play only for thread participants.
@@ -1023,12 +1035,12 @@ The external review at [../../plan-review/external/2026-11-03-agent-review.md](.
 |---|---|---|
 | Full 18-week scope is not credible | **Accepted.** Baseline 18 weeks, allowed slip to 20; the full 22–26-week scope is not committed. | §11, §1 |
 | Cut full chat, presence, typing, SSE, and voice notes | **Rejected by founder.** Full real-time chat and voice notes stay in MVP. | §3.1, §11, ADR 0008 |
-| Cut voice notes specifically | **Rejected.** Voice notes are record/upload/store/play; no transcription. | §3.1, §7.6 |
+| Cut voice notes specifically | **Rejected.** Voice notes are record/upload/store/play; no transcription. | §3.1, §8.3, §15 |
 | PDF certificate | **Accepted.** HTML certificate + SHA-256 + hash chain; PDF deferred. | §3.2, §6.4 |
-| Section 65B / “admissible evidence” | **Accepted.** “Electronic acceptance with audit trail”; BSA 2023 s.63 framing; no admissibility or eSign claim. | §9, §13 |
+| Section 65B / “admissible evidence” | **Accepted.** “Electronic acceptance with audit trail”; BSA 2023 s.63 framing; no admissibility or eSign claim. | §6.4, §13; [legal-and-payments-checklist.md](legal-and-payments-checklist.md) §3 |
 | PITR and cost understatement | **Accepted.** $150–200/month infra, $250–350 all-in, PITR mandatory, RPO/RTO defined. | §9.2, §9.4, §12.3 |
 | No acquisition plan | **Accepted.** Two-week concierge sprint before code: 100 named providers, 10 written commitments, 20 requests. | [acquisition-plan.md](acquisition-plan.md) |
-| Magic links live 7 days | **Accepted.** 24–72h read tokens; 15-minute single-use mutation tokens. | §8.2 |
+| Magic links live 7 days | **Accepted.** 24–72h read tokens; 15-minute single-use mutation tokens. | §8.3 |
 | Provider verification is undefined | **Accepted.** Manual queue from Week 1–3, 24–48h SLA, no Aadhaar. | [verification-rubric.md](verification-rubric.md) |
 | Exact address hidden until contract | **Changed.** Site visits with consented, audited, time-bound address release. | §3.1, §6.4 |
 | Agent has 9 tools and can send chat | **Accepted.** Customer-only, 5 tools; external messages are draft-only; `chat.message.send` is `HUMAN_ONLY`. | §7.3 |
@@ -1038,9 +1050,33 @@ The external review at [../../plan-review/external/2026-11-03-agent-review.md](.
 | MCP server, action versioning, AI Gateway dashboards | **Accepted as deferred.** Build the action catalog seam; ship the platform features later. | §3.2 |
 | Load tests, Lighthouse 90, axe, 24h smoke | **Accepted as deferred.** Keep a mobile viewport check and pre-launch performance budgets. | §10.5 |
 
-**Founder override:** full real-time chat, presence, typing, read receipts, SSE, and voice notes are non-negotiable MVP scope. The rest of the review’s cuts are adopted as defaults and can be revisited only with a written scope change.
+### 16.1 Second-opinion review (2026-11-12)
 
-**Second opinion:** a fresh review prompt tailored to this revision is at [../../plan-review/external-agent-review-prompt-v2.md](../../plan-review/external-agent-review-prompt-v2.md). Use it with a different agent/model; the original prompt is a historical record.
+The second opinion at [../../plan-review/external/2026-11-12-second-opinion.md](../../plan-review/external/2026-11-12-second-opinion.md) was reviewed on 2026-11-14. It accepted the locked business decisions but found sequencing and safety defects; those are fixed below. Disposition:
+
+| Review item | Disposition | Where |
+|---|---|---|
+| B1: Day-10 gate duplicates Weeks 2–12 | **Accepted.** Narrowed to a walking skeleton; contracts, WhatsApp, and production chat stay in their roadmap phases; synthetic signatures only before the legal checkpoint. | [rewrite-playbook.md](rewrite-playbook.md) §4, §6 |
+| B2: permission/state gaps | **Accepted.** Added provider browse/get, open-request edit, upload completion, unblock; added withdrawn/rescheduled/post-signature-revision transitions. | [permissions-matrix.md](permissions-matrix.md) §4, §6, §8 |
+| B3: SSE ordering and voice authorization | **Accepted.** Per-thread `seq` allocated under a thread lock; reconnect by `(thread_id, seq)`; unread from monotonic read cursors; voice URL issued after a participant check with a 60-second TTL. | [engineering-rules.md](engineering-rules.md) D35–D36, EC54, P24; [permissions-matrix.md](permissions-matrix.md) §4.7 |
+| B4: rollback strands v3 writes | **Accepted as a launch gate.** No v2 DNS rollback after the first production v3 write; Worker rollback and forward-fix; export/reconciliation runbook. | [rewrite-playbook.md](rewrite-playbook.md) §9; README §10.2, §11.2 |
+| H1: approval binds only `requestId` | **Accepted.** `PendingAction` binds subject revision/content hash; a safe write that changes the subject marks the approval stale; execution and kill-switch semantics defined. | §7.3, §7.4; [engineering-rules.md](engineering-rules.md) A18, EC63–EC64 |
+| H3: hash-chain/OTP unspecified | **Accepted.** Canonical JSON, chain formula, atomic OTP consumption, unique signature, certificate bytes hash; no real acceptance before counsel/stamp clearance. | §6.4; [legal-and-payments-checklist.md](legal-and-payments-checklist.md) §3; [engineering-rules.md](engineering-rules.md) D27, S18 |
+| H5: cost arithmetic | **Accepted.** Fixed/variable split, no double counting, corrected per-contract math. | §9.2 |
+| Five tools vs 3-tool cut | **Accepted.** Removed the 3-tool contingency; five tools are non-negotiable. | §11.3; [rewrite-playbook.md](rewrite-playbook.md) §11 |
+| H2: acquisition hours | **Accepted as measurement, not scope change.** Record actual quote responses and hours; preserve the 100/10/20 gate. | [acquisition-plan.md](acquisition-plan.md) §3, §5 |
+| H4: verification hours | **Accepted as measurement.** Add handling-time metrics; 10–50 providers is feasible, 500 needs delegated operations. | [verification-rubric.md](verification-rubric.md) §8 |
+| M1: analytics pseudonymous IDs | **Accepted.** “No direct PII” wording; certificate status is an operational metric, not a signing-event property. | [analytics-events.md](analytics-events.md) §1, §3.8; README §3.1 |
+| M2: quarantine and CAD preview | **Accepted.** Quarantine unverified files; DWG/DXF download-only; EICAR test updated. | [engineering-rules.md](engineering-rules.md) EC30, S21; README §3.1 |
+| M3: pre-code document intake | **Accepted.** Collect readiness first; use secure intake and a deletion register if documents arrive. | [acquisition-plan.md](acquisition-plan.md) §5; [verification-rubric.md](verification-rubric.md) §2 |
+| M4: live-model evals | **Accepted.** Run the adversarial set against the pinned live model before launch and nightly after. | §7.6, §10.8; [engineering-rules.md](engineering-rules.md) T6 |
+| Contradictions | **Accepted:** `profile.get` naming, AI Gateway dashboards, all-active-leads vs request-scoped tokens, direct SQL vs action-only writes, mute/block semantics, CI split. Performance-vs-load is clarified, not treated as a defect. | README, permissions matrix, engineering rules, playbook |
+| 50 verified vs 15 readiness-confirmed | **Accepted.** Weekly onboarding closes the gap; verified count tracked weekly. | §11.2, §12.1 |
+| WhatsApp “conversations” pricing | **Accepted.** Per-message terminology; verify Meta’s current rate card before finalizing cost. | §9.2 |
+
+**Founder override:** full real-time chat, presence, typing, read receipts, SSE, and voice notes are non-negotiable MVP scope. The rest of the review’s cuts are adopted as defaults and can be revisited only with a written scope change. The five agent tools and the locked decisions above are unchanged.
+
+**Second opinion:** the review prompt tailored to this revision is at [../../plan-review/external-agent-review-prompt-v2.md](../../plan-review/external-agent-review-prompt-v2.md). The original prompt is a historical record.
 
 ---
 
