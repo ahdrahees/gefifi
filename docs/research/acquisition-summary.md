@@ -12,12 +12,13 @@
 
 | Choice | Value | Confirmed? |
 |---|---|---|
-| City | Pune (default) | [ ] |
-| Categories | Plumbing, electrical, painting (default) | [ ] |
-| Customer | Homeowners and small commercial premises in 3–4 pincodes | [ ] |
-| Provider | Independent experts and small firms (1–10 people) | [ ] |
-| Pincodes |  | [ ] |
-| Promise | Post a job, get verified quotes, sign a clear agreement, track milestones | [ ] |
+| City | Bangalore | [x] |
+| Categories | Plumbing, electrical, painting | [x] |
+| Customer | Homeowners and small commercial premises in 3–4 pincodes | [x] |
+| Provider | Independent experts and small firms (1–10 people) | [x] |
+| Pincodes | 560102 HSR Layout, 560103 Bellandur, 560034 Koramangala, 560076 BTM Layout | [x] |
+| Promise | Post a job, get verified quotes, sign a clear agreement, track milestones | [x] |
+| Call window | 9am–6pm, Mon–Sat (best answer 10–1, 5–8) | [x] |
 
 If the data says a different wedge is easier to seed, change it **before** building the list. Do not run two wedges in parallel.
 
@@ -144,8 +145,7 @@ Record counts, not anecdotes.
 
 | Date | Decision | Reason | Owner |
 |---|---|---|---|
-|  |  |  |  |
-|  |  |  |  |
+| 2026-11-15 | Wedge: Bangalore, plumbing/electrical/painting, 560102/560103/560034/560076 | Density + travel + homeowner/commercial mix; single cluster only | Founder |
 
 Examples: narrow to two categories; change pincodes; switch from painting to carpentry; change the pricing hypothesis.
 
@@ -153,8 +153,8 @@ Examples: narrow to two categories; change pincodes; switch from painting to car
 
 ## 9. Next actions
 
-- [ ] Confirm city, three categories, and 3–4 pincodes.
-- [ ] Create the private working folder and copy the trackers.
+- [x] Confirm city, three categories, and 3–4 pincodes.
+- [x] Create the private working folder and copy the trackers.
 - [ ] Build the first 25 named providers.
 - [ ] Collect the first 10 real requests.
 - [ ] Make the first 10 provider calls.
