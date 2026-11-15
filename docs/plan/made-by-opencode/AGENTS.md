@@ -21,17 +21,11 @@ The full architecture is in `docs/plan/made-by-opencode/README.md`. Read it befo
 
 ## 2. Read order
 
-1. `docs/plan/made-by-opencode/README.md` — decisions, architecture, roadmap.
-2. `docs/plan/made-by-opencode/engineering-rules.md` — code, data, permissions, edge cases.
-3. `docs/plan/made-by-opencode/permissions-matrix.md` — roles, actions, states.
-4. `docs/plan/made-by-opencode/rewrite-playbook.md` — execution order and slice workflow.
-5. `docs/plan/made-by-opencode/acquisition-plan.md` — the pre-code supply/demand sprint.
-6. `docs/plan/made-by-opencode/verification-rubric.md` — provider checks and suspension.
-7. `docs/plan/made-by-opencode/legal-and-payments-checklist.md` — legal/compliance launch gates.
-8. `docs/plan/made-by-opencode/analytics-events.md` — event taxonomy and no-PII rules.
-9. The code in the area you are about to change.
+1. `docs/plan/made-by-opencode/OPERATING-PLAN.md` — the 2-page entry point. Start here.
+2. `AGENTS.md` (this file) — hard rules.
+3. Only the doc named for your current stage in `OPERATING-PLAN.md` §6, plus the code in the area you are about to change.
 
-If these disagree, stop and ask. Do not guess.
+Do not load all plan docs at once. The 9 reference docs stay as reference; they are not Day-1 reading. If these disagree, `AGENTS.md` hard rules win — stop and ask. Do not guess.
 
 ---
 

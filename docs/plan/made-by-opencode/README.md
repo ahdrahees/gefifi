@@ -14,14 +14,15 @@
 
 | File | What it covers | Use it when |
 |---|---|---|
-| [README.md](README.md) | Product decisions, architecture, scope, data model, roadmap, metrics, risks, DoD. | Start here; review monthly. |
+| [OPERATING-PLAN.md](OPERATING-PLAN.md) | 2-page entry: destination, exclusions, success, frozen decisions, budget, stage gates, context rules. | Start here; the only required reading. |
+| [README.md](README.md) | Product decisions, architecture, scope, data model, roadmap, metrics, risks, DoD. | Reference; review monthly. |
 | [rewrite-playbook.md](rewrite-playbook.md) | Freezing v2, repo bootstrap, first 10 days, vertical slices, parity checklist, cutover. | Week 0 and every slice. |
-| [engineering-rules.md](engineering-rules.md) | TypeScript, module boundaries, actions, data access, permissions, edge cases, testing, security, agent coding rules. | Every PR. |
+| [engineering-rules.md](engineering-rules.md) | TypeScript, module boundaries, actions, data access, permissions, edge cases, testing, security, agent coding rules. | Reference for the current stage only. |
 | [permissions-matrix.md](permissions-matrix.md) | Actors, action matrix, field visibility, state transitions, channel rules. | Every action, endpoint, or state change. |
 | [acquisition-plan.md](acquisition-plan.md) | The two-week pre-code concierge sprint: city, categories, 100-provider list, call script, 20 requests, pricing hypothesis. | Before Week 1. |
 | [verification-rubric.md](verification-rubric.md) | Provider documents, review SLA, fraud signals, suspension and re-verification. | Week 1 onward. |
 | [legal-and-payments-checklist.md](legal-and-payments-checklist.md) | Entity, GST/TCS, stamp duty, insurance, intermediary posture, BSA/DPDP, retention, support and refunds. | Before launch. |
-| [analytics-events.md](analytics-events.md) | The 12 core events, properties, and no-PII rules. | Week 1. |
+| [analytics-events.md](analytics-events.md) | The 12 core events, properties, and no-PII rules. | Week 12; do not load before. |
 | [AGENTS.md](AGENTS.md) | Operating contract for AI coding agents. | Copy to the `gefifi-v3` repo root on Day 1. |
 
 ### Plan completeness
