@@ -226,7 +226,7 @@ A slice spec is one page:
 | **S8** | Signing: dual OTP, signatures, hash chain, **HTML certificate** | S7 | 3 |
 | **S9** | Milestones: schedule, offline UPI ledger, customer marks paid, provider confirms, dispute | S8 | 3 |
 | **S10** | Agent: **Core 5 tools**, approval cards, evals, budgets, draft-only external messages | S5, S7 | 4 |
-| **S11** | WhatsApp supply: templates, webhook dedupe, magic links, SSR cards, opt-in/STOP | S3, S4 | 4 |
+| **S11** | WhatsApp supply: templates, webhook dedupe, magic links, SSR cards (vendored Oat UI), opt-in/STOP | S3, S4 | 4 |
 | **S12** | Admin, hardening, UAT, launch | S8–S11 | 5 |
 
 **Rule:** each slice must be independently deployable behind a flag. If a slice needs three other unfinished slices to demo, it is too big.

@@ -217,7 +217,8 @@ MCP    ─┘        │
 | **Runtime** | Cloudflare Workers (`nodejs_compat`) | Exit ramp to Node/Bun because Hono is runtime-agnostic. |
 | **API framework** | Hono | Small, typed, fast, Worker-native, portable. |
 | **Frontend** | React 19 + React Router v7 (framework mode) | SSR, loaders/actions, PWA. No Next.js, no TanStack Start for MVP. |
-| **UI** | Tailwind CSS v4 + shadcn/ui + reui.io (selectively) | Copy-paste primitives; no custom design system. |
+| **UI (Web PWA)** | Tailwind CSS v4 + shadcn/ui + reui.io (selectively) | Copy-paste primitives; no custom design system. |
+| **UI (Mobile cards)** | Oat UI (`@knadh/oat`, vendored) | Semantic, classless-first HTML/CSS (~7KB CSS + ~3KB JS gzipped), shadcn-compatible variables; used for `/m/:token` SSR cards. |
 | **Data fetching** | TanStack Query + typed API client | Server state belongs on the server. |
 | **Forms** | React Hook Form + Zod | Shared schemas with actions. |
 | **Database** | Postgres 15+ with PostGIS (Supabase Mumbai) | Relational truth; PostGIS is available, but the MVP uses city/pincode filters rather than radius matching. Verify Mumbai availability at signup. |
@@ -586,7 +587,11 @@ Security rules:
 
 - Read token is 256-bit random, stored **hashed**, scoped to user + purpose + request, expires in **24–72 hours**, revocable, bound to the phone number, and limited to one active token per user/purpose.
 - Sensitive actions (quote submit/revise) require a fresh **15-minute single-use** token plus step-up OTP.
-- The card is SSR HTML with no client-side framework; CSS only, minimal JS; `noindex` and `Referrer-Policy: no-referrer`.
+- The card is SSR HTML with no client-side framework (`< 40KB` total), styled with **vendored Oat UI (`@knadh/oat`)** semantic HTML/CSS (~7KB CSS + ~3KB JS gzipped); `noindex` and `Referrer-Policy: no-referrer`.
+- **Oat UI implementation rules for `/m/:token`:**
+  - **Vendor locally** (inline in `<head>` or serve from Worker static assets); never load from an external CDN (`unpkg`), preserving strict `Content-Security-Policy` and preventing third-party IP/timing leaks.
+  - **Static light-mode CSS variable fallback:** Override `:root` theme variables (`--background`, `--foreground`, `--card`, `--primary`, `--border`, etc.) with static hex/HSL values before `light-dark()` so older Android System WebViews (< Chrome 123) and outdoor construction-site sunlight legibility work reliably.
+  - **Dialog fallback:** Pair `<dialog>` triggers with standard `dialog.showModal()` alongside `commandfor` for older mobile webviews.
 - WhatsApp webhook verifies Meta's signature; deduplicates by message ID in `webhook_events`; handles delivery status and STOP/opt-out.
 - Lead notifications are **marketing** and require marketing opt-in. Quote received, contract signature, and payment confirmation are **utility** templates. `whatsapp_contacts` stores both.
 - Outbound only in MVP. Button replies and inbound automation are deferred.
@@ -1087,7 +1092,7 @@ The second opinion at [../../plan-review/external/2026-11-12-second-opinion.md](
 | **0001** | Clean rewrite; freeze v2; no data migration; reuse domain knowledge only. |
 | **0002** | TypeScript modular monolith; Cloudflare edge + Supabase Postgres Mumbai. |
 | **0003** | One action catalog with server-enforced risk tiers and `PendingAction` approvals. |
-| **0004** | React 19 + React Router v7; retire Svelte; shadcn/reui. |
+| **0004** | React 19 + React Router v7; retire Svelte; shadcn/reui for web PWA; vendored Oat UI (`@knadh/oat`) for `/m/:token` SSR mobile cards. |
 | **0005** | All roles on web/PWA; experts/suppliers also get WhatsApp + 1-tap signed cards; outbound only in MVP. |
 | **0006** | No Kafka, RabbitMQ, Convex, Prometheus/Grafana, Durable Objects, Workflows, or Agents SDK in the MVP. |
 | **0007** | **Electronic acceptance with audit trail** (BSA 2023 framing); no escrow; offline UPI ledger; no Aadhaar eSign. |
@@ -1109,7 +1114,7 @@ The second opinion at [../../plan-review/external/2026-11-12-second-opinion.md](
 | **Outbox** | Events written with the domain transaction, consumed asynchronously by workers. |
 | **Idempotency key** | A key that makes retries safe by returning the original result. |
 | **Magic link** | A hashed, scoped, expiring token that gives a supply user passwordless access to a card. |
-| **SSR card** | Server-rendered HTML for budget phones; no React runtime. |
+| **SSR card** | Server-rendered HTML for budget phones (`/m/:token`), styled with vendored Oat UI (`@knadh/oat`); no React runtime. |
 | **SSE** | Server-Sent Events; a one-way stream from server to client for chat messages, presence, typing, and read receipts. |
 | **Presence** | A short-lived online/away/offline state for a chat participant. |
 | **Typing indicator** | A short-lived "user is typing" state; not stored as history. |
