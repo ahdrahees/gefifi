@@ -1,8 +1,9 @@
 # AGENTS.md — Operating Contract for AI Coding Agents
 
-> **Template.** Copy this file to the root of the `gefifi-v3` repository on Day 1 of the rewrite.  
-> It applies to every agent (OpenCode, Claude Code, Codex, Cursor, Gemini, etc.) and every human contributor.  
-> **If you are in the v2 repository, stop:** v2 is frozen. Read `docs/plan/made-by-opencode/rewrite-playbook.md` first.
+> **Template for the future `gefifi-v3` repo. PARKED in this repo.**
+> Copy this file to the root of `gefifi-v3` on Day 1 of the rewrite. Do not follow it for V2 demo work — root `AGENTS.md` + `docs/demo/DEMO-PLAN.md` govern here.
+> It applies to every agent (OpenCode, Claude Code, Codex, Cursor, Gemini, etc.) and every human contributor.
+> **V3-only scope:** in this repo this file is parked reference. Active work follows root `AGENTS.md`.
 
 ---
 

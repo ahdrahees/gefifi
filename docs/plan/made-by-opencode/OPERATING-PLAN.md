@@ -1,6 +1,8 @@
 # Gefifi v3 — Operating Plan
 
-> **Entry point.** Read this first. It fits on two pages.
+> **PARKED — Track 2 (background).** Active work is Track 1: `../../demo/DEMO-PLAN.md` + root `AGENTS.md`.
+> Do not load this file for demo tasks. It resumes after the 3-contractor demo ships.
+> Entry point for V3 when active. It fits on two pages.
 > Details live in the reference docs linked below — nothing was deleted.
 > At any moment only the current stage and its exit gate matter.
 
