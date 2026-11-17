@@ -7,22 +7,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install project dependencies
-COPY pyproject.toml poetry.lock* ./
-RUN pip install --no-cache-dir poetry && \
-    poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi --no-root
+# Install uv and project dependencies (locked, no dev)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
 # Copy app code
 COPY . .
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PORT=8000
 
 # Non-root user
 RUN adduser --disabled-password --gecos "" myuser && \
     chown -R myuser:myuser /app
 USER myuser
-
-ENV PATH="/home/myuser/.local/bin:$PATH"
-ENV PORT=8000
 
 # Use adk api_server; configure URIs via env from Dokploy
 # Point adk at AGENTS_DIR="." (which contains build_assist_agent)

@@ -6,13 +6,13 @@ An AI agent built with Google ADK (Agent Development Kit) to assist with constru
 
 ```bash
 # Install dependencies
-poetry install
+uv sync
 
 # Configure environment
 echo "BACKEND_URL=http://localhost:3000" > .env
 
 # Run locally
-poetry run adk deploy --local
+uv run adk deploy --local
 ```
 
 ## 📁 Project Structure
@@ -25,7 +25,7 @@ agents/
 │   ├── config.py         # Environment configuration
 │   └── tools.py          # File upload and backend integration tools
 ├── pyproject.toml        # Python dependencies
-├── poetry.lock
+├── uv.lock
 ├── .env                  # Environment variables (create this)
 ├── README.md            # This file
 ├── QUICK_START.md       # Quick start guide
@@ -301,7 +301,7 @@ Common errors and their meanings:
 
    ```bash
    cd agents
-   poetry run adk deploy --local
+   uv run adk deploy --local
    ```
 
 4. **Test in browser:**
@@ -387,7 +387,7 @@ When adding new features:
 **Solution:** Install dependencies
 
 ```bash
-poetry install
+uv sync
 ```
 
 ### "Connection refused" when uploading

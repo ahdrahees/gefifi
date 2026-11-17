@@ -1,6 +1,6 @@
 #!/bin/bash
 cd agents
-poetry run adk web --allow_origins http://localhost:5173 \
+uv run adk web --allow_origins http://localhost:5173 \
   --session_service_uri sqlite://./.local-state/agent_session_service_db.sqlite3 \
   --artifact_service_uri="file://$PWD/.local-state/artifacts" \
   --logo-text "Gefifi Agents" \
