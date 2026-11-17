@@ -15,7 +15,7 @@ from google.adk.plugins.save_files_as_artifacts_plugin import SaveFilesAsArtifac
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.load_artifacts_tool import load_artifacts_tool
 from google.adk.tools.tool_context import ToolContext
-from google.adk.runners import Event
+from google.adk.events.event import Event
 from google.genai import types
 
 # Import tool guardrails
