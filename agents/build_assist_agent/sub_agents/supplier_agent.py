@@ -3,7 +3,7 @@ from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools.load_artifacts_tool import load_artifacts_tool
 
-from build_assist_agent.config import MODEL_ENV_PASSED
+from build_assist_agent.config import MODEL_ENV_PASSED, LITELLM_EXTRA_HEADERS
 from build_assist_agent.tools.find_professionals import get_my_profile, update_my_profile
 from build_assist_agent.tools.chat import (
     get_user_chats,
@@ -17,7 +17,7 @@ from build_assist_agent.tools.contract import request_contract_revision
 
 supplier_agent = Agent(
     name="supplier_agent",
-    model=LiteLlm(model=MODEL_ENV_PASSED),
+    model=LiteLlm(model=MODEL_ENV_PASSED, extra_headers=LITELLM_EXTRA_HEADERS),
     description="Specialized assistant for SUPPLIERS on the GEFIFI construction platform. Helps suppliers manage profile, view material opportunities, express interest, submit material quotes, negotiate contracts, and chat with customers.",
     instruction=(
         "You are a helpful, professional, and efficient Supplier assistant on the GEFIFI construction platform. "

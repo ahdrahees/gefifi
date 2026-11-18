@@ -3,7 +3,7 @@ from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools.load_artifacts_tool import load_artifacts_tool
 
-from build_assist_agent.config import MODEL_ENV_PASSED
+from build_assist_agent.config import MODEL_ENV_PASSED, LITELLM_EXTRA_HEADERS
 from build_assist_agent.tools.find_professionals import (
     find_a_user_by_id,
     find_experts,
@@ -42,7 +42,7 @@ from build_assist_agent.tools.contract import draft_contract
 
 customer_agent = Agent(
     name="customer_agent",
-    model=LiteLlm(model=MODEL_ENV_PASSED),
+    model=LiteLlm(model=MODEL_ENV_PASSED, extra_headers=LITELLM_EXTRA_HEADERS),
     description="Specialized assistant for CUSTOMERS on the GEFIFI construction platform. Handles requests, invite experts, quotes and contracts.",
     instruction=(
         "You are a helpful, conversational, and highly efficient customer assistant for the GEFIFI construction platform. "
