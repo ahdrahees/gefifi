@@ -14,6 +14,8 @@ from google.genai.types import Part
 
 from build_assist_agent.tool_types import HTTPStatusErrorResponse, UploadResponse
 
+from .artifact_utils import resolve_upload_filenames
+
 from ..auth_types import AuthData
 
 logger = logging.getLogger(__name__)
@@ -900,7 +902,7 @@ async def update_expert_request_image(
 
     Args:
         url_of_images_to_remove (Optional[list[str]]): Pass list of strings contains url of images to remove from the request. Pass None for not removing existing images.
-        filenames_of_images_to_add (Optional[list[str]]): Pass list of strings contains filenames of images to add to request. Pass None for not adding
+        filenames_of_images_to_add (Optional[list[str]]): Pass list of strings contains filenames of images to add to request. Pass None for not adding. Use the exact filenames of files uploaded in this chat session (the [Uploaded Artifact: "..."] names). If none of the names match, the tool returns the list of available uploaded filenames -- call again with one of those.
 
     Returns:
         dict: A dictionary containing the following:
@@ -915,9 +917,11 @@ async def update_expert_request_image(
         token: str = tool_context.state.get("auth_token")
 
         if url_of_images_to_remove is None and filenames_of_images_to_add is None:
+            available = await tool_context.list_artifacts()
             return {
                 "status": "error",
-                "error_message": "Can not update the images of expert request. Both arg for adding and removing is not passed or None",
+                "error_message": "Can not update the images of expert request. Both arg for adding and removing is not passed or None. "
+                f"Files uploaded in this chat session: {available if available else 'none'}.",
             }
 
         if (
@@ -956,15 +960,13 @@ async def update_expert_request_image(
 
         # Adding new images
         if filenames_of_images_to_add:
-            # createing list of images to load (Like list of promises in js)
-            loading_image_file_artifacts = [
-                tool_context.load_artifact(filename=filename)
-                for filename in filenames_of_images_to_add
-            ]
-            # Loaded images from artifacts (like await Promise.all all in js for concurrent loading)
-            image_file_artifacts: list[Part | None] = await asyncio.gather(
-                *loading_image_file_artifacts
+            image_file_artifacts, resolve_error = await resolve_upload_filenames(
+                tool_context,
+                filenames_of_images_to_add,
+                label="image filenames",
             )
+            if resolve_error is not None:
+                return resolve_error
 
             # Creating list of args for upload_file function
             image_file_upload_args: list[tuple[str, bytes, str]] = [
@@ -974,11 +976,6 @@ async def update_expert_request_image(
                     image_file.inline_data.mime_type,  # mime_type
                 )
                 for image_file in image_file_artifacts
-                if image_file
-                and image_file.inline_data  # Make sure not None
-                and image_file.inline_data.display_name  # Make sure not None
-                and image_file.inline_data.data  # Make sure not None
-                and image_file.inline_data.mime_type  # Make sure not None
             ]
 
             # Uploading images concurrently (like await Promise.all all in js )

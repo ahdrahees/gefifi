@@ -25,35 +25,45 @@ export const updateSessionEventsState = (sessionId: string, event: AgentEvent | 
 	const updatedEvents = [...currentEvents];
 
 	for (const ev of newEvents) {
-		if (ev.invocationId) {
-			const existingEventIndex = updatedEvents.findIndex(
-				(e) => e.invocationId === ev.invocationId && e.author === ev.author
-			);
+		// Merge streaming partials into the placeholder event with the same id.
+		// ADK reuses `id` across all partial chunks of one model response and
+		// assigns a fresh `id` to every response, tool echo, etc. Keying by
+		// (invocationId, author) instead collapsed every turn of a run into a
+		// single bubble — each turn's final replaced the previous visible
+		// message, and tool echoes wiped the streaming placeholder (chat
+		// flashing). Fall back to (invocationId, author) only for events
+		// without an id; events with neither key are always appended.
+		const mergeKey = ev.id ?? (ev.invocationId ? `${ev.invocationId}:${ev.author}` : null);
+		const existingEventIndex =
+			mergeKey === null
+				? -1
+				: updatedEvents.findIndex(
+						(e) => (e.id ?? (e.invocationId ? `${e.invocationId}:${e.author}` : null)) === mergeKey
+					);
 
-			if (existingEventIndex !== -1) {
-				if (ev.partial) {
-					const lastEvent = updatedEvents[existingEventIndex];
-					// Clone to ensure reactivity
-					const mergedEvent = { ...lastEvent, content: { ...lastEvent.content } };
-					if (!mergedEvent.content.parts) mergedEvent.content.parts = [];
+		if (existingEventIndex !== -1) {
+			if (ev.partial) {
+				const lastEvent = updatedEvents[existingEventIndex];
+				// Clone to ensure reactivity
+				const mergedEvent = { ...lastEvent, content: { ...lastEvent.content } };
+				if (!mergedEvent.content.parts) mergedEvent.content.parts = [];
 
-					// Assuming partial events only have one part with text for simplicity in streaming
-					const newPart = ev.content?.parts?.[0];
-					if (newPart?.text) {
-						const lastPart = mergedEvent.content.parts[mergedEvent.content.parts.length - 1];
-						if (lastPart && lastPart.text !== null && lastPart.text !== undefined) {
-							lastPart.text += newPart.text;
-						} else {
-							mergedEvent.content.parts.push({ ...newPart });
-						}
+				// Assuming partial events only have one part with text for simplicity in streaming
+				const newPart = ev.content?.parts?.[0];
+				if (newPart?.text) {
+					const lastPart = mergedEvent.content.parts[mergedEvent.content.parts.length - 1];
+					if (lastPart && lastPart.text !== null && lastPart.text !== undefined) {
+						lastPart.text += newPart.text;
+					} else {
+						mergedEvent.content.parts.push({ ...newPart });
 					}
-					updatedEvents[existingEventIndex] = mergedEvent;
-				} else {
-					// Final event: replace the partial streaming event with the complete final event
-					updatedEvents[existingEventIndex] = ev;
 				}
-				continue;
+				updatedEvents[existingEventIndex] = mergedEvent;
+			} else {
+				// Final event: replace the partial streaming event with the complete final event
+				updatedEvents[existingEventIndex] = ev;
 			}
+			continue;
 		}
 		updatedEvents.push(ev);
 	}

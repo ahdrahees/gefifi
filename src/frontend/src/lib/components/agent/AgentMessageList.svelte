@@ -149,16 +149,62 @@
 			(part) => part.text !== null && part.text !== undefined && !part.thought
 		);
 	}
+
+	// Reasoning/thought parts are streamed live (partial chunks) while the
+	// visible answer only arrives with the final event. Surfacing them in a
+	// collapsed block keeps the chat visibly updating instead of showing a
+	// bare loading state for the whole turn.
+	function hasThoughtContent(event: AgentEvent): boolean {
+		if (!event.content?.parts) return false;
+		return event.content.parts.some(
+			(part) => part.thought && part.text !== null && part.text !== undefined
+		);
+	}
+
+	function getThoughtText(event: AgentEvent): string {
+		if (!event.content?.parts) return '';
+		return event.content.parts
+			.filter((part) => part.thought && part.text)
+			.map((part) => part.text as string)
+			.join('');
+	}
+
+	// Index of the latest event carrying thought content. Its block auto-opens
+	// while generating so progress is visible live; older ones stay collapsed.
+	let lastThinkingIndex = $derived.by(() => {
+		for (let i = events.length - 1; i >= 0; i--) {
+			if (events[i].author !== 'user' && hasThoughtContent(events[i])) return i;
+		}
+		return -1;
+	});
 </script>
 
 <div class="flex flex-col gap-6 p-4 pb-0">
 	{#each events as event, evIndex (event.id ?? evIndex)}
-		{#if hasDisplayableContent(event)}
+		{#if hasDisplayableContent(event) || hasThoughtContent(event)}
 			{@const isUser = event.author === 'user'}
 			{@const { artifacts: msgArtifacts, texts: msgTexts } = processEventContent(event.content)}
+			{@const thoughtText =
+				!isUser && hasThoughtContent(event) ? getThoughtText(event) : ''}
 
 			<div class="group/msg flex w-full {isUser ? 'justify-end' : 'justify-start'}">
 				<div class="flex max-w-[85%] flex-col gap-2 sm:max-w-[75%]">
+					<!-- Reasoning stream: visible while the model thinks, collapsed afterwards -->
+					{#if thoughtText}
+						{@const thinkingLive = isGenerating && evIndex === lastThinkingIndex}
+						<details open={thinkingLive} class="max-w-full">
+							<summary
+								class="cursor-pointer text-xs text-slate-400 select-none hover:text-slate-300"
+							>
+								{thinkingLive ? 'Thinking…' : 'Thought process'}
+							</summary>
+							<div
+								class="mt-1 max-h-48 overflow-y-auto rounded-lg bg-slate-800/70 px-3 py-2 text-xs whitespace-pre-wrap text-slate-300"
+							>
+								{thoughtText}
+							</div>
+						</details>
+					{/if}
 					<!-- Render Artifacts First -->
 					{#each msgArtifacts as p, artIndex (artIndex)}
 						{#if isImageArtifact(p.value)}

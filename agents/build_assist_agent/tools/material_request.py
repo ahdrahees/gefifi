@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Any, Literal, Optional, TypedDict
 
@@ -9,6 +8,8 @@ from google.adk.tools.tool_context import ToolContext
 from build_assist_agent.auth_types import AuthData
 from build_assist_agent.config import API_BASE_URL
 from build_assist_agent.tool_types import HTTPStatusErrorResponse
+
+from .artifact_utils import resolve_upload_filenames
 
 logger = logging.getLogger(__name__)
 
@@ -174,12 +175,21 @@ async def create_material_request(
 
         # upload attachments
         if attachment_list and len(attachment_list) > 0 and created_material_request:
-            loading_file_artifacts = [
-                tool_context.load_artifact(filename=filename)
-                for filename in attachment_list
-            ]
-            # Promise all to get all the files concurrently
-            file_artifacts = await asyncio.gather(*loading_file_artifacts)
+            file_artifacts, resolve_error = await resolve_upload_filenames(
+                tool_context,
+                attachment_list,
+                label="attachment filenames",
+            )
+            if resolve_error is not None:
+                # The request itself is already created server-side; report it
+                # as success but hand the model the real filenames so it can
+                # attach them with update_material_request_attachments.
+                return {
+                    "status": "success",
+                    "created_material_request": created_material_request,
+                    "message": "Material request created successfully, but attachments were not added. "
+                    + resolve_error["error_message"],
+                }
 
             attachments: list[tuple[str, bytes, str]] = [
                 (
@@ -188,11 +198,6 @@ async def create_material_request(
                     file.inline_data.mime_type,
                 )
                 for file in file_artifacts
-                if file
-                and file.inline_data
-                and file.inline_data.display_name
-                and file.inline_data.data
-                and file.inline_data.mime_type
             ]
             # Upload attachments
             _ = await upload_entity_attachments(
@@ -768,7 +773,7 @@ async def update_material_request_attachments(
 
     Args:
         url_or_path_of_attachments_to_remove (Optional[list[str]]): Pass list of strings contains url or path (`filePath` field of attachment object) of attachments file to remove from the request. Pass None for not removing existing file attachments.
-        filenames_of_attachments_to_add (Optional[list[str]]): Pass list of strings contains filenames of attachments to add to request. Pass None for not adding
+        filenames_of_attachments_to_add (Optional[list[str]]): Pass list of strings contains filenames of attachments to add to request. Pass None for not adding. Use the exact filenames of files uploaded in this chat session (the [Uploaded Artifact: "..."] names). If none of the names match, the tool returns the list of available uploaded filenames -- call again with one of those.
 
     Returns:
         dict: A dictionary containing the following:
@@ -790,9 +795,11 @@ async def update_material_request_attachments(
             url_or_path_of_attachments_to_remove is None
             and filenames_of_attachments_to_add is None
         ):
+            available = await tool_context.list_artifacts()
             return {
                 "status": "error",
-                "error_message": "Can not update the attachments of material request. Both arg for adding and removing is not passed or None",
+                "error_message": "Can not update the attachments of material request. Both arg for adding and removing is not passed or None. "
+                f"Files uploaded in this chat session: {available if available else 'none'}.",
             }
 
         if (
@@ -852,12 +859,17 @@ async def update_material_request_attachments(
 
         # Adding new attachments
         if filenames_of_attachments_to_add and len(filenames_of_attachments_to_add) > 0:
-            loading_file_artifacts = [
-                tool_context.load_artifact(filename=filename)
-                for filename in filenames_of_attachments_to_add
-            ]
-            # Promise all to get all the files concurrently
-            file_artifacts = await asyncio.gather(*loading_file_artifacts)
+            file_artifacts, resolve_error = await resolve_upload_filenames(
+                tool_context,
+                filenames_of_attachments_to_add,
+                label="attachment filenames",
+            )
+            if resolve_error is not None:
+                if url_or_path_of_attachments_to_remove:
+                    resolve_error["error_message"] += (
+                        " Note: the requested removals were still applied."
+                    )
+                return resolve_error
 
             attachments: list[tuple[str, bytes, str]] = [
                 (
@@ -866,11 +878,6 @@ async def update_material_request_attachments(
                     file.inline_data.mime_type,
                 )
                 for file in file_artifacts
-                if file
-                and file.inline_data
-                and file.inline_data.display_name
-                and file.inline_data.data
-                and file.inline_data.mime_type
             ]
             # Upload attachments
             _ = await upload_entity_attachments(
