@@ -4,6 +4,7 @@
 	import FileAttachment from '$lib/components/chat/FileAttachment.svelte';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import { buildChatDirectory, describeToolCall } from './toolLabels';
 
 	interface Props {
 		events: AgentEvent[];
@@ -181,25 +182,40 @@
 	interface ToolCallInfo {
 		callId: string | null;
 		name: string;
+		label: string;
 		argsText: string | null;
 	}
 
-	function getToolCalls(event: AgentEvent): ToolCallInfo[] {
+	function getToolCalls(
+		event: AgentEvent,
+		chatDirectory: Map<string, string[]>,
+		responsesByCallId: Map<string, { response: Record<string, unknown> }>
+	): ToolCallInfo[] {
 		if (!event.content?.parts) return [];
 		return event.content.parts
 			.filter((part) => part.functionCall != null)
 			.map((part) => {
 				const call = part.functionCall!;
+				const args =
+					call.args && typeof call.args === 'object'
+						? (call.args as Record<string, unknown>)
+						: null;
 				let argsText: string | null = null;
 				try {
-					argsText = call.args ? JSON.stringify(call.args) : null;
+					argsText = args ? JSON.stringify(args) : null;
 				} catch {
 					argsText = null;
 				}
 				if (argsText && argsText.length > 1000) {
 					argsText = argsText.slice(0, 1000) + '… (truncated)';
 				}
-				return { callId: call.id ?? null, name: call.name, argsText };
+				const response = (call.id && responsesByCallId.get(call.id)?.response) || null;
+				return {
+					callId: call.id ?? null,
+					name: call.name,
+					label: describeToolCall(call.name, args, response, chatDirectory),
+					argsText
+				};
 			});
 	}
 
@@ -223,18 +239,28 @@
 
 	// Index of functionResponse events by their call id, so each result
 	// renders under its tool call instead of as a separate chat bubble.
-	let toolResultsByCallId = $derived.by(() => {
-		const map = new Map<string, ToolResultInfo>();
+	let toolResponsesByCallId = $derived.by(() => {
+		const map = new Map<string, { response: Record<string, unknown> }>();
 		for (const evt of events) {
 			for (const part of evt.content?.parts ?? []) {
 				const fr = part.functionResponse;
 				if (fr?.id) {
-					map.set(fr.id, summarizeToolResult(fr.response ?? {}));
+					map.set(fr.id, { response: fr.response ?? {} });
 				}
 			}
 		}
 		return map;
 	});
+
+	let toolResultsByCallId = $derived.by(() => {
+		const map = new Map<string, ToolResultInfo>();
+		for (const [callId, { response }] of toolResponsesByCallId) {
+			map.set(callId, summarizeToolResult(response));
+		}
+		return map;
+	});
+
+	let chatDirectory = $derived.by(() => buildChatDirectory(events));
 
 	// Index of the latest event carrying thought content. Its block auto-opens
 	// while generating so progress is visible live; older ones stay collapsed.
@@ -253,7 +279,8 @@
 			{@const { artifacts: msgArtifacts, texts: msgTexts } = processEventContent(event.content)}
 			{@const thoughtText =
 				!isUser && hasThoughtContent(event) ? getThoughtText(event) : ''}
-			{@const toolCalls = !isUser ? getToolCalls(event) : []}
+			{@const toolCalls =
+				!isUser ? getToolCalls(event, chatDirectory, toolResponsesByCallId) : []}
 
 			<div class="group/msg flex w-full {isUser ? 'justify-end' : 'justify-start'}">
 				<div class="flex max-w-[85%] flex-col gap-2 sm:max-w-[75%]">
@@ -380,7 +407,7 @@
 										class="rounded-lg border border-slate-700/60 bg-slate-800/70 px-3 py-2 text-xs"
 									>
 										<div class="flex items-center gap-2">
-											<span class="font-mono break-all text-slate-200">{tc.name}</span>
+											<span class="break-all text-slate-100">{tc.label}</span>
 											{#if result?.status}
 												<span
 													class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
@@ -403,15 +430,25 @@
 												</span>
 											{/if}
 										</div>
-										{#if tc.argsText}
-											<pre
-												class="mt-1 max-h-32 overflow-auto rounded bg-slate-900/70 p-2 font-mono text-[11px] whitespace-pre-wrap text-slate-300"
-												>{tc.argsText}</pre
-											>
-										{/if}
 										{#if result?.summary}
 											<div class="mt-1 break-words text-slate-300">{result.summary}</div>
 										{/if}
+										<details>
+											<summary
+												class="mt-1 cursor-pointer text-[11px] text-slate-500 select-none hover:text-slate-300"
+											>
+												Details
+											</summary>
+											<div class="mt-1 font-mono text-[11px] break-all text-slate-500">
+												{tc.name}
+											</div>
+											{#if tc.argsText}
+												<pre
+													class="mt-1 max-h-32 overflow-auto rounded bg-slate-900/70 p-2 font-mono text-[11px] whitespace-pre-wrap text-slate-300"
+													>{tc.argsText}</pre
+												>
+											{/if}
+										</details>
 									</div>
 								{/each}
 							</div>
