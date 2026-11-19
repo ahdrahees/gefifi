@@ -227,13 +227,19 @@
 	function summarizeToolResult(response: Record<string, unknown>): ToolResultInfo {
 		const status =
 			typeof response.status === 'string' && response.status ? response.status : null;
-		const message =
+		let message =
 			(typeof response.error_message === 'string' && response.error_message) ||
 			(typeof response.message === 'string' && response.message) ||
 			null;
+		// A plain "...retrieved/updated successfully" says nothing the success
+		// badge doesn't already say — hide it to avoid stating success twice.
+		if (message && status === 'success' && /successfully\.?\s*$/i.test(message)) {
+			message = null;
+		}
 		return {
 			status,
-			summary: message && message.length > 300 ? message.slice(0, 300) + '… (truncated)' : message
+			summary:
+				message && message.length > 300 ? message.slice(0, 300) + '… (truncated)' : message
 		};
 	}
 
