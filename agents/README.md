@@ -441,3 +441,5 @@ For issues or questions:
 ---
 
 **Built with [Google ADK](https://developers.google.com/adk) and ❤️**
+
+<!-- CD check 2026-11-19: no functional change -->
