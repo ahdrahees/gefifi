@@ -169,6 +169,73 @@
 			.join('');
 	}
 
+	// Tool usage: model events carry completed functionCall parts (name + full
+	// args arrive with the final, non-partial event), and each tool execution
+	// echoes back as a separate functionResponse event whose id matches the
+	// call id. Surfacing both shows what the agent actually did.
+	function hasToolActivity(event: AgentEvent): boolean {
+		if (!event.content?.parts) return false;
+		return event.content.parts.some((part) => part.functionCall != null);
+	}
+
+	interface ToolCallInfo {
+		callId: string | null;
+		name: string;
+		argsText: string | null;
+	}
+
+	function getToolCalls(event: AgentEvent): ToolCallInfo[] {
+		if (!event.content?.parts) return [];
+		return event.content.parts
+			.filter((part) => part.functionCall != null)
+			.map((part) => {
+				const call = part.functionCall!;
+				let argsText: string | null = null;
+				try {
+					argsText = call.args ? JSON.stringify(call.args) : null;
+				} catch {
+					argsText = null;
+				}
+				if (argsText && argsText.length > 1000) {
+					argsText = argsText.slice(0, 1000) + '… (truncated)';
+				}
+				return { callId: call.id ?? null, name: call.name, argsText };
+			});
+	}
+
+	interface ToolResultInfo {
+		status: string | null;
+		summary: string | null;
+	}
+
+	function summarizeToolResult(response: Record<string, unknown>): ToolResultInfo {
+		const status =
+			typeof response.status === 'string' && response.status ? response.status : null;
+		const message =
+			(typeof response.error_message === 'string' && response.error_message) ||
+			(typeof response.message === 'string' && response.message) ||
+			null;
+		return {
+			status,
+			summary: message && message.length > 300 ? message.slice(0, 300) + '… (truncated)' : message
+		};
+	}
+
+	// Index of functionResponse events by their call id, so each result
+	// renders under its tool call instead of as a separate chat bubble.
+	let toolResultsByCallId = $derived.by(() => {
+		const map = new Map<string, ToolResultInfo>();
+		for (const evt of events) {
+			for (const part of evt.content?.parts ?? []) {
+				const fr = part.functionResponse;
+				if (fr?.id) {
+					map.set(fr.id, summarizeToolResult(fr.response ?? {}));
+				}
+			}
+		}
+		return map;
+	});
+
 	// Index of the latest event carrying thought content. Its block auto-opens
 	// while generating so progress is visible live; older ones stay collapsed.
 	let lastThinkingIndex = $derived.by(() => {
@@ -181,11 +248,12 @@
 
 <div class="flex flex-col gap-6 p-4 pb-0">
 	{#each events as event, evIndex (event.id ?? evIndex)}
-		{#if hasDisplayableContent(event) || hasThoughtContent(event)}
+		{#if hasDisplayableContent(event) || hasThoughtContent(event) || hasToolActivity(event)}
 			{@const isUser = event.author === 'user'}
 			{@const { artifacts: msgArtifacts, texts: msgTexts } = processEventContent(event.content)}
 			{@const thoughtText =
 				!isUser && hasThoughtContent(event) ? getThoughtText(event) : ''}
+			{@const toolCalls = !isUser ? getToolCalls(event) : []}
 
 			<div class="group/msg flex w-full {isUser ? 'justify-end' : 'justify-start'}">
 				<div class="flex max-w-[85%] flex-col gap-2 sm:max-w-[75%]">
@@ -296,6 +364,59 @@
 							</button>
 						</div>
 					{/each}
+
+					<!-- Tool activity: completed function calls with their results -->
+					{#if toolCalls.length > 0}
+						<details class="max-w-full">
+							<summary
+								class="cursor-pointer text-xs text-slate-400 select-none hover:text-slate-300"
+							>
+								Tool activity ({toolCalls.length})
+							</summary>
+							<div class="mt-1 flex flex-col gap-1.5">
+								{#each toolCalls as tc (tc.callId ?? tc.name)}
+									{@const result = tc.callId ? toolResultsByCallId.get(tc.callId) : undefined}
+									<div
+										class="rounded-lg border border-slate-700/60 bg-slate-800/70 px-3 py-2 text-xs"
+									>
+										<div class="flex items-center gap-2">
+											<span class="font-mono break-all text-slate-200">{tc.name}</span>
+											{#if result?.status}
+												<span
+													class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+													class:bg-emerald-900={result.status === 'success'}
+													class:text-emerald-300={result.status === 'success'}
+													class:bg-red-900={result.status === 'error'}
+													class:text-red-300={result.status === 'error'}
+													class:bg-slate-700={result.status !== 'success' &&
+														result.status !== 'error'}
+													class:text-slate-300={result.status !== 'success' &&
+														result.status !== 'error'}
+												>
+													{result.status}
+												</span>
+											{:else}
+												<span
+													class="shrink-0 rounded-full bg-slate-700 px-2 py-0.5 text-[10px] font-medium text-slate-300"
+												>
+													pending
+												</span>
+											{/if}
+										</div>
+										{#if tc.argsText}
+											<pre
+												class="mt-1 max-h-32 overflow-auto rounded bg-slate-900/70 p-2 font-mono text-[11px] whitespace-pre-wrap text-slate-300"
+												>{tc.argsText}</pre
+											>
+										{/if}
+										{#if result?.summary}
+											<div class="mt-1 break-words text-slate-300">{result.summary}</div>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						</details>
+					{/if}
 				</div>
 			</div>
 		{/if}
