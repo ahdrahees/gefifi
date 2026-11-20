@@ -1,8 +1,6 @@
 <script lang="ts">
 	import type { AgentApproval, ArtifactPart } from '$lib/types/agent-api';
 	import apiClient from '$lib/api';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 
 	interface Props {
@@ -189,7 +187,7 @@
 					<button
 						type="button"
 						class="text-xs font-medium text-emerald-300 underline"
-						onclick={() => goto(resolve(doneHref as any))}
+						onclick={() => (window.location.href = doneHref)}
 					>
 						Open
 					</button>
