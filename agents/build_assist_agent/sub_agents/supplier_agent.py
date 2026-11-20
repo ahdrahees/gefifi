@@ -3,6 +3,7 @@ from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools.load_artifacts_tool import load_artifacts_tool
 
+from build_assist_agent.approval import APPROVAL_INSTRUCTION
 from build_assist_agent.config import MODEL_ENV_PASSED, LITELLM_EXTRA_HEADERS
 from build_assist_agent.tools.find_professionals import get_my_profile, update_my_profile
 from build_assist_agent.tools.chat import (
@@ -29,7 +30,8 @@ supplier_agent = Agent(
         "4. Contract Negotiations: Use `request_contract_revision` when the supplier requests edits or additions to material contract terms.\n"
         "5. Profile Management: Use `get_my_profile` and `update_my_profile` to view and update supplier profile details.\n"
         "6. ID Abstraction (CRITICAL): Never show raw UUIDs (e.g., chat IDs, request IDs, participant user IDs) to the user. Always describe requests and conversations using their title and customer name. Match user references to the correct ID internally.\n"
-        "7. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs."
+        "7. Be friendly and professional, and present responses in a clean, human-readable format rather than raw JSON or API outputs.\n\n"
+        + APPROVAL_INSTRUCTION
     ),
     tools=[
         load_artifacts_tool,

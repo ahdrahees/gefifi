@@ -1,7 +1,14 @@
 <script lang="ts">
-	import type { AgentEvent, AgentContent, ArtifactPart } from '$lib/types/agent-api';
+	import type {
+		AgentEvent,
+		AgentContent,
+		AgentContentPart,
+		ArtifactPart,
+		AgentApproval
+	} from '$lib/types/agent-api';
 	import ImageModal from '$lib/components/chat/ImageModal.svelte';
 	import FileAttachment from '$lib/components/chat/FileAttachment.svelte';
+	import AgentApprovalCard from './AgentApprovalCard.svelte';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { buildChatDirectory, describeToolCall } from './toolLabels';
@@ -116,9 +123,17 @@
 		}
 	}
 
+	function getApproval(part: AgentContentPart): AgentApproval | null {
+		const response = part.functionResponse?.response;
+		const candidate =
+			response?.approval ?? (response as Record<string, any> | undefined)?.result?.approval;
+		return candidate && typeof candidate === 'object' ? (candidate as AgentApproval) : null;
+	}
+
 	function processEventContent(content: AgentContent | null | undefined) {
 		const allArtifacts: Array<{ value: string; artifact: ArtifactPart }> = [];
 		const allText: string[] = [];
+		const allApprovals: AgentApproval[] = [];
 
 		if (content?.parts) {
 			content.parts.forEach((part) => {
@@ -126,6 +141,12 @@
 				if (part.thought) {
 					return;
 				}
+
+				const approval = getApproval(part);
+				if (approval) {
+					allApprovals.push(approval);
+				}
+
 				// Only process text parts (skip functionCall, functionResponse, etc.)
 				if (part.text) {
 					const parsed = parseMessageParts(part.text);
@@ -140,14 +161,16 @@
 				}
 			});
 		}
-		return { artifacts: allArtifacts, texts: allText };
+		return { artifacts: allArtifacts, texts: allText, approvals: allApprovals };
 	}
 
-	// Filter events that have displayable content (text)
+	// Filter events that have displayable content (text or an approval card)
 	function hasDisplayableContent(event: AgentEvent): boolean {
 		if (!event.content?.parts) return false;
 		return event.content.parts.some(
-			(part) => part.text !== null && part.text !== undefined && !part.thought
+			(part) =>
+				(!part.thought && part.text !== null && part.text !== undefined) ||
+				getApproval(part) !== null
 		);
 	}
 
@@ -282,7 +305,7 @@
 	{#each events as event, evIndex (event.id ?? evIndex)}
 		{#if hasDisplayableContent(event) || hasThoughtContent(event) || hasToolActivity(event)}
 			{@const isUser = event.author === 'user'}
-			{@const { artifacts: msgArtifacts, texts: msgTexts } = processEventContent(event.content)}
+			{@const { artifacts: msgArtifacts, texts: msgTexts, approvals: msgApprovals } = processEventContent(event.content)}
 			{@const thoughtText =
 				!isUser && hasThoughtContent(event) ? getThoughtText(event) : ''}
 			{@const toolCalls =
@@ -306,6 +329,12 @@
 							</div>
 						</details>
 					{/if}
+
+					<!-- Approval cards from gated agent tools -->
+					{#each msgApprovals as approval (approval.id)}
+						<AgentApprovalCard {approval} {artifacts} />
+					{/each}
+
 					<!-- Render Artifacts First -->
 					{#each msgArtifacts as p, artIndex (artIndex)}
 						{#if isImageArtifact(p.value)}

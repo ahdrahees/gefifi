@@ -18,6 +18,8 @@ from google.adk.tools.tool_context import ToolContext
 from google.adk.events.event import Event
 from google.genai import types
 
+from build_assist_agent.approval import build_approval
+
 # Import tool guardrails
 from build_assist_agent.tools.expert_request import (
     create_expert_request_tool_guardrail,
@@ -242,7 +244,14 @@ async def before_tool_callback(
     available_files = await tool_context.list_artifacts()
     logger.debug("before_tool_callback: available files: %s", available_files)
 
-    return await run_tool_specific_guardrail(tool, args, tool_context)
+    # Validate first, then return a human approval card for high-risk writes.
+    # The returned dict short-circuits the tool; ADK sends it back as the tool
+    # response, which the frontend renders as a Confirm card.
+    guardrail_result = await run_tool_specific_guardrail(tool, args, tool_context)
+    if guardrail_result is not None:
+        return guardrail_result
+
+    return build_approval(tool.name, args, tool_context)
 
 
 async def run_tool_specific_guardrail(

@@ -271,6 +271,22 @@ export interface FunctionResponsePart {
 	fileData?: FunctionResponseFileData | null;
 }
 
+/**
+ * Human approval card returned by a gated agent tool.
+ * The agent never executes the action; the card calls the existing REST route
+ * after the human presses Confirm.
+ */
+export interface AgentApproval {
+	id: string;
+	created_at?: string;
+	action: 'work_request' | 'material_request' | 'contract' | 'chat_message';
+	title: string;
+	summary: string[];
+	payload: Record<string, unknown>;
+	attachments?: string[];
+	payload_hash: string;
+}
+
 export interface FunctionResponseBlob {
 	mimeType: string;
 	data: string;
