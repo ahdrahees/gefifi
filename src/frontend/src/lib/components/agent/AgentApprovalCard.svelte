@@ -19,7 +19,7 @@
 	const storageKey = () => `gefifi:approval:${approval.id}`;
 
 	onMount(() => {
-		const saved = localStorage.getItem(storageKey());
+		const saved = window.localStorage.getItem(storageKey());
 		if (!saved) return;
 		try {
 			const parsed = JSON.parse(saved) as { href?: string; label?: string };
@@ -36,7 +36,7 @@
 		doneLabel = label;
 		done = true;
 		try {
-			localStorage.setItem(storageKey(), JSON.stringify({ href, label }));
+			window.localStorage.setItem(storageKey(), JSON.stringify({ href, label }));
 		} catch {
 			// Local storage can be unavailable; the server action already succeeded.
 		}

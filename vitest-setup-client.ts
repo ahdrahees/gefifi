@@ -31,4 +31,16 @@ Object.defineProperty(window, 'IntersectionObserver', {
 	value: MockIntersectionObserver
 });
 
+// jsdom can run without a localStorage backing file; keep a small in-memory one.
+const localStore = new Map<string, string>();
+Object.defineProperty(window, 'localStorage', {
+	writable: true,
+	value: {
+		getItem: (key: string) => localStore.get(key) ?? null,
+		setItem: (key: string, value: string) => localStore.set(key, String(value)),
+		removeItem: (key: string) => localStore.delete(key),
+		clear: () => localStore.clear()
+	}
+});
+
 // add more mocks here if you need them
