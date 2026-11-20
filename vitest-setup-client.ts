@@ -15,4 +15,20 @@ Object.defineProperty(window, 'matchMedia', {
 	}))
 });
 
+// jsdom does not implement IntersectionObserver; the landing page uses it.
+class MockIntersectionObserver {
+	root = null;
+	rootMargin = '';
+	thresholds: number[] = [];
+	observe = vi.fn();
+	unobserve = vi.fn();
+	disconnect = vi.fn();
+	takeRecords = vi.fn(() => []);
+}
+
+Object.defineProperty(window, 'IntersectionObserver', {
+	writable: true,
+	value: MockIntersectionObserver
+});
+
 // add more mocks here if you need them

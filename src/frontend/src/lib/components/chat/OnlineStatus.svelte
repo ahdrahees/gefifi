@@ -1,6 +1,7 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/OnlineStatus.svelte -->
 <script lang="ts">
 	import { realtimeChatService } from '$lib/services/realtimeChat';
+	import type { Unsubscribe } from 'firebase/firestore';
 
 	interface Props {
 		userId: string;
