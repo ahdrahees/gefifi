@@ -125,8 +125,9 @@
 
 	function getApproval(part: AgentContentPart): AgentApproval | null {
 		const response = part.functionResponse?.response;
-		const candidate =
-			response?.approval ?? (response as Record<string, any> | undefined)?.result?.approval;
+		const wrapped = response as Record<string, unknown> | undefined;
+		const result = wrapped?.result as Record<string, unknown> | undefined;
+		const candidate = response?.approval ?? result?.approval;
 		return candidate && typeof candidate === 'object' ? (candidate as AgentApproval) : null;
 	}
 
@@ -248,8 +249,7 @@
 	}
 
 	function summarizeToolResult(response: Record<string, unknown>): ToolResultInfo {
-		const status =
-			typeof response.status === 'string' && response.status ? response.status : null;
+		const status = typeof response.status === 'string' && response.status ? response.status : null;
 		let message =
 			(typeof response.error_message === 'string' && response.error_message) ||
 			(typeof response.message === 'string' && response.message) ||
@@ -261,8 +261,7 @@
 		}
 		return {
 			status,
-			summary:
-				message && message.length > 300 ? message.slice(0, 300) + '… (truncated)' : message
+			summary: message && message.length > 300 ? message.slice(0, 300) + '… (truncated)' : message
 		};
 	}
 
@@ -305,11 +304,13 @@
 	{#each events as event, evIndex (event.id ?? evIndex)}
 		{#if hasDisplayableContent(event) || hasThoughtContent(event) || hasToolActivity(event)}
 			{@const isUser = event.author === 'user'}
-			{@const { artifacts: msgArtifacts, texts: msgTexts, approvals: msgApprovals } = processEventContent(event.content)}
-			{@const thoughtText =
-				!isUser && hasThoughtContent(event) ? getThoughtText(event) : ''}
-			{@const toolCalls =
-				!isUser ? getToolCalls(event, chatDirectory, toolResponsesByCallId) : []}
+			{@const {
+				artifacts: msgArtifacts,
+				texts: msgTexts,
+				approvals: msgApprovals
+			} = processEventContent(event.content)}
+			{@const thoughtText = !isUser && hasThoughtContent(event) ? getThoughtText(event) : ''}
+			{@const toolCalls = !isUser ? getToolCalls(event, chatDirectory, toolResponsesByCallId) : []}
 
 			<div class="group/msg flex w-full {isUser ? 'justify-end' : 'justify-start'}">
 				<div class="flex max-w-[85%] flex-col gap-2 sm:max-w-[75%]">
@@ -372,6 +373,7 @@
 								class:text-slate-100={!isUser}
 								class:rounded-bl-none={!isUser}
 							>
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized by DOMPurify in renderMarkdown -->
 								{@html renderMarkdown(textPart)}
 								{#if !isUser && isGenerating && evIndex === events.length - 1 && textIndex === msgTexts.length - 1}
 									<span
@@ -479,9 +481,7 @@
 											</div>
 											{#if tc.argsText}
 												<pre
-													class="mt-1 max-h-32 overflow-auto rounded bg-slate-900/70 p-2 font-mono text-[11px] whitespace-pre-wrap text-slate-300"
-													>{tc.argsText}</pre
-												>
+													class="mt-1 max-h-32 overflow-auto rounded bg-slate-900/70 p-2 font-mono text-[11px] whitespace-pre-wrap text-slate-300">{tc.argsText}</pre>
 											{/if}
 										</details>
 									</div>

@@ -89,11 +89,14 @@
 		return paths;
 	}
 
+	type WorkRequestPayload = Parameters<typeof apiClient.createWorkRequest>[0];
+	type MaterialRequestPayload = Parameters<typeof apiClient.createMaterialRequest>[0];
+	type ContractPayload = Parameters<typeof apiClient.createContract>[0];
+
 	async function confirm() {
 		submitting = true;
 		error = '';
 		try {
-			const payload = { ...approval.payload } as Record<string, any>;
 			const files = attachmentFiles();
 			const expectedAttachments = approval.attachments?.length ?? 0;
 			if (files.length < expectedAttachments) {
@@ -103,11 +106,15 @@
 			}
 
 			if (approval.action === 'work_request') {
-				payload.images = await uploadWorkImages(files);
-				const created = await apiClient.createWorkRequest(payload as any);
+				const payload = {
+					...approval.payload,
+					images: await uploadWorkImages(files)
+				} as unknown as WorkRequestPayload;
+				const created = await apiClient.createWorkRequest(payload);
 				markDone(`/my-requests/${created.id}`, 'Request created');
 			} else if (approval.action === 'material_request') {
-				const created = await apiClient.createMaterialRequest(payload as any);
+				const payload = { ...approval.payload } as unknown as MaterialRequestPayload;
+				const created = await apiClient.createMaterialRequest(payload);
 				markDone(`/material-requests/${created.id}`, 'Request created');
 				if (files.length > 0) {
 					try {
@@ -119,13 +126,15 @@
 					}
 				}
 			} else if (approval.action === 'contract') {
-				const created = await apiClient.createContract(payload as any);
+				const payload = { ...approval.payload } as unknown as ContractPayload;
+				const created = await apiClient.createContract(payload);
 				markDone(`/contracts/${created.id}`, 'Contract drafted');
 			} else {
-				await apiClient.sendChatMessage(String(payload.chat_id), {
-					content: String(payload.content)
+				const chatId = String(approval.payload.chat_id ?? '');
+				await apiClient.sendChatMessage(chatId, {
+					content: String(approval.payload.content ?? '')
 				});
-				markDone(`/chat/${payload.chat_id}`, 'Message sent');
+				markDone(`/chat/${chatId}`, 'Message sent');
 			}
 			done = true;
 		} catch (cause) {
@@ -136,9 +145,13 @@
 	}
 </script>
 
-<div class="w-full max-w-xl overflow-hidden rounded-xl border border-emerald-500/25 bg-slate-800/90 shadow-lg">
+<div
+	class="w-full max-w-xl overflow-hidden rounded-xl border border-emerald-500/25 bg-slate-800/90 shadow-lg"
+>
 	<div class="flex items-center gap-2 border-b border-slate-700/60 px-4 py-3">
-		<span class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-xs text-emerald-300">
+		<span
+			class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-xs text-emerald-300"
+		>
 			✓
 		</span>
 		<div class="min-w-0">
@@ -160,13 +173,13 @@
 		{/if}
 
 		{#if preview}
-			<p class="line-clamp-3 whitespace-pre-wrap text-xs text-slate-400">{preview}</p>
+			<p class="line-clamp-3 text-xs whitespace-pre-wrap text-slate-400">{preview}</p>
 		{/if}
 
 		{#if approval.attachments && approval.attachments.length > 0}
 			<p class="text-xs text-slate-400">
-				{approval.attachments.length} attachment{approval.attachments.length === 1 ? '' : 's'} from
-				the chat will be attached.
+				{approval.attachments.length} attachment{approval.attachments.length === 1 ? '' : 's'} from the
+				chat will be attached.
 			</p>
 		{/if}
 
@@ -181,7 +194,9 @@
 		{/if}
 
 		{#if done}
-			<div class="flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
+			<div
+				class="flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2"
+			>
 				<p class="text-sm text-emerald-200">{doneLabel}</p>
 				{#if doneHref}
 					<button

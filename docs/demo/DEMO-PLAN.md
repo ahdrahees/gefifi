@@ -24,12 +24,12 @@ No Postgres, no Cloudflare Workers, no React rewrite, no new auth, no escrow, no
 
 ## 5. Stages
 
-| Weeks | Deliverable | Evidence |
-|---|---|---|
-| 1–2 | Demo script locked: 3 contractors named, 1 project each, photos/docs sample, done-criteria per demo | One-page script per contractor committed here |
-| 3–6 | Agent-first create: chat drafts `expert_request`/`material_request` from text + photos; agent returns an approval card; human confirms and the existing REST route creates it | Draft → approval card → create works on staging with existing routes; no direct DB writes; agent cannot create without Confirm |
-| 7–9 | Quote compare + contract draft: agent summarizes quotes, human accepts, contract draft via existing `contracts.ts` and an approval card | 2 quotes → compare → draft on staging; auth/role checks pass |
-| 10–12 | Demo hardening: login/roles, Firestore rules, seed/reset script, offline fallback, dry run | 3 dry runs recorded; reset works; no PII in logs |
+| Weeks | Deliverable                                                                                                                                                                   | Evidence                                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1–2   | Demo script locked: 3 contractors named, 1 project each, photos/docs sample, done-criteria per demo                                                                           | One-page script per contractor committed here                                                                                  |
+| 3–6   | Agent-first create: chat drafts `expert_request`/`material_request` from text + photos; agent returns an approval card; human confirms and the existing REST route creates it | Draft → approval card → create works on staging with existing routes; no direct DB writes; agent cannot create without Confirm |
+| 7–9   | Quote compare + contract draft: agent summarizes quotes, human accepts, contract draft via existing `contracts.ts` and an approval card                                       | 2 quotes → compare → draft on staging; auth/role checks pass                                                                   |
+| 10–12 | Demo hardening: login/roles, Firestore rules, seed/reset script, offline fallback, dry run                                                                                    | 3 dry runs recorded; reset works; no PII in logs                                                                               |
 
 ## 6. Agent approval contract
 
