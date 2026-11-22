@@ -74,6 +74,16 @@ Manual demo check:
 5. Press Confirm and verify the request exists with both photos.
 6. Ask the agent to message a provider; verify the card says “Send message” and nothing is sent until pressed.
 
+### Quote acceptance verification
+
+**Prerequisite:** one open request with two formal quote records from two expert accounts. Production currently has no formal quote documents, so use staging/emulator or a dedicated test expert.
+
+1. Ask the agent to compare the quotes.
+2. Verify the card shows quote title, provider, and amount.
+3. Press Accept.
+4. Verify one quote is accepted, the others are rejected, and the request is contracted.
+5. Do not claim atomicity: the V2 route performs these updates sequentially.
+
 Implementation map:
 
 - Gate: `agents/build_assist_agent/approval.py`, `before_tool_callback` in `agents/build_assist_agent/agent.py`.
