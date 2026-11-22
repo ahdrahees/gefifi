@@ -1,6 +1,7 @@
 <!-- gefifi-2/src/frontend/src/routes/(app)/contracts/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	import { authStore, type AuthUser } from '$lib/stores/auth';
 	import { API_BASE_URL } from '$lib/config';
@@ -253,8 +254,10 @@
 		});
 	}
 
-	function getContractTypeLabel(contractType: string) {
-		return contractType === 'expert_contract' ? 'Expert' : 'Material';
+	function getContractTypeLabel(contract: EnhancedContract) {
+		// Older records can carry the wrong stored contractType. The linked
+		// request is the source of truth for display and filtering.
+		return contract.workRequestId ? 'Expert' : 'Material';
 	}
 
 	function applyFiltersAndReturn(
@@ -284,9 +287,12 @@
 			filtered = filtered.filter((contract) => contract.status === status);
 		}
 
-		// Apply contract type filter
+		// Apply contract type filter. Derive from the linked request so legacy
+		// records with a stale contractType still filter correctly.
 		if (type !== 'all') {
-			filtered = filtered.filter((contract) => contract.contractType === type);
+			filtered = filtered.filter((contract) =>
+				type === 'expert_contract' ? !!contract.workRequestId : !contract.workRequestId
+			);
 		}
 
 		// Apply sorting
@@ -486,7 +492,7 @@
 				<span>
 					Showing {filteredContracts.length} of {totalContracts} contracts
 				</span>
-				{#if searchQuery || statusFilter !== 'all' || contractTypeFilter !== 'all' || sortBy !== 'newest'}
+				{#if searchQuery || statusFilter !== 'all' || contractTypeFilter !== 'all'}
 					<span class="text-amber-400">Filters applied</span>
 				{/if}
 			</div>
@@ -581,9 +587,21 @@
 	{:else}
 		<div class="space-y-4">
 			{#each filteredContracts as contract (contract.id)}
-				<a
-					href={`/contracts/${contract.id}`}
-					class="block rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm transition-all duration-200 hover:-translate-y-1 hover:bg-slate-700/50 hover:shadow-2xl focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
+				<div
+					role="link"
+					tabindex="0"
+					onclick={(event) => {
+						// Ignore clicks on the nested Request button.
+						if ((event.target as HTMLElement).closest('button')) return;
+						goto(`/contracts/${contract.id}`);
+					}}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' || event.key === ' ') {
+							event.preventDefault();
+							goto(`/contracts/${contract.id}`);
+						}
+					}}
+					class="block cursor-pointer rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm transition-all duration-200 hover:-translate-y-1 hover:bg-slate-700/50 hover:shadow-2xl focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
 				>
 					<div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 						<!-- Left: Main Info -->
@@ -603,7 +621,7 @@
 									<span
 										class="rounded-full border border-slate-500/50 bg-slate-600/50 px-3 py-1 text-xs font-medium text-slate-300"
 									>
-										{getContractTypeLabel(contract.contractType)}
+										{getContractTypeLabel(contract)}
 									</span>
 								</div>
 							</div>
@@ -712,7 +730,7 @@
 							</div>
 						</div>
 					</div>
-				</a>
+				</div>
 			{/each}
 		</div>
 	{/if}

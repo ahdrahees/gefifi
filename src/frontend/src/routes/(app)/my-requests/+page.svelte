@@ -310,5 +310,6 @@
 		{errorMessage}
 		onStatusUpdate={(detail) => handleStatusUpdate(detail.requestId, detail.newStatus)}
 		onRefresh={fetchRequests}
+		hasActiveFilters={searchQuery.trim().length > 0 || requestTypeFilter !== 'all'}
 	/>
 </div>

@@ -97,6 +97,26 @@
 		}
 	}
 
+	// A user can have several chats with the same counterparty. Prefer the
+	// conversation attached to this request, then the most recent fallback.
+	function pickChatForUser(chats: Chat[], userId: string): Chat | undefined {
+		if (!request || !currentUser) return undefined;
+		const candidates = chats.filter(
+			(chat) => chat.participants.includes(userId) && chat.participants.includes(currentUser!.id)
+		);
+		const requestChat = candidates.find((chat) =>
+			requestType === 'work'
+				? chat.workRequestId === request!.id
+				: chat.materialRequestId === request!.id
+		);
+		return (
+			requestChat ??
+			candidates.sort(
+				(a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+			)[0]
+		);
+	}
+
 	async function fetchChatInfo() {
 		if (!request || !currentUser) return;
 
@@ -105,17 +125,11 @@
 
 			// Find chat based on contract or interested users
 			if (contractInfo) {
-				// If there's a contract, find chat with the other party
 				const otherPartyId =
 					contractInfo.customerId === currentUser.id
 						? contractInfo.expertSupplierId
 						: contractInfo.customerId;
-
-				const relatedChat = chats.find(
-					(chat: Chat) =>
-						chat.participants.includes(otherPartyId) && chat.participants.includes(currentUser!.id)
-				);
-				chatId = relatedChat?.id || null;
+				chatId = pickChatForUser(chats, otherPartyId)?.id || null;
 			} else if (currentUser.userType === 'customer') {
 				// For customers, find chat with any interested user
 				const interestedUsers =
@@ -130,10 +144,7 @@
 							];
 
 				for (const userId of interestedUsers) {
-					const relatedChat = chats.find(
-						(chat: Chat) =>
-							chat.participants.includes(userId) && chat.participants.includes(currentUser!.id)
-					);
+					const relatedChat = pickChatForUser(chats, userId);
 					if (relatedChat) {
 						chatId = relatedChat.id;
 						break;
@@ -141,12 +152,7 @@
 				}
 			} else {
 				// For experts/suppliers, find chat with customer
-				const relatedChat = chats.find(
-					(chat: Chat) =>
-						chat.participants.includes(request!.customerId) &&
-						chat.participants.includes(currentUser!.id)
-				);
-				chatId = relatedChat?.id || null;
+				chatId = pickChatForUser(chats, request.customerId)?.id || null;
 			}
 		} catch (error) {
 			console.error('Failed to fetch chat info:', error);
@@ -160,11 +166,15 @@
 			const chats = await apiClient.getUserChats();
 			const newChatMap = new Map<string, string>();
 
+			const counterpartIds = new Set<string>();
 			chats.forEach((chat: Chat) => {
-				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
-				if (otherParticipant) {
-					newChatMap.set(otherParticipant, chat.id);
-				}
+				chat.participants
+					.filter((participant) => participant !== currentUser?.id)
+					.forEach((participant) => counterpartIds.add(participant));
+			});
+			counterpartIds.forEach((participant) => {
+				const chat = pickChatForUser(chats, participant);
+				if (chat) newChatMap.set(participant, chat.id);
 			});
 
 			chatMap = newChatMap;
@@ -186,21 +196,38 @@
 	}
 
 	async function handleStatusUpdate(newStatus: string) {
-		if (!request || !requestType) return;
+		const currentRequest = request;
+		const currentType = requestType;
+		if (!currentRequest || !currentType) return;
+
+		const requestId = currentRequest.id;
+		const previousRequest = currentRequest;
+		// Optimistically update local UI. Firestore reads can lag immediately
+		// after a write, which previously left the badge/select on the old value.
+		request = {
+			...currentRequest,
+			status: newStatus,
+			updatedAt: new Date().toISOString()
+		} as typeof currentRequest;
 
 		try {
 			// Update status based on request type
-			if (requestType === 'work') {
-				await apiClient.updateWorkRequestStatus(request.id, newStatus);
+			if (currentType === 'work') {
+				await apiClient.updateWorkRequestStatus(requestId, newStatus);
 			} else {
-				await apiClient.updateMaterialRequestStatus(request.id, newStatus);
+				await apiClient.updateMaterialRequestStatus(requestId, newStatus);
 			}
 
-			// Refresh request details
-			await fetchRequestDetails(request.id);
+			// Refresh request details. Keep the optimistic value if a lagging
+			// replica returns the previous status.
+			await fetchRequestDetails(requestId);
+			if (request && request.status !== newStatus) {
+				request = { ...request, status: newStatus } as typeof request;
+			}
 		} catch (error: unknown) {
+			request = previousRequest;
 			console.error('Failed to update status:', error);
-			// The error will be handled by the RequestDetailActions component
+			throw error;
 		}
 	}
 

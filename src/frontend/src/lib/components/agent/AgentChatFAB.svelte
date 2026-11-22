@@ -1,10 +1,14 @@
 <!-- src/frontend/src/lib/components/agent/AgentChatFAB.svelte -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { inlineAgentState } from '$lib/states/inlineAgent.svelte';
 	import AgentChatPanel from './AgentChatPanel.svelte';
 
 	let isOpen = $derived(inlineAgentState.isModalOpen);
+	// The chat composer owns the bottom-right corner. Keep the assistant trigger
+	// above it so it cannot cover the send / record button.
+	let isChatConversation = $derived(page.url.pathname.startsWith('/chat/'));
 	let clickOutsideHandler: ((e: MouseEvent) => void) | null = null;
 	let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 	let modalElement: HTMLDivElement | undefined = $state();
@@ -51,7 +55,9 @@
 	<button
 		id="agent-fab-trigger"
 		onclick={toggleModal}
-		class="fixed right-6 bottom-6 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow-2xl transition-all duration-300 hover:scale-110 hover:bg-emerald-400 active:scale-95 focus:ring-4 focus:ring-emerald-500/30 focus:outline-none"
+		class="fixed right-6 {isChatConversation
+			? 'bottom-24'
+			: 'bottom-6'} flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow-2xl transition-all duration-300 hover:scale-110 hover:bg-emerald-400 active:scale-95 focus:ring-4 focus:ring-emerald-500/30 focus:outline-none"
 		aria-label={isOpen ? 'Close Assistant' : 'Open Assistant'}
 	>
 		{#if isOpen}

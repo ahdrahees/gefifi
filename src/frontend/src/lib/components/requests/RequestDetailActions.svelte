@@ -9,7 +9,7 @@
 		contractInfo?: Contract;
 		chatId?: string | null;
 		canEdit?: boolean;
-		onStatusUpdate?: (status: string) => void;
+		onStatusUpdate?: (status: string) => void | Promise<void>;
 		onEdit?: () => void;
 	}
 
@@ -28,6 +28,8 @@
 	let isUpdatingStatus = $state(false);
 	let selectedStatus = $state(request.status);
 	let statusUpdateMessage: { type: 'success' | 'error'; text: string } | null = $state(null);
+
+
 
 	function getStatusOptions(currentStatus: string, userType?: string) {
 		const options: { value: string; label: string }[] = [];
@@ -118,7 +120,10 @@
 		statusUpdateMessage = null;
 
 		try {
-			onStatusUpdate?.(selectedStatus);
+			// Wait for the parent to persist and refresh the request before
+			// claiming success. Otherwise the badge and select show stale data.
+			await onStatusUpdate?.(selectedStatus);
+			selectedStatus = request.status;
 			statusUpdateMessage = { type: 'success', text: 'Status updated successfully!' };
 		} catch (error: unknown) {
 			statusUpdateMessage = {
@@ -330,9 +335,10 @@
 	{/if}
 
 	<!-- Quick Actions -->
-	<section
-		class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
-	>
+	{#if contractInfo || chatId || canEdit || (isCustomer && request.status === 'open')}
+		<section
+			class="rounded-2xl border border-slate-600/30 bg-slate-800/40 p-6 shadow-xl backdrop-blur-sm"
+		>
 		<div class="mb-4 flex items-center gap-3">
 			<div class="rounded-lg bg-sky-500/20 p-2">
 				<svg class="h-5 w-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -422,7 +428,8 @@
 				</a>
 			{/if}
 		</div>
-	</section>
+		</section>
+	{/if}
 
 	<!-- Help Section -->
 	<section

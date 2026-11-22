@@ -25,19 +25,22 @@
 	let fileInputKey = $state(Date.now()); // Used to reset file input
 
 	let token: string | null = null;
+	let userType: string | null = null;
 	authStore.subscribe((auth) => {
 		token = auth.token;
+		userType = auth.user?.userType ?? null;
 	});
 
 	// Ensure token is available before allowing interaction, or redirect if not logged in
 	// This page should be under an auth guard already via layout, but good practice
 	onMount(() => {
 		if (!token) {
-			// User might have landed here directly or token expired without layout catching it.
-			// The root layout should handle redirects, but as a fallback:
-			// goto('/auth/login', { replaceState: true });
-			// For now, we assume layout handles it, but API calls will fail if no token.
-			console.warn('Create Work Request page: Auth token not available on mount.');
+			// The root layout normally handles this; keep a safe fallback.
+			goto('/auth/login', { replaceState: true });
+			return;
+		}
+		if (userType && userType !== 'customer') {
+			goto('/home', { replaceState: true });
 		}
 	});
 
@@ -49,6 +52,9 @@
 		'Plumbing',
 		'Electrical',
 		'Painting',
+		'Flooring',
+		'Roofing',
+		'HVAC',
 		'Masonry',
 		'Carpentry',
 		'Interior Design',

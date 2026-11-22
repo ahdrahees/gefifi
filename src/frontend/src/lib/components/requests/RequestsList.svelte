@@ -11,10 +11,18 @@
 		errorMessage: string;
 		onStatusUpdate?: (detail: any) => void;
 		onRefresh?: () => void;
+		hasActiveFilters?: boolean;
 	}
 
-	let { requests, currentUser, isLoading, errorMessage, onStatusUpdate, onRefresh }: Props =
-		$props();
+	let {
+		requests,
+		currentUser,
+		isLoading,
+		errorMessage,
+		onStatusUpdate,
+		onRefresh,
+		hasActiveFilters = false
+	}: Props = $props();
 
 	function handleRefresh() {
 		onRefresh?.();
@@ -88,7 +96,9 @@
 			</div>
 			<h2 class="mb-3 text-xl font-bold text-sky-400">No Requests Found</h2>
 			<p class="text-slate-300">
-				{#if currentUser?.userType === 'customer'}
+				{#if hasActiveFilters}
+					No requests match your search and filters.
+				{:else if currentUser?.userType === 'customer'}
 					You haven't created any requests in this category yet.
 				{:else}
 					No requests match your current filters.

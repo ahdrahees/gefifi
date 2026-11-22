@@ -189,23 +189,6 @@
 					</button>
 				{/if}
 
-				<!-- More Actions Dropdown (Future Enhancement) -->
-				<div class="relative">
-					<button
-						class="inline-flex items-center gap-2 rounded-lg border border-slate-600/50 bg-slate-700/40 px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-slate-600/40"
-						aria-label="More actions"
-					>
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-							/>
-						</svg>
-						<span class="hidden sm:inline">More</span>
-					</button>
-				</div>
 			</div>
 		</div>
 	</div>

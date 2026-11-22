@@ -13,6 +13,7 @@
 		onQuoteView?: (detail: { quoteId: string }) => void;
 		onQuoteAccept?: (detail: { quoteId: string }) => void;
 		onQuoteReject?: (detail: { quoteId: string }) => void;
+		canManage?: boolean;
 	}
 
 	let {
@@ -21,7 +22,8 @@
 		currentUser,
 		onQuoteView,
 		onQuoteAccept,
-		onQuoteReject
+		onQuoteReject,
+		canManage = true
 	}: Props = $props();
 
 	// State for expanded history
@@ -310,7 +312,7 @@
 							>
 								View
 							</button>
-							{#if quote.status === 'submitted' || quote.status === 'under_review'}
+							{#if canManage && (quote.status === 'submitted' || quote.status === 'under_review')}
 								<button
 									onclick={() => handleAcceptQuote(quote.id)}
 									class="rounded-lg bg-emerald-600 px-3 py-1 text-xs text-white transition-colors hover:bg-emerald-700"

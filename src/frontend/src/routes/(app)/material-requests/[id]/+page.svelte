@@ -61,6 +61,62 @@
 		isCustomer && request && !existingContract && ['open', 'quoting'].includes(request.status)
 	);
 
+	// Customer status management
+	let selectedStatus = $state('');
+	let isUpdatingStatus = $state(false);
+	let statusUpdateMessage = $state<{ type: 'success' | 'error'; text: string } | null>(null);
+	let customerStatusOptions = $derived.by(() => {
+		if (!isCustomer || !request) return [];
+		switch (request.status) {
+			case 'open':
+				return [
+					{ value: 'quoting', label: 'Request Quotes' },
+					{ value: 'cancelled', label: 'Cancel Request' }
+				];
+			case 'quoting':
+				return [
+					{ value: 'ordered', label: 'Place Order' },
+					{ value: 'cancelled', label: 'Cancel Request' }
+				];
+			case 'ordered':
+				return [{ value: 'contracted', label: 'Confirm Contract' }];
+			case 'contracted':
+				return [
+					{ value: 'completed', label: 'Mark as Received' },
+					{ value: 'cancelled', label: 'Cancel Order' }
+				];
+			default:
+				return [];
+		}
+	});
+	async function updateMaterialStatus() {
+		const currentRequest = request;
+		if (!currentRequest || selectedStatus === currentRequest.status) return;
+		const requestId = currentRequest.id;
+		isUpdatingStatus = true;
+		statusUpdateMessage = null;
+		const previous = currentRequest;
+		request = {
+			...currentRequest,
+			status: selectedStatus,
+			updatedAt: new Date().toISOString()
+		} as typeof currentRequest;
+		try {
+			await apiClient.updateMaterialRequestStatus(requestId, selectedStatus);
+			await fetchRequestDetails(requestId);
+			selectedStatus = request?.status ?? selectedStatus;
+			statusUpdateMessage = { type: 'success', text: 'Status updated successfully!' };
+		} catch (error) {
+			request = previous;
+			statusUpdateMessage = {
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Update failed.'
+			};
+		} finally {
+			isUpdatingStatus = false;
+		}
+	}
+
 	onMount(async () => {
 		const requestId = page.params.id;
 		if (!requestId) {
@@ -71,6 +127,7 @@
 
 		try {
 			request = (await apiClient.getMaterialRequestById(requestId)) as MaterialRequest;
+			selectedStatus = request.status;
 			if (request && currentUser && currentUser.id === request.customerId) {
 				await Promise.all([
 					fetchInvitedSupplierProfiles(),
@@ -107,11 +164,27 @@
 			const chats = await apiClient.getUserChats();
 
 			const newChatMap = new Map<string, string>();
+			const counterpartIds = new Set<string>();
 			chats.forEach((chat: Chat) => {
-				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
-				if (otherParticipant) {
-					newChatMap.set(otherParticipant, chat.id);
-				}
+				chat.participants
+					.filter((p: string) => p !== currentUser?.id)
+					.forEach((p: string) => counterpartIds.add(p));
+			});
+			counterpartIds.forEach((participant) => {
+				const candidates = chats.filter(
+					(chat: Chat) =>
+						chat.participants.includes(participant) &&
+						chat.participants.includes(currentUser!.id)
+				);
+				const requestChat = candidates.find(
+					(chat: Chat) => chat.materialRequestId === request!.id
+				);
+				const chosen =
+					requestChat ??
+					candidates.sort(
+						(a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+					)[0];
+				if (chosen) newChatMap.set(participant, chosen.id);
 			});
 			chatMap = newChatMap;
 		} catch (error) {
@@ -158,6 +231,7 @@
 	async function fetchRequestDetails(id: string) {
 		try {
 			request = (await apiClient.getMaterialRequestById(id)) as MaterialRequest;
+			selectedStatus = request.status;
 		} catch (error: unknown) {
 			console.error('Failed to fetch material request:', error);
 			errorMessage =
@@ -238,10 +312,10 @@
 			<h2 class="mb-3 text-2xl font-bold text-red-300">Unable to Load Material Request</h2>
 			<p class="mb-6 text-red-200/80">{errorMessage}</p>
 			<button
-				onclick={() => goto('/material-requests')}
+				onclick={() => goto('/my-requests')}
 				class="rounded-xl bg-slate-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-500"
 			>
-				← Back to Material Requests
+				← Back to My Requests
 			</button>
 		</div>
 	{:else if request}
@@ -489,6 +563,58 @@
 						{/if}
 					</div>
 				</section>
+
+				<!-- Update Status (for the request owner) -->
+				{#if isCustomer && customerStatusOptions.length > 0}
+					<section
+						class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6 shadow-xl backdrop-blur-sm"
+					>
+						<div class="mb-4 flex items-center gap-3">
+							<div class="rounded-lg bg-emerald-500/20 p-2">
+								<svg class="h-5 w-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+									/>
+								</svg>
+							</div>
+							<h2 class="text-lg font-bold text-emerald-300">Update Status</h2>
+						</div>
+						<div class="space-y-4">
+							<label for="material-status" class="block text-sm font-medium text-slate-300">
+								New Status
+							</label>
+							<select
+								id="material-status"
+								bind:value={selectedStatus}
+								class="w-full rounded-lg border border-slate-600/50 bg-slate-700/50 px-3 py-2.5 text-slate-200 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+							>
+								<option value={request.status}>Current: {request.status.replace(/_/g, ' ')}</option>
+								{#each customerStatusOptions as option (option.value)}
+									<option value={option.value}>{option.label}</option>
+								{/each}
+							</select>
+							<button
+								onclick={updateMaterialStatus}
+								disabled={isUpdatingStatus || selectedStatus === request.status}
+								class="w-full rounded-lg bg-emerald-500 px-4 py-2.5 font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
+							>
+								{isUpdatingStatus ? 'Updating...' : 'Update Status'}
+							</button>
+							{#if statusUpdateMessage}
+								<div
+									class="rounded-lg border p-3 text-sm {statusUpdateMessage.type === 'success'
+										? 'border-green-500/30 bg-green-500/10 text-green-300'
+										: 'border-red-500/30 bg-red-500/10 text-red-300'}"
+								>
+									{statusUpdateMessage.text}
+								</div>
+							{/if}
+						</div>
+					</section>
+				{/if}
 
 				<!-- Express Interest (for suppliers) -->
 				{#if canExpressInterest}

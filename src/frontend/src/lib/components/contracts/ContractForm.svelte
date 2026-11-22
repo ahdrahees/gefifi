@@ -126,6 +126,31 @@
 			return;
 		}
 
+		if (totalAmount !== null && totalAmount < 0) {
+			errorMessage = 'Total amount cannot be negative.';
+			isLoading = false;
+			return;
+		}
+		if (advanceAmount !== null && advanceAmount < 0) {
+			errorMessage = 'Advance amount cannot be negative.';
+			isLoading = false;
+			return;
+		}
+		if (totalAmount !== null && advanceAmount !== null && advanceAmount > totalAmount) {
+			errorMessage = 'Advance amount cannot be greater than the total amount.';
+			isLoading = false;
+			return;
+		}
+		if (
+			startDate &&
+			expectedCompletionDate &&
+			new Date(expectedCompletionDate).getTime() < new Date(startDate).getTime()
+		) {
+			errorMessage = 'Expected completion date cannot be before the start date.';
+			isLoading = false;
+			return;
+		}
+
 		// Client-side validation for file count
 		const fileCount = selectedFiles.length;
 		if (fileCount > 15) {

@@ -179,19 +179,15 @@
 	// visible answer only arrives with the final event. Surfacing them in a
 	// collapsed block keeps the chat visibly updating instead of showing a
 	// bare loading state for the whole turn.
-	function hasThoughtContent(event: AgentEvent): boolean {
-		if (!event.content?.parts) return false;
-		return event.content.parts.some(
-			(part) => part.thought && part.text !== null && part.text !== undefined
-		);
+	// Model reasoning is not shown in end-user chat: it can contain hidden
+	// instructions, internal tool arguments and policy text. Progress is shown
+	// through the generic generating state instead.
+	function hasThoughtContent(_event: AgentEvent): boolean {
+		return false;
 	}
 
-	function getThoughtText(event: AgentEvent): string {
-		if (!event.content?.parts) return '';
-		return event.content.parts
-			.filter((part) => part.thought && part.text)
-			.map((part) => part.text as string)
-			.join('');
+	function getThoughtText(_event: AgentEvent): string {
+		return '';
 	}
 
 	// Tool usage: model events carry completed functionCall parts (name + full

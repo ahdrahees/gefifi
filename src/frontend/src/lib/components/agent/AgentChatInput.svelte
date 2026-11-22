@@ -75,8 +75,26 @@
 		return ALLOWED_EXTENSIONS.includes(ext);
 	}
 
+	async function hasUsableImageSize(file: File): Promise<boolean> {
+		if (!file.type.startsWith('image/')) return true;
+		const url = URL.createObjectURL(file);
+		try {
+			const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+				const img = new Image();
+				img.onload = () => resolve(img);
+				img.onerror = () => reject(new Error('Image could not be decoded'));
+				img.src = url;
+			});
+			return image.naturalWidth >= 16 && image.naturalHeight >= 16;
+		} catch {
+			return false;
+		} finally {
+			URL.revokeObjectURL(url);
+		}
+	}
+
 	// --- HANDLERS ---
-	function handleFilesSelected(e: Event) {
+	async function handleFilesSelected(e: Event) {
 		const target = e.target as HTMLInputElement;
 		if (target.files) {
 			const newFiles = Array.from(target.files);
@@ -86,12 +104,18 @@
 				alert('Some files were rejected. Allowed types: ' + ALLOWED_EXTENSIONS.join(', '));
 			}
 
-			if (selectedFiles.length + validFiles.length > MAX_FILES) {
+			const imageChecks = await Promise.all(validFiles.map(hasUsableImageSize));
+			const usableFiles = validFiles.filter((_, index) => imageChecks[index]);
+			if (usableFiles.length < validFiles.length) {
+				alert('One or more images are too small to process. Please upload a normal photo.');
+			}
+
+			if (selectedFiles.length + usableFiles.length > MAX_FILES) {
 				alert(`Max ${MAX_FILES} files allowed.`);
 				return;
 			}
 
-			selectedFiles = [...selectedFiles, ...validFiles];
+			selectedFiles = [...selectedFiles, ...usableFiles];
 		}
 		// Reset input
 		if (target) target.value = '';

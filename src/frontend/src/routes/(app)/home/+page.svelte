@@ -117,7 +117,11 @@
 			// if (!chatsRes.ok) throw new Error(`Failed to fetch chats: ${chatsRes.statusText}`);
 			// if (!contractsRes.ok)
 
-			activeContracts = contracts;
+			// Match the contracts page definition: only signed/in-progress
+			// agreements are "active"; drafts and awaiting-signature records are not.
+			activeContracts = contracts.filter((c: Contract) =>
+				['signed', 'in_progress'].includes(c.status)
+			);
 
 			// Enrich chats for homepage display names
 			const homepageOtherParticipantIds = new Set<string>();
@@ -201,13 +205,12 @@
 					apiClient.getMaterialRequestsByCustomerId(currentUser.id)
 				])) as [WorkRequest[], MaterialRequest[]];
 
-				// Keep only ACTIVE requests
+				// Keep only ACTIVE requests, matching the Active tab on
+				// My Requests (contracted has its own category).
 				const isActiveWork = (status: string) =>
-					['open', 'in_discussion', 'awaiting_quotes', 'contracted', 'in_progress'].includes(
-						status
-					);
+					['open', 'in_discussion', 'awaiting_quotes', 'in_progress'].includes(status);
 				const isActiveMaterial = (status: string) =>
-					['open', 'quoting', 'ordered', 'contracted'].includes(status);
+					['open', 'quoting', 'ordered'].includes(status);
 
 				const combinedActive: AllRequest[] = [
 					...wrRes
@@ -276,6 +279,17 @@
 				);
 			})
 	);
+
+	let requestStatLabel = $derived.by(() => {
+		if (currentUser?.userType === 'supplier') return 'Available Requests';
+		if (currentUser?.userType === 'expert') return 'Open Requests';
+		return 'Active Requests';
+	});
+	let requestStatCount = $derived.by(() => {
+		if (currentUser?.userType === 'supplier') return materialRequests.length;
+		if (currentUser?.userType === 'expert') return workRequests.length;
+		return allMyRequests.length;
+	});
 
 	function getWorkStatusClasses(status: string) {
 		const classes: Record<string, string> = {
@@ -377,23 +391,22 @@
 			>
 				{#if activeView === 'agent'}
 					<span class="home-toggle-dot bg-emerald-400"></span>
-				{:else}
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4 shrink-0"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-						stroke-width="1.8"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M12 18V5m3 8a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4m8.598-6.5A3 3 0 1012 5a3 3 0 10-5.598 1.5m11.595-.125a4 4 0 012.526 5.77M18 18a4 4 0 002-7.464m-0.033 6.483A4 4 0 1112 18a4 4 0 11-7.967-.517M6 18a4 4 0 01-2-7.464m2.003-6.339a4 4 0 00-2.526 5.77"
-						/>
-					</svg>
-					<span>AI Agent</span>
 				{/if}
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					class="h-4 w-4 shrink-0"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					stroke-width="1.8"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M12 18V5m3 8a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4m8.598-6.5A3 3 0 1012 5a3 3 0 10-5.598 1.5m11.595-.125a4 4 0 012.526 5.77M18 18a4 4 0 002-7.464m-0.033 6.483A4 4 0 1112 18a4 4 0 11-7.967-.517M6 18a4 4 0 01-2-7.464m2.003-6.339a4 4 0 00-2.526 5.77"
+					/>
+				</svg>
+				<span>AI Agent</span>
 			</button>
 			<button
 				onclick={() => setView('dashboard')}
@@ -404,23 +417,22 @@
 			>
 				{#if activeView === 'dashboard'}
 					<span class="home-toggle-dot bg-sky-400"></span>
-				{:else}
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4 shrink-0"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-						stroke-width="1.8"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25A2.25 2.25 0 0113.5 8.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"
-						/>
-					</svg>
-					<span>Dashboard</span>
 				{/if}
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					class="h-4 w-4 shrink-0"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					stroke-width="1.8"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25A2.25 2.25 0 0113.5 8.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"
+					/>
+				</svg>
+				<span>Dashboard</span>
 			</button>
 		</div>
 	{/if}
@@ -504,8 +516,8 @@
 						<!-- Stat chips -->
 						<div class="flex items-center gap-2">
 							<div class="flex-1 rounded-lg border border-slate-600/40 bg-slate-700/40 px-3 py-2">
-								<p class="text-xs text-slate-400">Active Requests</p>
-								<p class="text-lg font-semibold text-slate-100">{allMyRequests.length}</p>
+								<p class="text-xs text-slate-400">{requestStatLabel}</p>
+								<p class="text-lg font-semibold text-slate-100">{requestStatCount}</p>
 							</div>
 							<div class="flex-1 rounded-lg border border-slate-600/40 bg-slate-700/40 px-3 py-2">
 								<p class="text-xs text-slate-400">Active Contracts</p>
@@ -876,13 +888,10 @@
 	}
 
 	.home-toggle-active {
-		width: 1.5rem;
-		min-width: 1.5rem;
-		max-width: 1.5rem;
-		padding: 0;
-		background: rgba(30, 41, 59, 0.6);
-		color: transparent;
-		pointer-events: none;
+		padding: 0 0.75rem;
+		background: rgba(30, 41, 59, 0.9);
+		color: #f8fafc;
+		cursor: default;
 	}
 
 	.home-toggle-inactive {

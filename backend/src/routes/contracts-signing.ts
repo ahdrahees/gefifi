@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
-import { Contract, ContractComment, Attachment } from '../interfaces';
+import { Contract, ContractComment, Attachment, WorkRequest, MaterialRequest } from '../interfaces';
 import { authenticateToken, AuthenticatedRequest, JwtPayload } from '../auth';
 import { uploadEntityAttachment } from '../file-storage';
 import { sendSystemMessage } from './shared/system-messages';
@@ -16,241 +16,294 @@ const materialRequestsDB = new FirestoreCollection('materialRequests');
 const router = Router();
 
 router.put(
-    '/contracts/:contractId/sign',
-    authenticateToken,
-    attachmentUpload.array('signatureFiles', 5), // Limit to 5 files for signature attachments
-    async (req: AuthenticatedRequest, res: Response) => {
-        try {
-            const user = req.user as JwtPayload;
-            const contractId = req.params.contractId;
-            const contract = await contractsDB.findById(contractId);
+	'/contracts/:contractId/sign',
+	authenticateToken,
+	attachmentUpload.array('signatureFiles', 5), // Limit to 5 files for signature attachments
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const contractId = req.params.contractId;
+			const contract = await contractsDB.findById(contractId);
 
-            // Extract signature comment and files from request
-            const signatureComment = req.body.signatureComment;
-            const signatureFiles = req.files as Express.Multer.File[];
-            if (!contract) {
-                return res.status(404).json({ message: 'Contract not found.' });
-            }
-            if (contract.status !== 'draft' && contract.status !== 'awaiting_signatures') {
-                return res.status(400).json({
-                    message: `Contract in status '${contract.status}' cannot be signed. Must be 'draft' or 'awaiting_signatures'.`
-                });
-            }
-            let signedByCurrentUser = false;
-            const now = new Date().toISOString();
-            const updates: Partial<Contract> = { updatedAt: now };
+			// Extract signature comment and files from request
+			const signatureComment = req.body.signatureComment;
+			const signatureFiles = req.files as Express.Multer.File[];
+			if (!contract) {
+				return res.status(404).json({ message: 'Contract not found.' });
+			}
+			if (contract.status !== 'draft' && contract.status !== 'awaiting_signatures') {
+				return res.status(400).json({
+					message: `Contract in status '${contract.status}' cannot be signed. Must be 'draft' or 'awaiting_signatures'.`
+				});
+			}
+			let signedByCurrentUser = false;
+			const now = new Date().toISOString();
+			const updates: Partial<Contract> = { updatedAt: now };
 
-            if (user.id === contract.customerId) {
-                if (contract.customerSigned)
-                    return res.status(400).json({ message: 'Customer has already signed this contract.' });
-                updates.customerSigned = true;
-                updates.customerSignatureTimestamp = now;
-                signedByCurrentUser = true;
-            } else if (user.id === contract.expertSupplierId) {
-                if (contract.expertSupplierSigned)
-                    return res
-                        .status(400)
-                        .json({ message: 'Expert/Supplier has already signed this contract.' });
-                updates.expertSupplierSigned = true;
-                updates.expertSupplierSignatureTimestamp = now;
-                signedByCurrentUser = true;
-            } else {
-                return res
-                    .status(403)
-                    .json({ message: 'Forbidden. You are not a party to this contract or cannot sign it.' });
-            }
+			if (user.id === contract.customerId) {
+				if (contract.customerSigned)
+					return res.status(400).json({ message: 'Customer has already signed this contract.' });
+				updates.customerSigned = true;
+				updates.customerSignatureTimestamp = now;
+				signedByCurrentUser = true;
+			} else if (user.id === contract.expertSupplierId) {
+				if (contract.expertSupplierSigned)
+					return res
+						.status(400)
+						.json({ message: 'Expert/Supplier has already signed this contract.' });
+				updates.expertSupplierSigned = true;
+				updates.expertSupplierSignatureTimestamp = now;
+				signedByCurrentUser = true;
+			} else {
+				return res
+					.status(403)
+					.json({ message: 'Forbidden. You are not a party to this contract or cannot sign it.' });
+			}
 
-            if (signedByCurrentUser) {
-                const customerHasSigned = updates.customerSigned || contract.customerSigned;
-                const providerHasSigned = updates.expertSupplierSigned || contract.expertSupplierSigned;
-                const signerRole = user.userType.charAt(0).toUpperCase() + user.userType.slice(1);
+			if (signedByCurrentUser) {
+				const customerHasSigned = updates.customerSigned || contract.customerSigned;
+				const providerHasSigned = updates.expertSupplierSigned || contract.expertSupplierSigned;
+				const signerRole = user.userType.charAt(0).toUpperCase() + user.userType.slice(1);
 
-                if (customerHasSigned && providerHasSigned) {
-                    updates.status = 'signed';
-                    const updatedContract = await contractsDB.update(contractId, updates);
+				if (customerHasSigned && providerHasSigned) {
+					updates.status = 'signed';
+					const updatedContract = await contractsDB.update(contractId, updates);
 
-                    // --- SIGNATURE COMMENT CREATION ---
-                    // If there's a signature comment, create it as a signature_comment type
-                    if (signatureComment && signatureComment.trim()) {
-                        try {
-                            // Get user profile for display name
-                            const userProfile = await usersDB.findById(user.id) as any;
-                            const authorDisplayName =
-                                userProfile?.profile?.fullName || userProfile?.email?.split('@')[0] || 'User';
+					// --- SIGNATURE COMMENT CREATION ---
+					// If there's a signature comment, create it as a signature_comment type
+					if (signatureComment && signatureComment.trim()) {
+						try {
+							// Get user profile for display name
+							const userProfile = (await usersDB.findById(user.id)) as any;
+							const authorDisplayName =
+								userProfile?.profile?.fullName || userProfile?.email?.split('@')[0] || 'User';
 
-                            // Create signature comment
-                            const signatureCommentData: ContractComment = {
-                                id: crypto.randomUUID(),
-                                authorId: user.id,
-                                comment: signatureComment.trim(),
-                                timestamp: now,
-                                type: 'signature_comment',
-                                attachments: []
-                            };
+							// Create signature comment
+							const signatureCommentData: ContractComment = {
+								id: crypto.randomUUID(),
+								authorId: user.id,
+								comment: signatureComment.trim(),
+								timestamp: now,
+								type: 'signature_comment',
+								attachments: []
+							};
 
-                            // Handle signature attachments if any
-                            if (signatureFiles && signatureFiles.length > 0) {
-                                const attachments: Attachment[] = [];
-                                for (const file of signatureFiles) {
-                                    try {
-                                        const uploadResult = await uploadEntityAttachment(
-                                            file,
-                                            'contracts',
-                                            contractId
-                                        );
-                                        attachments.push({
-                                            fileName: file.originalname,
-                                            filePath: uploadResult.filePath,
-                                            fileType: file.mimetype,
-                                            size: file.size
-                                        });
-                                    } catch (uploadError) {
-                                        console.error('Failed to upload signature attachment:', uploadError);
-                                        // Continue with other files even if one fails
-                                    }
-                                }
-                                if (attachments.length > 0) {
-                                    signatureCommentData.attachments = attachments;
-                                }
-                            }
+							// Handle signature attachments if any
+							if (signatureFiles && signatureFiles.length > 0) {
+								const attachments: Attachment[] = [];
+								for (const file of signatureFiles) {
+									try {
+										const uploadResult = await uploadEntityAttachment(
+											file,
+											'contracts',
+											contractId
+										);
+										attachments.push({
+											fileName: file.originalname,
+											filePath: uploadResult.filePath,
+											fileType: file.mimetype,
+											size: file.size
+										});
+									} catch (uploadError) {
+										console.error('Failed to upload signature attachment:', uploadError);
+										// Continue with other files even if one fails
+									}
+								}
+								if (attachments.length > 0) {
+									signatureCommentData.attachments = attachments;
+								}
+							}
 
-                            // Add the signature comment to the contract
-                            if (updatedContract) {
-                                const comments = updatedContract.comments || [];
-                                comments.push(signatureCommentData);
-                                await contractsDB.update(contractId, { comments });
-                            }
+							// Add the signature comment to the contract
+							if (updatedContract) {
+								const comments = updatedContract.comments || [];
+								comments.push(signatureCommentData);
+								await contractsDB.update(contractId, { comments });
+							}
 
-                            // Send system message about signature comment
-                            let signatureMessage = `The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`;
-                            if (signatureFiles && signatureFiles.length > 0) {
-                                signatureMessage += ` and ${signatureFiles.length} attachment${signatureFiles.length > 1 ? 's' : ''}`;
-                            }
-                            signatureMessage += '.';
+							// Send system message about signature comment
+							let signatureMessage = `The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`;
+							if (signatureFiles && signatureFiles.length > 0) {
+								signatureMessage += ` and ${signatureFiles.length} attachment${signatureFiles.length > 1 ? 's' : ''}`;
+							}
+							signatureMessage += '.';
 
-                            await sendSystemMessage(
-                                contract.customerId,
-                                contract.expertSupplierId,
-                                signatureMessage,
-                                { contractId: contract.id }
-                            );
-                        } catch (commentError) {
-                            console.error('Failed to create signature comment:', commentError);
-                            // Don't fail the entire signing process if comment creation fails
-                        }
-                    } else {
-                        // Send system message that the contract is fully signed (no comment)
-                        await sendSystemMessage(
-                            contract.customerId,
-                            contract.expertSupplierId,
-                            `The contract has been fully signed by the ${signerRole} and is now active.`,
-                            { contractId: contract.id }
-                        );
-                    }
+							await sendSystemMessage(
+								contract.customerId,
+								contract.expertSupplierId,
+								signatureMessage,
+								{
+									contractId: contract.id,
+									workRequestId: contract.workRequestId,
+									materialRequestId: contract.materialRequestId
+								}
+							);
+						} catch (commentError) {
+							console.error('Failed to create signature comment:', commentError);
+							// Don't fail the entire signing process if comment creation fails
+						}
+					} else {
+						// Send system message that the contract is fully signed (no comment)
+						await sendSystemMessage(
+							contract.customerId,
+							contract.expertSupplierId,
+							`The contract has been fully signed by the ${signerRole} and is now active.`,
+							{
+								contractId: contract.id,
+								workRequestId: contract.workRequestId,
+								materialRequestId: contract.materialRequestId
+							}
+						);
+					}
 
-                    // This check is crucial to prevent trying to process a null object
-                    if (!updatedContract) {
-                        return res.status(500).json({ message: 'Failed to update contract after signing.' });
-                    }
+					// This check is crucial to prevent trying to process a null object
+					if (!updatedContract) {
+						return res.status(500).json({ message: 'Failed to update contract after signing.' });
+					}
 
-                    res.status(200).json(updatedContract);
-                } else {
-                    updates.status = 'awaiting_signatures';
-                    const updatedContract = await contractsDB.update(contractId, updates);
+					// Now that both parties signed, move the linked request to
+					// contracted. This used to happen when the draft was created.
+					try {
+						if (contract.workRequestId) {
+							const request = (await workRequestsDB.findById(
+								contract.workRequestId
+							)) as WorkRequest | null;
+							if (
+								request &&
+								!['cancelled', 'completed', 'closed', 'expired'].includes(request.status)
+							) {
+								await workRequestsDB.update(contract.workRequestId, {
+									status: 'contracted',
+									updatedAt: now
+								});
+							}
+						} else if (contract.materialRequestId) {
+							const request = (await materialRequestsDB.findById(
+								contract.materialRequestId
+							)) as MaterialRequest | null;
+							if (
+								request &&
+								!['cancelled', 'completed', 'closed', 'expired'].includes(request.status)
+							) {
+								await materialRequestsDB.update(contract.materialRequestId, {
+									status: 'contracted',
+									updatedAt: now
+								});
+							}
+						}
+					} catch (requestStatusError) {
+						console.error(
+							'Failed to update linked request after full signature:',
+							requestStatusError
+						);
+					}
 
-                    // --- SIGNATURE COMMENT CREATION FOR PARTIAL SIGNING ---
-                    // If there's a signature comment, create it as a signature_comment type
-                    if (signatureComment && signatureComment.trim()) {
-                        try {
-                            // Get user profile for display name
-                            const userProfile = await usersDB.findById(user.id) as any;
-                            const authorDisplayName =
-                                userProfile?.profile?.fullName || userProfile?.email?.split('@')[0] || 'User';
+					res.status(200).json(updatedContract);
+				} else {
+					updates.status = 'awaiting_signatures';
+					const updatedContract = await contractsDB.update(contractId, updates);
 
-                            // Create signature comment
-                            const signatureCommentData: ContractComment = {
-                                id: crypto.randomUUID(),
-                                authorId: user.id,
-                                comment: signatureComment.trim(),
-                                timestamp: now,
-                                type: 'signature_comment',
-                                attachments: []
-                            };
+					// --- SIGNATURE COMMENT CREATION FOR PARTIAL SIGNING ---
+					// If there's a signature comment, create it as a signature_comment type
+					if (signatureComment && signatureComment.trim()) {
+						try {
+							// Get user profile for display name
+							const userProfile = (await usersDB.findById(user.id)) as any;
+							const authorDisplayName =
+								userProfile?.profile?.fullName || userProfile?.email?.split('@')[0] || 'User';
 
-                            // Handle signature attachments if any
-                            if (signatureFiles && signatureFiles.length > 0) {
-                                const attachments: Attachment[] = [];
-                                for (const file of signatureFiles) {
-                                    try {
-                                        const uploadResult = await uploadEntityAttachment(
-                                            file,
-                                            'contracts',
-                                            contractId
-                                        );
-                                        attachments.push({
-                                            fileName: file.originalname,
-                                            filePath: uploadResult.filePath,
-                                            fileType: file.mimetype,
-                                            size: file.size
-                                        });
-                                    } catch (uploadError) {
-                                        console.error('Failed to upload signature attachment:', uploadError);
-                                        // Continue with other files even if one fails
-                                    }
-                                }
-                                if (attachments.length > 0) {
-                                    signatureCommentData.attachments = attachments;
-                                }
-                            }
+							// Create signature comment
+							const signatureCommentData: ContractComment = {
+								id: crypto.randomUUID(),
+								authorId: user.id,
+								comment: signatureComment.trim(),
+								timestamp: now,
+								type: 'signature_comment',
+								attachments: []
+							};
 
-                            // Add the signature comment to the contract
-                            if (updatedContract) {
-                                const comments = updatedContract.comments || [];
-                                comments.push(signatureCommentData);
-                                await contractsDB.update(contractId, { comments });
-                            }
+							// Handle signature attachments if any
+							if (signatureFiles && signatureFiles.length > 0) {
+								const attachments: Attachment[] = [];
+								for (const file of signatureFiles) {
+									try {
+										const uploadResult = await uploadEntityAttachment(
+											file,
+											'contracts',
+											contractId
+										);
+										attachments.push({
+											fileName: file.originalname,
+											filePath: uploadResult.filePath,
+											fileType: file.mimetype,
+											size: file.size
+										});
+									} catch (uploadError) {
+										console.error('Failed to upload signature attachment:', uploadError);
+										// Continue with other files even if one fails
+									}
+								}
+								if (attachments.length > 0) {
+									signatureCommentData.attachments = attachments;
+								}
+							}
 
-                            // Send system message about signature comment
-                            let partialSignatureMessage = `The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`;
-                            if (signatureFiles && signatureFiles.length > 0) {
-                                partialSignatureMessage += ` and ${signatureFiles.length} attachment${signatureFiles.length > 1 ? 's' : ''}`;
-                            }
-                            partialSignatureMessage += '. Awaiting other party\'s signature.';
+							// Add the signature comment to the contract
+							if (updatedContract) {
+								const comments = updatedContract.comments || [];
+								comments.push(signatureCommentData);
+								await contractsDB.update(contractId, { comments });
+							}
 
-                            await sendSystemMessage(
-                                contract.customerId,
-                                contract.expertSupplierId,
-                                partialSignatureMessage,
-                                { contractId: contract.id }
-                            );
-                        } catch (commentError) {
-                            console.error('Failed to create signature comment:', commentError);
-                            // Don't fail the entire signing process if comment creation fails
-                        }
-                    } else {
-                        // Send system message that one party has signed (no comment)
-                        await sendSystemMessage(
-                            contract.customerId,
-                            contract.expertSupplierId,
-                            `The ${signerRole} has signed the contract. Awaiting other party's signature.`,
-                            { contractId: contract.id }
-                        );
-                    }
+							// Send system message about signature comment
+							let partialSignatureMessage = `The ${signerRole} has signed the contract with a comment: "${signatureComment.trim()}"`;
+							if (signatureFiles && signatureFiles.length > 0) {
+								partialSignatureMessage += ` and ${signatureFiles.length} attachment${signatureFiles.length > 1 ? 's' : ''}`;
+							}
+							partialSignatureMessage += ". Awaiting other party's signature.";
 
-                    res.status(200).json(updatedContract);
-                }
-            } else {
-                res.status(400).json({
-                    message:
-                        'No signature action was performed. User may have already signed or is not a party.'
-                });
-            }
-        } catch (error: unknown) {
-            console.error('Error signing contract:', error);
-            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-            res.status(500).json({ message: 'Failed to sign contract.', error: errorMessage });
-        }
-    }
+							await sendSystemMessage(
+								contract.customerId,
+								contract.expertSupplierId,
+								partialSignatureMessage,
+								{
+									contractId: contract.id,
+									workRequestId: contract.workRequestId,
+									materialRequestId: contract.materialRequestId
+								}
+							);
+						} catch (commentError) {
+							console.error('Failed to create signature comment:', commentError);
+							// Don't fail the entire signing process if comment creation fails
+						}
+					} else {
+						// Send system message that one party has signed (no comment)
+						await sendSystemMessage(
+							contract.customerId,
+							contract.expertSupplierId,
+							`The ${signerRole} has signed the contract. Awaiting other party's signature.`,
+							{
+								contractId: contract.id,
+								workRequestId: contract.workRequestId,
+								materialRequestId: contract.materialRequestId
+							}
+						);
+					}
+
+					res.status(200).json(updatedContract);
+				}
+			} else {
+				res.status(400).json({
+					message:
+						'No signature action was performed. User may have already signed or is not a party.'
+				});
+			}
+		} catch (error: unknown) {
+			console.error('Error signing contract:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to sign contract.', error: errorMessage });
+		}
+	}
 );
 
 export default router;

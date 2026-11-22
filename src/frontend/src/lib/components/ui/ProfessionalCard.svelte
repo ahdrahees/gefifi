@@ -8,9 +8,10 @@
 	interface Props {
 		professional: AuthUser;
 		onSendInterest?: (detail: { userId: string; userName: string; userType:  'expert' | 'supplier' }) => void;
+		onViewProfile?: (professional: AuthUser) => void;
 	}
 
-	let { professional, onSendInterest }: Props = $props();
+	let { professional, onSendInterest, onViewProfile }: Props = $props();
 
 
 
@@ -97,7 +98,14 @@
 		</div>
 	</div>
 
-	<div class="mt-5 border-t border-slate-600/70 pt-4">
+	<div class="mt-5 space-y-2 border-t border-slate-600/70 pt-4">
+		<button
+			onclick={() => onViewProfile?.(professional)}
+			class="w-full rounded-lg border border-slate-500/70 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-600/60"
+			aria-label="View profile of {getProfessionalName(professional)}"
+		>
+			View Profile
+		</button>
 		<button
 			onclick={handleSendInterestClick}
 			class="w-full rounded-lg {isInvitationContext

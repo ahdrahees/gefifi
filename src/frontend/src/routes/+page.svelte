@@ -321,8 +321,8 @@
 					<h4 class="footer__heading">Support</h4>
 					<ul class="footer__list">
 						<li><a href="mailto:support@gefifi.com" class="footer__link">Contact Us</a></li>
-						<li><a href="#" class="footer__link">Privacy Policy</a></li>
-						<li><a href="#" class="footer__link">Terms of Service</a></li>
+						<li><a href="/privacy" class="footer__link">Privacy Policy</a></li>
+						<li><a href="/terms" class="footer__link">Terms of Service</a></li>
 					</ul>
 				</div>
 			</div>

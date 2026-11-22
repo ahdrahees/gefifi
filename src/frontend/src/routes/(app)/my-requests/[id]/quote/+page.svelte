@@ -33,14 +33,25 @@
 	let isExpertOrSupplier = $derived(
 		currentUser?.userType === 'expert' || currentUser?.userType === 'supplier'
 	);
+	let requestAcceptsQuotes = $derived.by(() => {
+		const currentRequest = request as WorkRequest | MaterialRequest | null;
+		if (!currentRequest) return false;
+		return requestType === 'work'
+			? ['open', 'in_discussion', 'awaiting_quotes'].includes(currentRequest.status)
+			: ['open', 'quoting'].includes(currentRequest.status);
+	});
 	let canSubmitQuote = $derived(
-		isExpertOrSupplier &&
+		requestAcceptsQuotes &&
+			isExpertOrSupplier &&
 			request &&
 			(requestType === 'work'
 				? (request as WorkRequest).interestedExperts?.includes(currentUser?.id || '') ||
 					(request as WorkRequest).invitedExperts?.includes(currentUser?.id || '')
 				: (request as MaterialRequest).interestedSuppliers?.includes(currentUser?.id || '') ||
 					(request as MaterialRequest).invitedSuppliers?.includes(currentUser?.id || ''))
+	);
+	let canManageQuotes = $derived(
+		currentUser?.userType === 'customer' && requestAcceptsQuotes
 	);
 
 	onMount(() => {
@@ -61,9 +72,9 @@
 				const workRequest = (await apiClient.getWorkRequestById(requestId)) as WorkRequest;
 				request = workRequest;
 				requestType = 'work';
-			} catch (workError) {
-				// If not found, try as material request
-				console.error('Error fetching work request:', workError);
+			} catch {
+				// Expected for material requests: fall through without logging a
+				// 404 as an error.
 				try {
 					const materialRequest = (await apiClient.getMaterialRequestById(
 						requestId
@@ -344,9 +355,11 @@
 									</svg>
 								</div>
 								<div class="ml-3">
-									<p class="text-sm font-medium text-slate-400">Under Review</p>
+									<p class="text-sm font-medium text-slate-400">Pending Review</p>
 									<p class="text-2xl font-bold text-slate-100">
-										{quotes.filter((q) => q.status === 'under_review').length}
+										{quotes.filter(
+											(q) => q.status === 'submitted' || q.status === 'under_review'
+										).length}
 									</p>
 								</div>
 							</div>
@@ -390,6 +403,7 @@
 						onQuoteView={({ quoteId }) => handleViewQuote(quoteId)}
 						onQuoteAccept={({ quoteId }) => handleQuoteStatusUpdate(quoteId, 'accepted')}
 						onQuoteReject={({ quoteId }) => handleQuoteStatusUpdate(quoteId, 'rejected')}
+						canManage={canManageQuotes}
 					/>
 				{:else}
 					<!-- Quote List (for experts/suppliers) -->

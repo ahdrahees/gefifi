@@ -23,6 +23,13 @@
 
 	let isLoading: boolean = $state(true);
 	let errorMessage: string | null = $state(null);
+	let viewedProfessional: AuthUser | null = $state(null);
+
+	function professionalName(professional: AuthUser) {
+		return professional.userType === 'supplier'
+			? professional.profile?.companyName || professional.email?.split('@')[0] || 'Supplier'
+			: professional.profile?.fullName || professional.email?.split('@')[0] || 'Professional';
+	}
 
 	onMount(async () => {
 		if (currentUser?.userType !== 'customer') {
@@ -323,6 +330,7 @@
 				<ProfessionalCard
 					{professional}
 					onSendInterest={(detail) => handleOpenInterestModal(detail)}
+					onViewProfile={(selected) => (viewedProfessional = selected)}
 				/>
 			{/each}
 		</div>
@@ -339,6 +347,90 @@
 		onInterestSent={handleInterestSuccessfullySent}
 		professionalType={currentTargetProfessionalType}
 	/>
+{/if}
+
+{#if viewedProfessional}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+		onclick={() => (viewedProfessional = null)}
+		onkeydown={(event) => {
+			if (event.key === 'Escape') viewedProfessional = null;
+		}}
+		role="dialog"
+		aria-modal="true"
+		aria-label="Professional profile"
+		tabindex="-1"
+	>
+		<div
+			class="w-full max-w-lg rounded-2xl border border-slate-600/50 bg-slate-800 p-6 shadow-2xl"
+			onclick={(event) => event.stopPropagation()}
+			onkeydown={(event) => event.stopPropagation()}
+			role="document"
+		>
+			<div class="mb-5 flex items-start justify-between gap-4">
+				<div class="flex items-center gap-4">
+					<img
+						src={viewedProfessional.profile?.avatarUrl ||
+							(viewedProfessional.userType === 'expert'
+								? '/images/default-avatar.png'
+								: '/images/warehouse.png')}
+						alt={professionalName(viewedProfessional)}
+						class="h-16 w-16 rounded-full border-2 border-emerald-600 object-cover p-1"
+					/>
+					<div>
+						<h2 class="text-xl font-bold text-emerald-300">{professionalName(viewedProfessional)}</h2>
+						<span class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+							{viewedProfessional.userType}
+						</span>
+					</div>
+				</div>
+				<button
+					onclick={() => (viewedProfessional = null)}
+					class="rounded-lg p-2 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+					aria-label="Close profile"
+				>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M6 18L18 6M6 6l12 12"
+						/>
+					</svg>
+				</button>
+			</div>
+			<dl class="space-y-3 text-sm">
+				{#if viewedProfessional.userType === 'expert' && viewedProfessional.profile?.expertise}
+					<div>
+						<dt class="text-slate-400">Expertise</dt>
+						<dd class="text-slate-200">{viewedProfessional.profile.expertise}</dd>
+					</div>
+				{/if}
+				{#if viewedProfessional.userType === 'supplier' && viewedProfessional.profile?.category}
+					<div>
+						<dt class="text-slate-400">Materials</dt>
+						<dd class="text-slate-200">{viewedProfessional.profile.category}</dd>
+					</div>
+				{/if}
+				{#if viewedProfessional.profile?.location}
+					<div>
+						<dt class="text-slate-400">Location</dt>
+						<dd class="text-slate-200">{viewedProfessional.profile.location}</dd>
+					</div>
+				{/if}
+				{#if viewedProfessional.profile?.experience}
+					<div>
+						<dt class="text-slate-400">Experience</dt>
+						<dd class="text-slate-200">{viewedProfessional.profile.experience}</dd>
+					</div>
+				{/if}
+			</dl>
+			<p class="mt-5 text-xs text-slate-500">
+				Reviews and ratings are not available in the demo yet. Use Send Interest to start a
+				conversation.
+			</p>
+		</div>
+	</div>
 {/if}
 
 <style lang="postcss">

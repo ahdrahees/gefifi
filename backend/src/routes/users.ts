@@ -48,6 +48,29 @@ router.get('/users/suppliers', authenticateToken, async (_req: Request, res: Res
 	}
 });
 
+// --- Get Current User Profile Endpoint ---
+// Must be declared before /users/:userId so "me" is not treated as an id.
+router.get(
+	'/users/me/profile',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const existingUser = await usersDB.findById(user.id);
+			if (!existingUser) {
+				return res.status(404).json({ message: 'User not found.' });
+			}
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { password, ...userToReturn } = existingUser;
+			res.status(200).json(userToReturn);
+		} catch (error: unknown) {
+			console.error('Error fetching current user profile:', error);
+			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+			res.status(500).json({ message: 'Failed to fetch profile.', error: errorMessage });
+		}
+	}
+);
+
 // --- Get User by ID Endpoint ---
 router.get('/users/:userId', authenticateToken, async (req: Request, res: Response) => {
 	try {
@@ -100,13 +123,17 @@ router.put(
 			if (phoneNumber !== undefined && phoneNumber !== existingUser.phoneNumber) {
 				if (phoneNumber !== '') {
 					if (!PHONE_REGEX.test(phoneNumber)) {
-						return res.status(400).json({ message: 'A valid E.164 phone number is required (e.g. +919999999999).' });
+						return res
+							.status(400)
+							.json({ message: 'A valid E.164 phone number is required (e.g. +919999999999).' });
 					}
 					const isDuplicatePhone = allUsers.some(
 						(u: User) => u.phoneNumber === phoneNumber && u.id !== existingUser.id
 					);
 					if (isDuplicatePhone) {
-						return res.status(409).json({ message: 'This phone number is already linked to another account.' });
+						return res
+							.status(409)
+							.json({ message: 'This phone number is already linked to another account.' });
 					}
 					updatedTopLevelFields.phoneNumber = phoneNumber;
 				} else {
@@ -121,10 +148,13 @@ router.put(
 						return res.status(400).json({ message: 'A valid email address is required.' });
 					}
 					const isDuplicateEmail = allUsers.some(
-						(u: User) => u.email && u.email.toLowerCase() === email.toLowerCase() && u.id !== existingUser.id
+						(u: User) =>
+							u.email && u.email.toLowerCase() === email.toLowerCase() && u.id !== existingUser.id
 					);
 					if (isDuplicateEmail) {
-						return res.status(409).json({ message: 'This email address is already linked to another account.' });
+						return res
+							.status(409)
+							.json({ message: 'This email address is already linked to another account.' });
 					}
 					updatedTopLevelFields.email = email.toLowerCase();
 				} else {
