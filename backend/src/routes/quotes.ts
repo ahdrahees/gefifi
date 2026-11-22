@@ -427,7 +427,8 @@ router.put('/quotes/:quoteId/status', authenticateToken, async (req: Authenticat
             const allQuotes = await quotesDB.getAll();
             const otherQuotes = allQuotes.filter(quote =>
                 quote.requestId === existingQuote.requestId &&
-                quote.expertSupplierId !== existingQuote.expertSupplierId
+                quote.requestType === existingQuote.requestType &&
+                quote.id !== quoteId
             );
 
             // Update all other quotes to rejected status

@@ -84,6 +84,8 @@ Manual demo check:
 4. Verify one quote is accepted, the others are rejected, and the request is contracted.
 5. Do not claim atomicity: the V2 route performs these updates sequentially.
 
+**Known bug found in production (2026-11-22):** accepting one quote rejected only quotes from *other* suppliers. A second quote from the same supplier stayed `submitted`. The route now rejects every other quote for the same request and request type (`backend/src/routes/quotes.ts`). Re-test after deploy.
+
 Implementation map:
 
 - Gate: `agents/build_assist_agent/approval.py`, `before_tool_callback` in `agents/build_assist_agent/agent.py`.
