@@ -42,13 +42,12 @@
 		}
 	}
 
-	const buttonLabel = $derived(
-		approval.action === 'chat_message'
-			? 'Send message'
-			: approval.action === 'contract'
-				? 'Draft contract'
-				: 'Create request'
-	);
+	const buttonLabel = $derived.by(() => {
+		if (approval.action === 'chat_message') return 'Send message';
+		if (approval.action === 'contract') return 'Draft contract';
+		if (approval.action === 'quote_accept') return 'Accept quote';
+		return 'Create request';
+	});
 
 	const preview = $derived.by(() => {
 		const payload = approval.payload;
@@ -57,6 +56,9 @@
 			return String(payload.description ?? '');
 		}
 		if (approval.action === 'contract') return String(payload.workDetails ?? '');
+		if (approval.action === 'quote_accept') {
+			return 'This accepts the selected quote, rejects the other quotes for the request, and marks it contracted.';
+		}
 		return '';
 	});
 
@@ -129,6 +131,18 @@
 				const payload = { ...approval.payload } as unknown as ContractPayload;
 				const created = await apiClient.createContract(payload);
 				markDone(`/contracts/${created.id}`, 'Contract drafted');
+			} else if (approval.action === 'quote_accept') {
+				const quoteId = String(approval.payload.quoteId ?? '');
+				await apiClient.updateQuoteStatus(quoteId, 'accepted');
+				const requestId = String(approval.payload.requestId ?? '');
+				const requestType = String(approval.payload.requestType ?? '');
+				if (requestId && requestType === 'material') {
+					markDone(`/material-requests/${requestId}`, 'Quote accepted');
+				} else if (requestId) {
+					markDone(`/my-requests/${requestId}`, 'Quote accepted');
+				} else {
+					markDone('', 'Quote accepted');
+				}
 			} else {
 				const chatId = String(approval.payload.chat_id ?? '');
 				await apiClient.sendChatMessage(chatId, {

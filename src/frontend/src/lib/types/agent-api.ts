@@ -279,7 +279,7 @@ export interface FunctionResponsePart {
 export interface AgentApproval {
 	id: string;
 	created_at?: string;
-	action: 'work_request' | 'material_request' | 'contract' | 'chat_message';
+	action: 'work_request' | 'material_request' | 'contract' | 'quote_accept' | 'chat_message';
 	title: string;
 	summary: string[];
 	payload: Record<string, unknown>;

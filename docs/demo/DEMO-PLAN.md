@@ -35,13 +35,14 @@ No Postgres, no Cloudflare Workers, no React rewrite, no new auth, no escrow, no
 
 The agent does the work; the human commits it.
 
-- Gated tools: `create_expert_request`, `create_material_request`, `draft_contract`, `send_chat_message`.
+- Gated tools: `create_expert_request`, `create_material_request`, `draft_contract`, `accept_quote`, `send_chat_message`.
 - The agent returns `status: "needs_approval"` with an `approval` payload. It must not retry or claim success.
 - The frontend renders `AgentApprovalCard` from the tool response. Confirm calls the existing REST route with the user's token.
 - Chat messages are draft-only: the card's Send button is the human send. The agent never posts a message.
+- Quote acceptance: the card shows quote title, provider, and amount; Confirm calls `PUT /quotes/:id/status`. The V2 route updates the quote, rejects the other quotes, and marks the request contracted **sequentially, not in one transaction**. Do not claim atomicity in the demo.
 - Chat photos/attachments are uploaded from the session artifacts: before work-request creation, after material-request creation.
 - `AGENT_APPROVAL_MODE=off` is a local compatibility escape hatch; demo environments keep it `on` (default).
-- Not gated yet: `update_*`, status changes, invites, quotes. Do not widen the demo path until the four gated actions are solid.
+- Not gated yet: `update_*`, status changes, invites, quote submission. Do not widen the demo path until the gated actions are solid.
 
 ## 7. Agent rules for this repo
 
@@ -76,6 +77,7 @@ Manual demo check:
 Implementation map:
 
 - Gate: `agents/build_assist_agent/approval.py`, `before_tool_callback` in `agents/build_assist_agent/agent.py`.
+- Quote tool: `accept_quote` in `agents/build_assist_agent/tools/quote.py`; customer agent tool list in `sub_agents/customer_agent.py`.
 - Card: `src/frontend/src/lib/components/agent/AgentApprovalCard.svelte`.
 - Event merge: `src/frontend/src/lib/states/agent.svelte.ts`.
-- Tests: `agents/tests/test_approval.py`, `src/frontend/src/lib/states/agent.svelte.spec.ts`.
+- Tests: `agents/tests/test_approval.py`, `src/frontend/src/lib/components/agent/AgentApprovalCard.svelte.test.ts`, `src/frontend/src/lib/states/agent.svelte.spec.ts`.

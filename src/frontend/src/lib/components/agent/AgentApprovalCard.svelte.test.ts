@@ -9,6 +9,7 @@ vi.mock('$lib/api', () => ({
 		createMaterialRequest: vi.fn(),
 		createContract: vi.fn(),
 		sendChatMessage: vi.fn(),
+		updateQuoteStatus: vi.fn(),
 		uploadFile: vi.fn(),
 		uploadEntityAttachments: vi.fn()
 	}
@@ -30,11 +31,32 @@ const approval = {
 	payload_hash: 'abc123'
 };
 
+const quoteApproval = {
+	id: 'approval-quote',
+	action: 'quote_accept' as const,
+	title: 'Accept quote',
+	summary: ['Bathroom fittings', 'Ganesh', '₹12000'],
+	payload: {
+		quoteId: 'quote-1',
+		quoteTitle: 'Bathroom fittings',
+		amount: 12000,
+		providerName: 'Ganesh',
+		requestId: 'request-1',
+		requestType: 'work'
+	},
+	attachments: [],
+	payload_hash: 'def456'
+};
+
 describe('AgentApprovalCard', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		window.localStorage.clear();
-		vi.mocked(apiClient.createWorkRequest).mockResolvedValue({ id: 'request-1' } as any);
+		vi.mocked(apiClient.createWorkRequest).mockResolvedValue({
+			id: 'request-1',
+			status: 'open',
+			createdAt: '2026-11-22T00:00:00.000Z'
+		});
 	});
 
 	it('does not create anything until the human presses Confirm', async () => {
@@ -58,6 +80,21 @@ describe('AgentApprovalCard', () => {
 
 		await waitFor(() => {
 			expect(screen.getByText('Request created')).toBeTruthy();
+		});
+	});
+
+	it('accepts a quote only after the human presses Accept', async () => {
+		vi.mocked(apiClient.updateQuoteStatus).mockResolvedValue({});
+
+		render(AgentApprovalCard, { approval: quoteApproval, artifacts: {} });
+
+		expect(apiClient.updateQuoteStatus).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Accept quote' }));
+
+		await waitFor(() => {
+			expect(apiClient.updateQuoteStatus).toHaveBeenCalledWith('quote-1', 'accepted');
+			expect(screen.getByText('Quote accepted')).toBeTruthy();
 		});
 	});
 });

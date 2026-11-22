@@ -136,3 +136,40 @@ def test_approval_can_be_disabled_for_compatibility(monkeypatch):
         fake_context(),
     )
     assert result is None
+
+
+def test_accept_quote_card_keeps_the_human_decision():
+    result = build_approval(
+        "accept_quote",
+        {
+            "quote_id": "quote-1",
+            "opt_quote_title": "Bathroom fittings",
+            "opt_amount": 12000,
+            "opt_provider_name": "Ganesh",
+            "opt_request_id": "req-1",
+            "opt_request_type": "work",
+        },
+        fake_context(),
+    )
+
+    assert result is not None
+    assert result["status"] == "needs_approval"
+    approval = result["approval"]
+    assert approval["action"] == "quote_accept"
+    assert approval["payload"] == {
+        "quoteId": "quote-1",
+        "quoteTitle": "Bathroom fittings",
+        "amount": 12000,
+        "providerName": "Ganesh",
+        "requestId": "req-1",
+        "requestType": "work",
+    }
+    assert approval["summary"] == ["Bathroom fittings", "Ganesh", "₹12000"]
+
+
+def test_accept_quote_without_a_quote_id_is_refused():
+    result = build_approval("accept_quote", {}, fake_context())
+
+    assert result is not None
+    assert result["status"] == "error"
+    assert "complete draft" in result["error_message"]

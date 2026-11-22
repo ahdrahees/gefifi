@@ -220,3 +220,66 @@ async def submit_material_quote(
     except Exception as e:
         logger.exception("Unexpected error in submit_material_quote")
         return {"status": "error", "error_message": f"Failed to submit material quote: {str(e)}"}
+
+
+async def accept_quote(
+    quote_id: str,
+    tool_context: ToolContext,
+    opt_quote_title: Optional[str] = None,
+    opt_amount: Optional[float] = None,
+    opt_provider_name: Optional[str] = None,
+    opt_request_id: Optional[str] = None,
+    opt_request_type: Optional[Literal["work", "material"]] = None,
+) -> dict[str, Any]:
+    """
+    Accept a customer's chosen quote.
+
+    This is a high-risk action: in approval mode the tool is intercepted and the
+    human must press Accept on the approval card. The optional context fields are
+    used only to label that card; they are not sent to the backend.
+
+    Always pass opt_quote_title, opt_amount, opt_provider_name, opt_request_id,
+    and opt_request_type from the quote comparison so the human can see exactly
+    which quote they are accepting.
+
+    Args:
+        quote_id (str): The ID of the quote to accept.
+        opt_quote_title (str, optional): Human-readable quote title for the card.
+        opt_amount (float, optional): Quoted amount for the card.
+        opt_provider_name (str, optional): Expert/supplier name for the card.
+        opt_request_id (str, optional): Work or material request ID, for the post-accept link.
+        opt_request_type (Literal["work", "material"], optional): Request type, for the post-accept link.
+
+    Returns:
+        dict: Status, updated quote, and message.
+    """
+    logger.info("TOOL[accept_quote]: accepting quote %s", quote_id)
+    try:
+        token: str = tool_context.state.get("auth_token")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            response = await client.put(
+                f"{API_BASE_URL}/api/quotes/{quote_id}/status",
+                json={"status": "accepted"},
+                headers=headers,
+            )
+            result = response.raise_for_status().json()
+
+        logger.info("TOOL[accept_quote]: quote %s accepted", quote_id)
+        return {
+            "status": "success",
+            "quote": result,
+            "message": "Quote accepted. The request is now contracted.",
+        }
+    except httpx.HTTPError as e:
+        logger.error("HTTP error in accept_quote: %s", e)
+        error_msg = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                error_msg = e.response.json().get("message", str(e))
+            except Exception:
+                pass
+        return {"status": "error", "error_message": f"Failed to accept quote: {error_msg}"}
+    except Exception as e:
+        logger.exception("Unexpected error in accept_quote")
+        return {"status": "error", "error_message": f"Failed to accept quote: {str(e)}"}

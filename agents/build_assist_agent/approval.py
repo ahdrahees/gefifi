@@ -27,20 +27,21 @@ ACTION_LABELS: dict[str, tuple[str, str]] = {
     "create_expert_request": ("work_request", "Create work request"),
     "create_material_request": ("material_request", "Create material request"),
     "draft_contract": ("contract", "Draft contract"),
+    "accept_quote": ("quote_accept", "Accept quote"),
     "send_chat_message": ("chat_message", "Draft chat message"),
 }
 
 APPROVAL_INSTRUCTION = (
     "Approval mode is ON. Do not ask for a separate text confirmation before "
-    "calling a create or draft tool. Call the tool once the required fields "
-    "are known; the approval card is the confirmation step. When a tool "
+    "calling a create, accept, or draft tool. Call the tool once the required "
+    "fields are known; the approval card is the confirmation step. When a tool "
     "returns status='needs_approval': do not retry and do not claim the action "
-    "was created or sent. Reply with one short sentence only: 'Draft prepared "
-    "— the card shows the current status.' Do not say the action is pending, "
-    "not submitted, or ask the user to press Confirm in prose; the card owns "
-    "that state. A chat message is a draft until the human sends it. Never say "
-    "a request, contract, or message was created unless the tool returned "
-    "status='success'."
+    "was created, accepted, or sent. Reply with one short sentence only: 'Draft "
+    "prepared — the card shows the current status.' Do not say the action is "
+    "pending, not submitted, or ask the user to press Confirm in prose; the "
+    "card owns that state. A chat message is a draft until the human sends it. "
+    "Never say a request, quote, contract, or message was created, accepted, or "
+    "sent unless the tool returned status='success'."
 )
 
 
@@ -170,6 +171,25 @@ def _contract_payload(args: dict[str, Any], user_id: str | None) -> dict[str, An
     return payload
 
 
+def _quote_accept_payload(args: dict[str, Any]) -> dict[str, Any] | None:
+    quote_id = args.get("quote_id")
+    if not isinstance(quote_id, str) or not quote_id.strip():
+        return None
+
+    payload: dict[str, Any] = {"quoteId": quote_id.strip()}
+    optional_fields = {
+        "opt_quote_title": "quoteTitle",
+        "opt_amount": "amount",
+        "opt_provider_name": "providerName",
+        "opt_request_id": "requestId",
+        "opt_request_type": "requestType",
+    }
+    for source, target in optional_fields.items():
+        if args.get(source) is not None:
+            payload[target] = args[source]
+    return payload
+
+
 def _summary(action: str, payload: dict[str, Any], attachments: list[str]) -> list[str]:
     if action == "work_request":
         summary = [payload.get("title", ""), payload.get("location", ""), payload.get("category", "")]
@@ -179,6 +199,10 @@ def _summary(action: str, payload: dict[str, Any], attachments: list[str]) -> li
         summary = [payload.get("title", ""), payload.get("deliveryLocation", ""), f"{len(payload.get('items', []))} item(s)"]
     elif action == "contract":
         summary = [payload.get("workDetails", ""), f"₹{payload.get('totalAmount', 'not set')}"]
+    elif action == "quote_accept":
+        summary = [payload.get("quoteTitle", "Selected quote"), payload.get("providerName", "")]
+        if payload.get("amount") is not None:
+            summary.append(f"₹{payload['amount']}")
     else:
         summary = [str(payload.get("content", ""))[:160]]
     if attachments:
@@ -209,6 +233,8 @@ def build_approval(
         attachments = [name for name in (args.get("attachment_list") or []) if isinstance(name, str)]
     elif tool_name == "draft_contract":
         payload = _contract_payload(args, user_id)
+    elif tool_name == "accept_quote":
+        payload = _quote_accept_payload(args)
     else:
         chat_id = args.get("chat_id")
         content = args.get("content")
