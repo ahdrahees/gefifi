@@ -34,10 +34,12 @@ APPROVAL_INSTRUCTION = (
     "Approval mode is ON. Do not ask for a separate text confirmation before "
     "calling a create or draft tool. Call the tool once the required fields "
     "are known; the approval card is the confirmation step. When a tool "
-    "returns status='needs_approval': do not retry, do not claim the action was "
-    "created or sent, and tell the user to review the approval card and press "
-    "Confirm. A chat message is a draft until the human sends it. Never say a "
-    "request, contract, or message was created unless the tool returned "
+    "returns status='needs_approval': do not retry and do not claim the action "
+    "was created or sent. Reply with one short sentence only: 'Draft prepared "
+    "— the card shows the current status.' Do not say the action is pending, "
+    "not submitted, or ask the user to press Confirm in prose; the card owns "
+    "that state. A chat message is a draft until the human sends it. Never say "
+    "a request, contract, or message was created unless the tool returned "
     "status='success'."
 )
 
