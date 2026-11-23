@@ -56,6 +56,7 @@
 | 35  | **P2**   | Contracts        | Contract-card “Request” button navigates the card and opens a second tab                       |
 | 36  | **P3**   | Navigation       | Home dashboard/Agent toggle label is ambiguous when Agent view is active                       |
 | 37  | **P1**   | Agent            | Approval cards can be confirmed again on another browser/device and create duplicates          |
+| 38  | **P1**   | Agent/Roles      | Supplier and expert accounts have no Agent link or floating button, so their dedicated agents are undiscoverable |
 
 ## Fix status — branch `fix/demo-ui-bugs-2026-11-23`
 
@@ -103,6 +104,7 @@ reproducible).
 | 35  | ✅     | Contract “Request” keeps the current tab and opens only the new tab.                                                                                                                                                                           |
 | 36  | ✅     | Both “AI Agent” and “Dashboard” labels are visible; active state uses styling instead of hiding the label.                                                                                                                                     |
 | 37  | 🟠     | New finding: approval completion is localStorage-only, so another browser can confirm again and duplicate the action. Needs a server-side idempotency key/approval record.                                                                     |
+| 38  | 🟠     | New finding. The dedicated supplier agent is deployed and works when `/agent` is opened directly (verified 23 Nov: “Browsing material requests” returned supplier profile matches). The sidebar link and FAB are hard-coded to `customer` in `(app)/+layout.svelte`, so suppliers and experts cannot discover it. |
 
 Verification commands run on this branch:
 
@@ -626,6 +628,51 @@ rejected as already completed.
 
 **Impact:** duplicate requests/messages/contract drafts from one approval.
 
+### 38. Supplier and expert accounts have no Agent entry point
+
+**Roles:** supplier, expert
+
+**Repro**
+
+1. Sign in as a supplier (e.g. ARK Flooring).
+2. Check the sidebar: Home, My Requests, Chat, Contracts, Help — there is no **Agent** link.
+3. Check the page: the floating **Open Assistant** button is not rendered.
+
+**Actual**
+
+- The agent page is reachable by typing `/agent` directly and it works. Sent “Find material supply
+  opportunities for me. Do not express interest yet.” on production (23 Nov): the reply used the
+  supplier-specific **Browsing material requests** tool and matched the supplier profile category
+  (Tiles, Marbles, Granites, Flooring Materials) and location (Bangalore). The dedicated
+  `supplier_agent` is therefore deployed and routed correctly.
+- Only the UI entry points are missing. The same applies to the expert role, which has its own
+  `expert_agent`.
+
+**Cause**
+
+`src/frontend/src/routes/(app)/+layout.svelte` hard-codes the customer role in both places:
+
+- sidebar link `{ href: '/agent', label: 'Agent', iconKey: 'agent', types: ['customer'] }` (line 50)
+- FAB visibility `currentAuth.user?.userType === 'customer'` (lines 19–24)
+
+The backend already routes by token role: `RoleRouterAgent` selects `customer_agent`,
+`expert_agent`, or `supplier_agent` in `agents/build_assist_agent/agent.py` (lines 284–301).
+
+**Not tested in the original walkthrough**
+
+The supplier session was used for requests, chat, quotes and contracts, but the supplier Agent panel
+was not exercised. This finding comes from a follow-up check on 23 Nov, after PR #52 was merged.
+
+**Fix direction**
+
+Include `expert` and `supplier` in both the nav link types and `showAgentFAB`, then verify a live turn
+for each role. Role-specific empty-state copy would also help.
+
+**Impact**
+
+Suppliers and experts cannot discover the assistant built for them; the demo looks like the agent is a
+customer-only feature.
+
 ---
 
 ## Test data created / artefacts to clean up
@@ -638,7 +685,7 @@ rejected as already completed.
   amounts/dates. It remains in the account because contracts have no delete action.
 - Sent test chat messages and uploaded a test PDF and two tiny PNGs to a chat and to the agent.
 - The customer profile’s phone was set to a fake test number and the location to `Bengaluru` while
-  testing. Clearing them is broken (finding 12), so those values could not be restored through the UI.
+  testing. Both were later cleared and verified as **Not set** after the #53/#54 fixes.
 - No quote was accepted and no contract was signed.
 
 ## Areas not verified
@@ -650,3 +697,5 @@ rejected as already completed.
 - Logout and re-login, because the only sessions available are the two Google-authenticated profiles
   and the login page already shows a Google Sign-In initialization error.
 - Firestore security-rule enforcement under a hostile client; testing used the UI only.
+- Supplier/expert Agent entry points: the supplier agent was verified by opening `/agent` directly,
+  but the missing sidebar link and FAB are finding 38. The expert agent was code-reviewed only.
