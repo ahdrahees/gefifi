@@ -1,7 +1,5 @@
 <!-- gefifi-2/src/frontend/src/lib/components/chat/PDFModal.svelte -->
 <script lang="ts">
-	import { onDestroy } from 'svelte';
-
 	interface Props {
 		// --- PROPS ---
 		show?: boolean;
@@ -12,32 +10,6 @@
 
 	let { show = false, pdfSrc = '', fileName = '', onclose }: Props = $props();
 
-	// --- INTERNAL STATE ---
-	let blobUrl: string = $state('');
-	let isLoading: boolean = $state(false);
-	let error: string = $state('');
-
-	async function loadPdfAsBlob() {
-		isLoading = true;
-		error = '';
-
-		try {
-			const response = await fetch(pdfSrc);
-			if (!response.ok) {
-				throw new Error(`Failed to load PDF: ${response.status}`);
-			}
-			const blob = await response.blob();
-			// Create a new blob with explicit PDF type
-			const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-			blobUrl = URL.createObjectURL(pdfBlob);
-		} catch (err) {
-			console.error('Failed to load PDF:', err);
-			error = err instanceof Error ? err.message : 'Failed to load PDF';
-		} finally {
-			isLoading = false;
-		}
-	}
-
 	function close() {
 		onclose?.();
 	}
@@ -47,27 +19,9 @@
 			close();
 		}
 	}
-
-	onDestroy(() => {
-		if (blobUrl) {
-			URL.revokeObjectURL(blobUrl);
-		}
-	});
-	// Load PDF as blob when shown (bypasses Content-Disposition: attachment headers)
-	$effect(() => {
-		if (show && pdfSrc) {
-			loadPdfAsBlob();
-		}
-	});
-	// Cleanup blob URL when modal closes
-	$effect(() => {
-		if (!show && blobUrl) {
-			URL.revokeObjectURL(blobUrl);
-			blobUrl = '';
-			error = '';
-		}
-	});
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 {#if show}
 	<div
@@ -144,16 +98,15 @@
 
 			<!-- PDF Viewer -->
 			<div class="flex-1 bg-slate-900">
-				{#if isLoading}
-					<!-- Loading State -->
-					<div class="flex h-full flex-col items-center justify-center gap-4">
-						<div
-							class="h-10 w-10 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-500"
-						></div>
-						<p class="text-sm text-slate-400">Loading PDF...</p>
-					</div>
-				{:else if error}
-					<!-- Error State -->
+				<!-- Render the storage URL directly. Fetching it into a blob requires
+				     bucket CORS, which the uploads bucket does not provide. -->
+				<object
+					data={pdfSrc}
+					type="application/pdf"
+					class="h-full w-full"
+					title={fileName || 'PDF Document'}
+				>
+					<!-- Fallback for browsers that don't support PDF embedding -->
 					<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
 						<div class="rounded-full bg-red-500/20 p-4">
 							<svg
@@ -171,8 +124,10 @@
 							</svg>
 						</div>
 						<div>
-							<p class="text-lg font-medium text-slate-200">Unable to load PDF</p>
-							<p class="mt-1 text-sm text-slate-400">{error}</p>
+							<p class="text-lg font-medium text-slate-200">Unable to display PDF</p>
+							<p class="mt-1 text-sm text-slate-400">
+								Your browser doesn't support inline PDF viewing.
+							</p>
 						</div>
 						<a
 							href={pdfSrc}
@@ -191,56 +146,7 @@
 							Open in New Tab
 						</a>
 					</div>
-				{:else if blobUrl}
-					<!-- PDF Content -->
-					<object
-						data={blobUrl}
-						type="application/pdf"
-						class="h-full w-full"
-						title={fileName || 'PDF Document'}
-					>
-						<!-- Fallback for browsers that don't support PDF embedding -->
-						<div class="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-							<div class="rounded-full bg-red-500/20 p-4">
-								<svg
-									class="h-12 w-12 text-red-400"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										stroke-width="2"
-										d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-									/>
-								</svg>
-							</div>
-							<div>
-								<p class="text-lg font-medium text-slate-200">Unable to display PDF</p>
-								<p class="mt-1 text-sm text-slate-400">
-									Your browser doesn't support inline PDF viewing.
-								</p>
-							</div>
-							<a
-								href={pdfSrc}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
-							>
-								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										stroke-width="2"
-										d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-									/>
-								</svg>
-								Open in New Tab
-							</a>
-						</div>
-					</object>
-				{/if}
+				</object>
 			</div>
 		</div>
 	</div>

@@ -45,26 +45,22 @@
 		if (!currentUser || !token) return;
 
 		try {
-			const response = await fetch('/api/users/me/profile', {
-				headers: {
-					Authorization: `Bearer ${token}`,
-					'Content-Type': 'application/json'
-				}
-			});
-
-			if (response.ok) {
-				const userData = await response.json();
-				// Pre-fill form data
-				profileData = {
-					fullName: userData.profile?.fullName || '',
-					phoneNumber: userData.profile?.phoneNumber || '',
-					location: userData.profile?.location || '',
-					expertise: userData.profile?.expertise || '',
-					experience: userData.profile?.experience || '',
-					companyName: userData.profile?.companyName || '',
-					category: userData.profile?.category || ''
-				};
-			}
+			const userData = await apiClient.getUserProfile();
+			// Pre-fill form data from the backend copy, which may be newer than
+			// the snapshot in the auth store.
+			profileData = {
+				fullName: userData.profile?.fullName || '',
+				phoneNumber: userData.profile?.phoneNumber || '',
+				location: userData.profile?.location || '',
+				expertise: userData.profile?.expertise || '',
+				experience: userData.profile?.experience || '',
+				companyName: userData.profile?.companyName || '',
+				category: userData.profile?.category || ''
+			};
+			authStore.update((state) => ({
+				...state,
+				user: (state.user ? { ...state.user, ...userData } : userData) as AuthUser
+			}));
 		} catch (error) {
 			console.error('Error loading user profile:', error);
 		}

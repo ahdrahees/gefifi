@@ -289,7 +289,7 @@
 		if ((!newMessageContent.trim() && selectedFiles.length === 0) || isSendingMessage) return;
 
 		isSendingMessage = true;
-		isUploadingFiles = true;
+		isUploadingFiles = selectedFiles.length > 0;
 
 		// Clear typing indicator when sending message
 		if (currentUser?.id) {

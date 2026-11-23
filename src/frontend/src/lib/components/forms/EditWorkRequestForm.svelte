@@ -20,7 +20,10 @@
 		location: workRequest.location,
 		category: workRequest.category || 'General',
 		expectedCost: workRequest.expectedCost || '',
-		timeline: workRequest.timeline || '',
+		timeline:
+			workRequest.timeline && workRequest.timeline !== 'Not specified'
+				? workRequest.timeline
+				: '',
 		materialsSuggested: workRequest.materialsSuggested || '',
 		images: [...(workRequest.images || [])]
 	});
@@ -37,19 +40,19 @@
 
 	// Categories for work requests
 	const categories = [
-		'General',
-		'Construction',
+		'General Construction',
 		'Renovation',
+		'Repair',
 		'Plumbing',
 		'Electrical',
 		'Painting',
 		'Flooring',
 		'Roofing',
 		'HVAC',
-		'Landscaping',
-		'Interior Design',
-		'Carpentry',
 		'Masonry',
+		'Carpentry',
+		'Interior Design',
+		'Landscaping',
 		'Other'
 	];
 

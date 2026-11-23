@@ -630,8 +630,11 @@
 			currentUser.id === contract.customerId
 	);
 
+	// The linked request is the reliable source of truth for contract type.
+	// Some older records contain a stale material_contract value.
+	let isExpertContract = $derived(!!contract?.workRequestId);
 	let contractTypeLabel = $derived(
-		contract?.contractType === 'expert_contract' ? 'Expert Contract' : 'Material Contract'
+		isExpertContract ? 'Expert Contract' : 'Material Contract'
 	);
 	let relatedRequestUrl = $derived(
 		contract?.workRequestId
@@ -1116,7 +1119,7 @@
 						<div class="rounded-xl bg-slate-700/50 p-4">
 							<div class="mb-3 flex items-center justify-between">
 								<h3 class="font-semibold text-slate-300">
-									{contract.contractType === 'expert_contract' ? 'Expert' : 'Supplier'}
+									{isExpertContract ? 'Expert' : 'Supplier'}
 								</h3>
 								{#if contract.expertSupplierSigned}
 									<span class="flex items-center gap-1 text-emerald-400">
@@ -1179,7 +1182,7 @@
 							<p class="mb-4 text-sm text-slate-300">
 								As the {currentUser?.id === contract.customerId
 									? 'Customer'
-									: contract.contractType === 'expert_contract'
+									: isExpertContract
 										? 'Expert'
 										: 'Supplier'}, you can sign this contract. Please review all details carefully.
 							</p>

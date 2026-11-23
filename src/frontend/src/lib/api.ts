@@ -284,8 +284,16 @@ const apiClient = {
 	sendOtp: (phoneNumber: string): Promise<SendOtpResponse> => {
 		return request<SendOtpResponse>('/auth/send-otp', 'POST', { phoneNumber });
 	},
-	verifyOtp: (phoneNumber: string, otpCode: string, userTypeForNewUser?: string): Promise<VerifyOtpResponse> => {
-		return request<VerifyOtpResponse>('/auth/verify-otp', 'POST', { phoneNumber, otpCode, userTypeForNewUser });
+	verifyOtp: (
+		phoneNumber: string,
+		otpCode: string,
+		userTypeForNewUser?: string
+	): Promise<VerifyOtpResponse> => {
+		return request<VerifyOtpResponse>('/auth/verify-otp', 'POST', {
+			phoneNumber,
+			otpCode,
+			userTypeForNewUser
+		});
 	},
 	getMe: (): Promise<AuthUser> => {
 		return request<AuthUser>('/auth/me', 'GET', undefined, true);
@@ -379,6 +387,9 @@ const apiClient = {
 	getExperts: (): Promise<AuthUser[]> => {
 		return request<AuthUser[]>('/users/experts', 'GET', undefined, true);
 	},
+	getUserProfile: (): Promise<AuthUser> => {
+		return request<AuthUser>('/users/me/profile', 'GET', undefined, true);
+	},
 	updateUserProfile: (data: UserProfileUpdateData): Promise<UpdateProfileResponse> => {
 		// Check if avatar file is provided AND it's a new file (not just the existing avatar)
 		if (data.avatar && data.avatar instanceof File) {
@@ -390,8 +401,8 @@ const apiClient = {
 				if (key === 'avatar') {
 					// Add the file with the correct field name
 					formData.append('avatar', data.avatar!);
-				} else if (data[key as keyof UserProfileUpdateData]) {
-					// Add other fields only if they have values
+				} else if (data[key as keyof UserProfileUpdateData] !== undefined) {
+					// Include empty strings so the backend can clear optional fields.
 					formData.append(key, data[key as keyof UserProfileUpdateData] as string);
 				}
 			});

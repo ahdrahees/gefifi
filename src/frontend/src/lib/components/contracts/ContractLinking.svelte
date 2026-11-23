@@ -305,18 +305,27 @@
 	}
 	*/
 	function getContractDisplayName(contract: Contract): string {
-		// Try to get meaningful contract information
-		if (contract.workRequestId || contract.materialRequestId) {
-			// If we have request info, use that
-			const requestType = contract.workRequestId ? 'Work' : 'Material';
-			const requestId = contract.workRequestId || contract.materialRequestId;
-			const status = contract.status?.replace(/_/g, ' ') || 'unknown';
-			return `${requestType} Contract (${requestId?.substring(0, 8)}...) - ${status}`;
-		}
-
-		// Fallback to contract ID with status
 		const status = contract.status?.replace(/_/g, ' ') || 'unknown';
-		return `Contract ${contract.id.substring(0, 8)}... - ${status}`;
+		const title =
+			(contract as Contract & { title?: string }).title?.trim() || 'Untitled contract';
+		const amount =
+			typeof contract.totalAmount === 'number'
+				? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(
+						contract.totalAmount
+					)
+				: null;
+		const date = contract.contractDate
+			? new Date(contract.contractDate).toLocaleDateString('en-GB', {
+					day: '2-digit',
+					month: 'short',
+					year: 'numeric'
+				})
+			: null;
+		// Always include the contract id: several contracts can share the same
+		// request id, which made every dropdown option look identical.
+		return [title, amount, date, `(${contract.id.substring(0, 8)}…)`, `- ${status}`]
+			.filter(Boolean)
+			.join(' ');
 	}
 	/*
 	function getVisibilityIcon(visibility: 'private' | 'shared'): string {
@@ -595,6 +604,12 @@
 		</div>
 	{/if}
 </div>
+
+<svelte:window
+	onkeydown={(event) => {
+		if (showLinkingModal && event.key === 'Escape') closeLinkingModal();
+	}}
+/>
 
 <!-- Linking Modal Portal -->
 {#if showLinkingModal && modalContainer}

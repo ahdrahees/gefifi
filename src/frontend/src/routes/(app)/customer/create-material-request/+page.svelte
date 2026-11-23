@@ -30,6 +30,10 @@
 			goto('/auth/login');
 			return;
 		}
+		if (user.userType !== 'customer') {
+			goto('/home');
+			return;
+		}
 		try {
 			// In a real app, you might want to create a dedicated endpoint for this.
 			// Reusing the work-requests endpoint is efficient for now.

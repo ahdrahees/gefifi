@@ -160,14 +160,24 @@
 			goto('/home', { replaceState: true });
 		}
 
-		// Initialize Google Sign-In
-		if (GOOGLE_CLIENT_ID && window.google) {
+		// Initialize Google Sign-In. The GSI script is loaded async in
+		// app.html, so wait briefly for it instead of failing on first mount.
+		async function initializeGoogleSignIn() {
+			if (!GOOGLE_CLIENT_ID) {
+				console.error('Google Client ID is not configured.');
+				return;
+			}
+			for (let attempt = 0; attempt < 50 && !window.google?.accounts?.id; attempt++) {
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
+			if (!window.google?.accounts?.id) {
+				console.error('Google Sign-In script did not load.');
+				return;
+			}
 			window.google.accounts.id.initialize({
 				client_id: GOOGLE_CLIENT_ID,
 				callback: handleGoogleCredentialResponse
 			});
-
-			// Render the Google Sign-In button
 			const googleButtonElement = document.getElementById('google-signin-button');
 			if (googleButtonElement) {
 				window.google.accounts.id.renderButton(googleButtonElement, {
@@ -179,9 +189,8 @@
 					logo_alignment: 'left'
 				});
 			}
-		} else {
-			console.error('Google Client ID not found or Google script not loaded.');
 		}
+		void initializeGoogleSignIn();
 
 		return () => {
 			if (unsubscribeAuth) {

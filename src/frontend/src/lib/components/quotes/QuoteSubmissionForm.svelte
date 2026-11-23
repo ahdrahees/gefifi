@@ -37,12 +37,12 @@
 	let amount = $state('');
 	let currency = $state('INR');
 	let validityDays = $state(30);
-	let additionalInfo = {
+	let additionalInfo = $state({
 		deliveryTime: '',
 		paymentTerms: '',
 		warranty: '',
 		notes: ''
-	};
+	});
 
 	// File handling
 	let selectedFiles: File[] = $state([]);
@@ -918,6 +918,18 @@
 								<span class="text-sm font-medium text-slate-400">Validity</span>
 								<p class="text-slate-200">{validityDays} days</p>
 							</div>
+							{#if additionalInfo.deliveryTime}
+								<div>
+									<span class="text-sm font-medium text-slate-400">Delivery Time</span>
+									<p class="text-slate-200">{additionalInfo.deliveryTime}</p>
+								</div>
+							{/if}
+							{#if additionalInfo.paymentTerms}
+								<div>
+									<span class="text-sm font-medium text-slate-400">Payment Terms</span>
+									<p class="text-slate-200">{additionalInfo.paymentTerms}</p>
+								</div>
+							{/if}
 						</div>
 
 						{#if description}

@@ -99,11 +99,29 @@
 		try {
 			const chats = await apiClient.getUserChats();
 			const newChatMap = new Map<string, string>();
+			const counterpartIds = new Set<string>();
 			chats.forEach((chat: Chat) => {
-				const otherParticipant = chat.participants.find((p: string) => p !== currentUser?.id);
-				if (otherParticipant) {
-					newChatMap.set(otherParticipant, chat.id);
-				}
+				chat.participants
+					.filter((p: string) => p !== currentUser?.id)
+					.forEach((p: string) => counterpartIds.add(p));
+			});
+			counterpartIds.forEach((participant) => {
+				const candidates = chats.filter(
+					(chat: Chat) =>
+						chat.participants.includes(participant) &&
+						chat.participants.includes(currentUser!.id)
+				);
+				const requestChat = candidates.find((chat: Chat) =>
+					requestType === 'work'
+						? chat.workRequestId === request.id
+						: chat.materialRequestId === request.id
+				);
+				const chosen =
+					requestChat ??
+					candidates.sort(
+						(a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+					)[0];
+				if (chosen) newChatMap.set(participant, chosen.id);
 			});
 			chatMap = newChatMap;
 		} catch (error) {

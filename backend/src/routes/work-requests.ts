@@ -134,7 +134,9 @@ router.post(
 			}
 			if (expirationDate) {
 				if (isNaN(Date.parse(expirationDate))) {
-					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+					return res
+						.status(400)
+						.json({ message: 'Expiration date must be a valid date string if provided.' });
 				}
 				const todayStart = new Date();
 				todayStart.setHours(0, 0, 0, 0);
@@ -152,12 +154,12 @@ router.post(
 				images: images || [],
 				location,
 				expectedCost: expectedCost ?? 0,
-				timeline: timeline || 'Not specified',
+				timeline: timeline || '',
 				materialsSuggested: materialsSuggested || '',
 				status: 'open',
 				createdAt: now,
 				updatedAt: now,
-				category: category || 'General',
+				category: category || 'General Construction',
 				interestedExperts: [],
 				invitedExperts: []
 			};
@@ -249,7 +251,9 @@ router.put(
 
 			if (updateData.expirationDate) {
 				if (isNaN(Date.parse(updateData.expirationDate))) {
-					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+					return res
+						.status(400)
+						.json({ message: 'Expiration date must be a valid date string if provided.' });
 				}
 				const todayStart = new Date();
 				todayStart.setHours(0, 0, 0, 0);

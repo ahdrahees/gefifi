@@ -97,6 +97,15 @@ export async function sendChat(sessionId: string, userId: string, message: strin
 		}
 	} finally {
 		agentLoaders.generating[sessionId] = false;
+		// Reconcile with the server after every turn. The SSE merge can miss
+		// the final event in some races, and the session sidebar needs the new
+		// title/lastUpdateTime. This keeps the UI truthful without a manual reload.
+		try {
+			await fetchSession(userId, sessionId);
+			await fetchAllSessions(userId);
+		} catch (error) {
+			console.warn('Failed to reconcile agent session after response:', error);
+		}
 	}
 }
 
@@ -110,7 +119,11 @@ export async function fetchAllSessions(userId: string) {
 
 export async function loadSessionArtifacts(userId: string, sessionId: string) {
 	try {
-		const artifactNames = await agentApiClient.listArtifacts(CUSTOMER_AGENT_NAME, userId, sessionId);
+		const artifactNames = await agentApiClient.listArtifacts(
+			CUSTOMER_AGENT_NAME,
+			userId,
+			sessionId
+		);
 		await Promise.all(
 			artifactNames.map(async (name) => {
 				const artifactPart = await agentApiClient.loadArtifact(

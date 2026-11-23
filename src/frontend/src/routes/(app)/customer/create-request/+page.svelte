@@ -1,5 +1,18 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { authStore } from '$lib/stores/auth';
+
+	onMount(() => {
+		const user = $authStore.user;
+		if (!user) {
+			goto('/auth/login');
+			return;
+		}
+		if (user.userType !== 'customer') {
+			goto('/home', { replaceState: true });
+		}
+	});
 
 	// Simple icons for visual representation
 	const icons = {

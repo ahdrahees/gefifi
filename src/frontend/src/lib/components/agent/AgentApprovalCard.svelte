@@ -62,6 +62,10 @@
 		return '';
 	});
 
+	// Chat cards already repeat the message in the summary list; only render the
+	// preview when it adds information.
+	const showPreview = $derived(preview.length > 0 && !approval.summary.includes(preview));
+
 	function artifactToFile(name: string): File | null {
 		const part = artifacts[name];
 		const inline = part?.inlineData;
@@ -170,7 +174,9 @@
 		</span>
 		<div class="min-w-0">
 			<p class="truncate text-sm font-semibold text-slate-100">{approval.title}</p>
-			<p class="text-[11px] text-slate-400">Agent draft · your confirmation required</p>
+			<p class="text-[11px] text-slate-400">
+				{done ? 'Completed' : 'Agent draft · your confirmation required'}
+			</p>
 		</div>
 	</div>
 
@@ -186,7 +192,7 @@
 			</ul>
 		{/if}
 
-		{#if preview}
+		{#if showPreview}
 			<p class="line-clamp-3 text-xs whitespace-pre-wrap text-slate-400">{preview}</p>
 		{/if}
 
