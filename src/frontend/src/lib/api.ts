@@ -401,8 +401,8 @@ const apiClient = {
 				if (key === 'avatar') {
 					// Add the file with the correct field name
 					formData.append('avatar', data.avatar!);
-				} else if (data[key as keyof UserProfileUpdateData]) {
-					// Add other fields only if they have values
+				} else if (data[key as keyof UserProfileUpdateData] !== undefined) {
+					// Include empty strings so the backend can clear optional fields.
 					formData.append(key, data[key as keyof UserProfileUpdateData] as string);
 				}
 			});

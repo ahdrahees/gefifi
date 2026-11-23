@@ -37,12 +37,15 @@ export async function sendSystemMessage(
 		if (relevantChat) {
 			const now = new Date().toISOString();
 			const messageId = crypto.randomUUID();
+			const definedEntityIds = Object.fromEntries(
+				Object.entries(entityIds ?? {}).filter(([, value]) => value !== undefined)
+			);
 			const notificationMessage: Message = {
 				id: messageId,
 				senderId: 'system',
 				content: `[System] ${messageContent}`,
 				timestamp: now,
-				...entityIds // Spread the optional entity IDs
+				...definedEntityIds // Firestore rejects undefined field values
 			};
 			await chatsDB.createInSubcollection(relevantChat.id, 'messages', notificationMessage);
 			await chatsDB.update(relevantChat.id, { updatedAt: now });

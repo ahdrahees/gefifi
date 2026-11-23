@@ -20,8 +20,10 @@
 	<h2 class="text-xl font-semibold text-slate-100">Who can see it</h2>
 	<p>
 		Request details are visible to the customer who created them and to professionals who are invited
-		or have expressed interest. Chats and contracts are limited to their participants. Demo files are
-		hosted in the demo storage bucket and are periodically reset.
+		or have expressed interest. Chats and contracts are limited to their participants. Uploaded
+		attachments are stored in the demo storage bucket and may be reachable by anyone who has the
+		direct file link; do not upload confidential documents to the demo. Demo files are periodically
+		reset.
 	</p>
 	<h2 class="text-xl font-semibold text-slate-100">Your choices</h2>
 	<p>

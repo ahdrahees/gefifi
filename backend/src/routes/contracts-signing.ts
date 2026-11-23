@@ -15,6 +15,31 @@ const materialRequestsDB = new FirestoreCollection('materialRequests');
 
 const router = Router();
 
+async function syncLinkedRequestStatus(contract: Contract, now: string): Promise<void> {
+    const terminalStatuses = ['cancelled', 'completed', 'closed', 'expired'];
+    if (contract.workRequestId) {
+        const request = (await workRequestsDB.findById(
+            contract.workRequestId
+        )) as WorkRequest | null;
+        if (request && !terminalStatuses.includes(request.status)) {
+            await workRequestsDB.update(contract.workRequestId, {
+                status: 'contracted',
+                updatedAt: now
+            });
+        }
+    } else if (contract.materialRequestId) {
+        const request = (await materialRequestsDB.findById(
+            contract.materialRequestId
+        )) as MaterialRequest | null;
+        if (request && !terminalStatuses.includes(request.status)) {
+            await materialRequestsDB.update(contract.materialRequestId, {
+                status: 'contracted',
+                updatedAt: now
+            });
+        }
+    }
+}
+
 router.put(
 	'/contracts/:contractId/sign',
 	authenticateToken,
@@ -31,13 +56,22 @@ router.put(
 			if (!contract) {
 				return res.status(404).json({ message: 'Contract not found.' });
 			}
+			const now = new Date().toISOString();
+
+			// Idempotent recovery: a previous attempt may have signed the
+			// contract but failed to update the linked request. Let a retry
+			// finish that transition instead of rejecting the signed contract.
+			if (contract.status === 'signed') {
+				await syncLinkedRequestStatus(contract, now);
+				return res.status(200).json(contract);
+			}
+
 			if (contract.status !== 'draft' && contract.status !== 'awaiting_signatures') {
 				return res.status(400).json({
 					message: `Contract in status '${contract.status}' cannot be signed. Must be 'draft' or 'awaiting_signatures'.`
 				});
 			}
 			let signedByCurrentUser = false;
-			const now = new Date().toISOString();
 			const updates: Partial<Contract> = { updatedAt: now };
 
 			if (user.id === contract.customerId) {
@@ -162,40 +196,19 @@ router.put(
 					}
 
 					// Now that both parties signed, move the linked request to
-					// contracted. This used to happen when the draft was created.
+					// contracted. If this fails, return an error so the client can
+					// retry; the signed-contract recovery branch above finishes it.
 					try {
-						if (contract.workRequestId) {
-							const request = (await workRequestsDB.findById(
-								contract.workRequestId
-							)) as WorkRequest | null;
-							if (
-								request &&
-								!['cancelled', 'completed', 'closed', 'expired'].includes(request.status)
-							) {
-								await workRequestsDB.update(contract.workRequestId, {
-									status: 'contracted',
-									updatedAt: now
-								});
-							}
-						} else if (contract.materialRequestId) {
-							const request = (await materialRequestsDB.findById(
-								contract.materialRequestId
-							)) as MaterialRequest | null;
-							if (
-								request &&
-								!['cancelled', 'completed', 'closed', 'expired'].includes(request.status)
-							) {
-								await materialRequestsDB.update(contract.materialRequestId, {
-									status: 'contracted',
-									updatedAt: now
-								});
-							}
-						}
+						await syncLinkedRequestStatus(contract, now);
 					} catch (requestStatusError) {
 						console.error(
 							'Failed to update linked request after full signature:',
 							requestStatusError
 						);
+						return res.status(500).json({
+							message:
+								'Contract was signed, but the linked request could not be updated. Retry the signature request.'
+						});
 					}
 
 					res.status(200).json(updatedContract);
@@ -288,6 +301,34 @@ router.put(
 								materialRequestId: contract.materialRequestId
 							}
 						);
+					}
+
+					// Close the concurrent-signing race: if the other party signed
+					// between our read and write, both flags are present now. Finish
+					// the transition instead of leaving the contract waiting.
+					const latestContract = await contractsDB.findById(contractId);
+					if (
+						latestContract?.customerSigned &&
+						latestContract.expertSupplierSigned &&
+						latestContract.status !== 'signed'
+					) {
+						const finalized = await contractsDB.update(contractId, {
+							status: 'signed',
+							updatedAt: now
+						});
+						try {
+							await syncLinkedRequestStatus(latestContract, now);
+						} catch (requestStatusError) {
+							console.error(
+								'Failed to update linked request after concurrent signatures:',
+								requestStatusError
+							);
+							return res.status(500).json({
+								message:
+									'Contract was signed, but the linked request could not be updated. Retry the signature request.'
+							});
+						}
+						return res.status(200).json(finalized ?? latestContract);
 					}
 
 					res.status(200).json(updatedContract);

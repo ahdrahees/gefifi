@@ -457,6 +457,11 @@ router.put(
 					.json({ message: 'You do not have permission to update this quote status' });
 			}
 
+			// A retry of the same acceptance should be allowed to finish the
+			// follow-up writes (reject siblings, contract request) if a previous
+			// attempt failed midway.
+			const isAcceptRetry = status === 'accepted' && existingQuote.status === 'accepted';
+
 			if (status === 'accepted' || status === 'rejected') {
 				const requestRef =
 					existingQuote.requestType === 'work' ? workRequestsDB : materialRequestsDB;
@@ -466,13 +471,13 @@ router.put(
 				}
 
 				const terminalStatuses = ['cancelled', 'completed', 'closed', 'expired'];
-				if (terminalStatuses.includes(request.status)) {
+				if (terminalStatuses.includes(request.status) && !isAcceptRetry) {
 					return res.status(400).json({
 						message: `Cannot change a quote on a request in '${request.status}' status.`
 					});
 				}
 
-				if (status === 'accepted') {
+				if (status === 'accepted' && !isAcceptRetry) {
 					const sourcingStatuses =
 						existingQuote.requestType === 'work'
 							? ['open', 'in_discussion', 'awaiting_quotes']

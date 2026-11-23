@@ -36,6 +36,7 @@
 	let textarea: HTMLTextAreaElement | undefined = $state();
 	let fileInput: HTMLInputElement | undefined = $state();
 	let selectedFiles: File[] = $state([]);
+	let isValidatingFiles = $state(false);
 	const previewUrls = new WeakMap<File, string>();
 
 	// --- HELPERS ---
@@ -96,29 +97,34 @@
 	// --- HANDLERS ---
 	async function handleFilesSelected(e: Event) {
 		const target = e.target as HTMLInputElement;
-		if (target.files) {
-			const newFiles = Array.from(target.files);
-			const validFiles = newFiles.filter(validateFile);
+		isValidatingFiles = true;
+		try {
+			if (target.files) {
+				const newFiles = Array.from(target.files);
+				const validFiles = newFiles.filter(validateFile);
 
-			if (validFiles.length < newFiles.length) {
-				alert('Some files were rejected. Allowed types: ' + ALLOWED_EXTENSIONS.join(', '));
+				if (validFiles.length < newFiles.length) {
+					alert('Some files were rejected. Allowed types: ' + ALLOWED_EXTENSIONS.join(', '));
+				}
+
+				const imageChecks = await Promise.all(validFiles.map(hasUsableImageSize));
+				const usableFiles = validFiles.filter((_, index) => imageChecks[index]);
+				if (usableFiles.length < validFiles.length) {
+					alert('One or more images are too small to process. Please upload a normal photo.');
+				}
+
+				if (selectedFiles.length + usableFiles.length > MAX_FILES) {
+					alert(`Max ${MAX_FILES} files allowed.`);
+					return;
+				}
+
+				selectedFiles = [...selectedFiles, ...usableFiles];
 			}
-
-			const imageChecks = await Promise.all(validFiles.map(hasUsableImageSize));
-			const usableFiles = validFiles.filter((_, index) => imageChecks[index]);
-			if (usableFiles.length < validFiles.length) {
-				alert('One or more images are too small to process. Please upload a normal photo.');
-			}
-
-			if (selectedFiles.length + usableFiles.length > MAX_FILES) {
-				alert(`Max ${MAX_FILES} files allowed.`);
-				return;
-			}
-
-			selectedFiles = [...selectedFiles, ...usableFiles];
+		} finally {
+			isValidatingFiles = false;
+			// Reset input
+			if (target) target.value = '';
 		}
-		// Reset input
-		if (target) target.value = '';
 	}
 
 	function revokePreviewUrl(file: File) {
@@ -140,7 +146,7 @@
 	});
 
 	function handleSubmit() {
-		if ((!value.trim() && selectedFiles.length === 0) || isSending) return;
+		if ((!value.trim() && selectedFiles.length === 0) || isSending || isValidatingFiles) return;
 
 		onSubmit?.({
 			message: value,
@@ -312,7 +318,7 @@
 			use:autofocus
 			oninput={autoResize}
 			onkeydown={handleKeydown}
-			disabled={isSending}
+			disabled={isSending || isValidatingFiles}
 			rows="1"
 			class="scrollable-content w-full resize-none border-0 bg-transparent px-2 py-2 text-sm text-slate-200 placeholder-slate-400 focus:border-0 focus:ring-0 focus:outline-0 focus:outline-none"
 			placeholder="Type your message here..."
@@ -335,7 +341,7 @@
 				/>
 				<button
 					onclick={() => fileInput?.click()}
-					disabled={isSending}
+					disabled={isSending || isValidatingFiles}
 					class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-700 hover:text-slate-200"
 					aria-label="Add files"
 				>
@@ -367,7 +373,9 @@
 			<div class="group relative">
 				<button
 					onclick={handleSubmit}
-					disabled={(!value.trim() && selectedFiles.length === 0) || isSending}
+					disabled={
+						(!value.trim() && selectedFiles.length === 0) || isSending || isValidatingFiles
+					}
 					class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500"
 					aria-label="Send message"
 				>
