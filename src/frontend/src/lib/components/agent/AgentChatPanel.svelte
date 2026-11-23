@@ -24,12 +24,42 @@
 	let isSending = $state(false);
 	let scrollContainer: HTMLDivElement | undefined = $state();
 
-	const suggestions = [
-		{ text: 'Find me an expert plumber in Mumbai', icon: '🔧' },
-		{ text: 'Need quotes for 50 bags of cement', icon: '🧱' },
-		{ text: 'What’s the status of my active requests?', icon: '📊' },
-		{ text: 'Hire an architect for a villa project', icon: '📐' }
-	];
+	const roleContent = {
+		customer: {
+			title: 'How can I help you build today?',
+			subtitle:
+				'Get matched with expert pros, find pricing for building materials, or orchestrate custom quotes instantly.',
+			suggestions: [
+				{ text: 'Find me an expert plumber in Mumbai', icon: '🔧' },
+				{ text: 'Need quotes for 50 bags of cement', icon: '🧱' },
+				{ text: 'What’s the status of my active requests?', icon: '📊' },
+				{ text: 'Hire an architect for a villa project', icon: '📐' }
+			]
+		},
+		expert: {
+			title: 'How can I help you win work today?',
+			subtitle: 'Find work requests, submit quotes, and manage your expert conversations.',
+			suggestions: [
+				{ text: 'Find work requests I can quote on', icon: '🔎' },
+				{ text: 'Find work requests in Bangalore', icon: '📍' },
+				{ text: 'Check my expert profile', icon: '🏷️' },
+				{ text: 'Show my chats', icon: '💬' }
+			]
+		},
+		supplier: {
+			title: 'How can I help you supply today?',
+			subtitle:
+				'Find material opportunities, express interest, and manage your supplier conversations.',
+			suggestions: [
+				{ text: 'Find material supply opportunities for me', icon: '🔎' },
+				{ text: 'Find material requests in Bangalore', icon: '📍' },
+				{ text: 'Check my supplier profile', icon: '🏷️' },
+				{ text: 'Show my chats', icon: '💬' }
+			]
+		}
+	};
+
+	let content = $derived(roleContent[$authStore?.user?.userType ?? 'customer']);
 
 	// --- FETCH SESSION EVENTS ---
 	$effect(() => {
@@ -165,15 +195,14 @@
 				</div>
 
 				<!-- ////		 -->
-				<h4 class="text-base font-semibold text-slate-200">How can I help you build today?</h4>
+				<h4 class="text-base font-semibold text-slate-200">{content.title}</h4>
 				<p class="mt-1 max-w-md px-4 text-xs text-slate-400">
-					Get matched with expert pros, find pricing for building materials, or orchestrate custom
-					quotes instantly.
+					{content.subtitle}
 				</p>
 
 				<!-- Suggestion Chips Grid -->
 				<div class="mt-6 grid w-full max-w-lg grid-cols-1 gap-2.5 px-4 sm:grid-cols-2">
-					{#each suggestions as sug, index (index)}
+					{#each content.suggestions as sug, index (index)}
 						<button
 							onclick={() => handleSuggestionClick(sug.text)}
 							disabled={isSending || isGenerating}
