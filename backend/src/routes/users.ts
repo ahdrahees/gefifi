@@ -137,7 +137,10 @@ router.put(
 					}
 					updatedTopLevelFields.phoneNumber = phoneNumber;
 				} else {
-					updatedTopLevelFields.phoneNumber = undefined;
+					// Keep an empty value rather than undefined: the merge write
+					// helper cannot persist undefined fields, and the UI treats an
+					// empty phone as "Not set".
+					updatedTopLevelFields.phoneNumber = '';
 				}
 			}
 
