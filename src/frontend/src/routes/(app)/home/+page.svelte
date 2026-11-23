@@ -377,7 +377,7 @@
 </script>
 
 <div class="flex h-full flex-col space-y-4 lg:space-y-6">
-	{#if currentUser?.userType === 'customer' && viewReady}
+	{#if currentUser && viewReady}
 		<!-- Toggle Bar -->
 		<div
 			class="flex items-center gap-1 rounded-full border border-slate-700/50 bg-slate-800/60 p-0.5 backdrop-blur-sm"
@@ -439,7 +439,7 @@
 
 	<!-- Content Area -->
 	<div class="relative flex-1 overflow-hidden">
-		{#if currentUser?.userType !== 'customer' || activeView === 'dashboard'}
+		{#if !viewReady || activeView === 'dashboard'}
 			<div
 				class="h-full space-y-8 overflow-y-auto"
 				in:fly={{ x: 400, duration: 350, delay: 50 }}
@@ -842,7 +842,7 @@
 			</div>
 		{/if}
 
-		{#if currentUser?.userType === 'customer' && viewReady && activeView === 'agent'}
+		{#if viewReady && activeView === 'agent'}
 			<div
 				class="absolute inset-0"
 				in:fly={{ x: -400, duration: 350, delay: 50 }}

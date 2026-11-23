@@ -18,7 +18,7 @@
 
 	let showAgentFAB = $derived(
 		currentAuth.isAuthenticated &&
-		currentAuth.user?.userType === 'customer' &&
+		!!currentAuth.user &&
 		page.url.pathname !== '/home' &&
 		!page.url.pathname.startsWith('/agent')
 	);
@@ -47,7 +47,7 @@
 		},
 		{ href: '/chat', label: 'Chat', iconKey: 'chat', types: ['all'] },
 		{ href: '/contracts', label: 'Contracts', iconKey: 'contracts', types: ['all'] },
-		{ href: '/agent', label: 'Agent', iconKey: 'agent', types: ['customer'] },
+		{ href: '/agent', label: 'Agent', iconKey: 'agent', types: ['all'] },
 		{ href: '/help', label: 'Help', iconKey: 'help', types: ['all'] }
 	];
 
