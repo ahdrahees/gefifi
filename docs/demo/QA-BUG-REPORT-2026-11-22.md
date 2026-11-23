@@ -73,11 +73,11 @@ reproducible).
 | 5   | ✅     | PDF attachment renders inside the viewer; no CORS error. Viewer now embeds the storage URL directly instead of fetching a blob.                                                                                                                |
 | 6   | ⛔     | Public GCS object access is an IAM/bucket policy issue; no credentials or bucket policy access in this environment. Needs signed URLs or a private bucket + download proxy.                                                                    |
 | 7   | ✅     | Help loads without errors; search does not loop; console stayed at normal log counts. Firestore analytics write removed. WhatsApp placeholder replaced with email support.                                                                     |
-| 8   | 🟡     | Backend validator rejects negative amounts, advance > total, completion before start. `bun test` covers 5 cases; UI form also blocks. Awaiting backend deploy for live proof.                                                                  |
-| 9   | 🟡     | Draft creation no longer marks the request contracted; signing now marks it. Quote submission/acceptance reject terminal/contracted requests; quote UI hides Accept/Reject when no longer sourcing. UI hiding verified on a cancelled request. |
+| 8   | ✅     | Verified against deployed API: a contract POST with `total=1000`, `advance=5000` and completion before start returned `400 “Advance amount cannot be greater than the total amount.”` Unit tests and UI validation also pass. |
+| 9   | 🟡     | Deployed. Draft creation no longer marks the request contracted; signing marks it. Quote submission/acceptance reject terminal/contracted requests; quote UI hides Accept/Reject when no longer sourcing (verified on a cancelled request). Full two-party signing was not executed. |
 | 10  | ✅     | One submitted quote now shows **Pending Review 1**; Accept/Reject hidden on the cancelled request.                                                                                                                                             |
 | 11  | ✅     | Customer home now shows 14 active requests / 7 active contracts, matching the list pages. Supplier home shows 11 available requests / 5 active contracts.                                                                                      |
-| 12  | 🟡     | Profile now uses the API base and a new authenticated `GET /users/me/profile`; empty strings are preserved so optional fields can be cleared. Backend deploy needed for live verification.                                                     |
+| 12  | ✅     | Verified on production: profile GET returns 200, no JSON parse error, and clearing both phone and location persisted (`Phone Number: Not set`, `Location: Not set`). Follow-up #53/#54 fixed nested-map clearing. |
 | 13  | ✅     | Dead **More** button removed from request detail.                                                                                                                                                                                              |
 | 14  | ✅     | Status badge, details and select update immediately after save; no reload needed.                                                                                                                                                              |
 | 15  | ✅     | Link Contract options now include amount/date/contract id and are distinguishable.                                                                                                                                                             |
@@ -90,7 +90,7 @@ reproducible).
 | 22  | ✅     | Raw thought/process blocks are no longer rendered; only the final assistant answer is shown.                                                                                                                                                   |
 | 23  | ✅     | Completed approval card shows **Completed** instead of “confirmation required”; duplicate chat preview suppressed.                                                                                                                             |
 | 24  | ✅     | Quote review now shows Delivery Time and Payment Terms.                                                                                                                                                                                        |
-| 25  | 🟡     | Google initialization now waits for the async GSI script. Local-origin Google iframe is blocked by Google (origin allow-list), so production verification needs a real login/logout cycle.                                                     |
+| 25  | ✅     | Production Google sign-in completed successfully after the async-script wait. Only harmless COOP `postMessage` warnings remain in the console. |
 | 26  | ✅     | Text-only chat send no longer shows “Uploading files… / 0 file selected”.                                                                                                                                                                      |
 | 27  | 🟠     | Not reproduced in the local build (audio uses signed Firebase URLs and local origin cannot fetch them). Needs live re-test with audio.                                                                                                         |
 | 28  | ✅     | Escape now closes Link Contract; Escape also closes the PDF viewer.                                                                                                                                                                            |
@@ -112,6 +112,11 @@ npm test               # 7 tests passed
 cd backend && bun test src # 5 validator tests passed
 npm run build          # production build completed
 ```
+
+Post-merge production checks: Google sign-in, profile GET/clear, contract-term API validation, Expert
+contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard counts, and live agent
+replies were re-tested on `https://gefifi.at0.app`. Merge commit: `749ccad` (follow-ups `c7c8b12`,
+`f470b49` for profile clearing).
 
 ---
 
