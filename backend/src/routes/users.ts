@@ -179,13 +179,11 @@ router.put(
 				...profileValidation.validatedProfile
 			};
 
-			// Sync phoneNumber into profile for backward compatibility
+			// Sync phoneNumber into profile for backward compatibility. The
+			// Firestore merge write does not delete omitted nested keys, so use
+			// an empty string when the user clears the field.
 			if (phoneNumber !== undefined) {
-				if (phoneNumber !== '') {
-					updatedProfile.phoneNumber = phoneNumber;
-				} else {
-					delete updatedProfile.phoneNumber;
-				}
+				updatedProfile.phoneNumber = phoneNumber !== '' ? phoneNumber : '';
 			}
 
 			// Handle avatar upload if provided
