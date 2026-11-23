@@ -104,7 +104,7 @@ reproducible).
 | 35  | ✅     | Contract “Request” keeps the current tab and opens only the new tab.                                                                                                                                                                           |
 | 36  | ✅     | Both “AI Agent” and “Dashboard” labels are visible; active state uses styling instead of hiding the label.                                                                                                                                     |
 | 37  | 🟠     | New finding: approval completion is localStorage-only, so another browser can confirm again and duplicate the action. Needs a server-side idempotency key/approval record.                                                                     |
-| 38  | 🟠     | New finding. The dedicated supplier agent is deployed and works when `/agent` is opened directly (verified 23 Nov: “Browsing material requests” returned supplier profile matches). The sidebar link and FAB are hard-coded to `customer` in `(app)/+layout.svelte`, so suppliers and experts cannot discover it. |
+| 38  | ✅     | Fixed and verified on production as supplier (ARK Flooring): sidebar shows **Agent**, home shows the **AI Agent / Dashboard** toggle with the embedded panel, the FAB opens on `/my-requests`, and an embedded turn used the supplier-only **Browsing material requests** tool. Welcome copy is now role-specific. Experts share the same role-agnostic render path and `expert_agent`; no expert login was available for a live turn. |
 
 Verification commands run on this branch:
 
@@ -116,9 +116,9 @@ npm run build          # production build completed
 ```
 
 Post-merge production checks: Google sign-in, profile GET/clear, contract-term API validation, Expert
-contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard counts, and live agent
-replies were re-tested on `https://gefifi.at0.app`. Merge commit: `749ccad` (follow-ups `c7c8b12`,
-`f470b49` for profile clearing).
+contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard counts, live agent
+replies, and supplier agent entry points were re-tested on `https://gefifi.at0.app`. Merge commits:
+`749ccad` (follow-ups `c7c8b12`, `f470b49` for profile clearing; `8bc129c` for agent entry points).
 
 ---
 
@@ -668,6 +668,17 @@ was not exercised. This finding comes from a follow-up check on 23 Nov, after PR
 Include `expert` and `supplier` in both the nav link types and `showAgentFAB`, then verify a live turn
 for each role. Role-specific empty-state copy would also help.
 
+**Re-test 23 Nov (after deploy, PR #57)**
+
+- Supplier sidebar now shows **Agent**, and the home page shows the **AI Agent / Dashboard** toggle.
+- The embedded panel answered a supplier prompt and used **Browsing material requests** with the
+  supplier profile's category and location.
+- The floating **Open Assistant** button now opens on `/my-requests`.
+- The welcome title, subtitle, and suggestion chips are now role-specific for customer, expert, and
+  supplier (`AgentChatPanel.svelte`).
+- The expert role uses the same role-agnostic render path and the existing `expert_agent`; it was not
+  live-tested because no expert login was available.
+
 **Impact**
 
 Suppliers and experts cannot discover the assistant built for them; the demo looks like the agent is a
@@ -697,5 +708,6 @@ customer-only feature.
 - Logout and re-login, because the only sessions available are the two Google-authenticated profiles
   and the login page already shows a Google Sign-In initialization error.
 - Firestore security-rule enforcement under a hostile client; testing used the UI only.
-- Supplier/expert Agent entry points: the supplier agent was verified by opening `/agent` directly,
-  but the missing sidebar link and FAB are finding 38. The expert agent was code-reviewed only.
+- Supplier/expert Agent entry points: supplier verified live (nav link, home toggle, embedded turn, and
+  FAB). Expert uses the same role-agnostic UI path and `expert_agent`, but was not live-tested because
+  no expert login was available.
