@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
+import { agentApprovalsDB } from '../data';
 import { MaterialRequest } from '../interfaces';
 import { authenticateToken, AuthenticatedRequest, JwtPayload } from '../auth';
 import { sendSystemMessage } from './shared/system-messages';
@@ -120,7 +121,8 @@ router.post(
 				deliveryDate,
 				linkedWorkRequestId,
 				items,
-				expirationDate
+				expirationDate,
+				approvalId
 			} = req.body;
 
 			if (
@@ -145,6 +147,24 @@ router.post(
 				}
 			}
 
+			// Agent approval cards supply an idempotency key. A retry after a
+			// lost response must return the already-created request.
+			if (approvalId !== undefined) {
+				if (typeof approvalId !== 'string' || !approvalId) {
+					return res.status(400).json({ message: 'approvalId must be a non-empty string.' });
+				}
+				const approval = await agentApprovalsDB.findById(approvalId);
+				if (!approval || approval.userId !== user.id || approval.action !== 'material_request') {
+					return res.status(403).json({ message: 'Invalid approval reference.' });
+				}
+				const existing = (await materialRequestsDB.getAll()).find(
+					(request) => request.approvalId === approvalId
+				);
+				if (existing) {
+					return res.status(200).json(existing);
+				}
+			}
+
 			if (expirationDate) {
 				if (isNaN(Date.parse(expirationDate))) {
 					return res
@@ -159,7 +179,7 @@ router.post(
 			}
 
 			const now = new Date().toISOString();
-			const materialRequestId = crypto.randomUUID();
+			const materialRequestId = approvalId || crypto.randomUUID();
 
 			// Construct material request object, only including defined values (Firestore-safe)
 			const newMaterialRequest: any = {
@@ -185,9 +205,17 @@ router.post(
 			if (expirationDate) {
 				newMaterialRequest.expirationDate = new Date(expirationDate).toISOString();
 			}
+			if (approvalId) {
+				newMaterialRequest.approvalId = approvalId;
+			}
 
-			const createdMaterialRequest = await materialRequestsDB.create(newMaterialRequest);
-			res.status(201).json(createdMaterialRequest);
+			const result = approvalId
+				? await materialRequestsDB.createIfAbsent(newMaterialRequest)
+				: { created: true, item: await materialRequestsDB.create(newMaterialRequest) };
+			if (!result.created) {
+				return res.status(200).json(result.item);
+			}
+			res.status(201).json(result.item);
 		} catch (error: unknown) {
 			console.error('Error creating material request:', error);
 			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';

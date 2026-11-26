@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
+import { agentApprovalsDB } from '../data';
 import {
 	Contract,
 	ContractComment,
@@ -155,7 +156,8 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			expectedCompletionDate,
 			termsAndConditions,
 			warrantyPeriod,
-			cancellationPolicy
+			cancellationPolicy,
+			approvalId
 		} = req.body;
 
 		const termError = validateContractTerms({
@@ -187,6 +189,25 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 		const requestType = workRequestId ? 'work' : 'material';
 		const contractType = requestType === 'work' ? 'expert_contract' : 'material_contract';
 		const requestId = workRequestId || materialRequestId;
+
+		// Agent approval cards supply an idempotency key. A retry after a
+		// lost response must return the already-created draft instead of
+		// creating a second contract.
+		if (approvalId !== undefined) {
+			if (typeof approvalId !== 'string' || !approvalId) {
+				return res.status(400).json({ message: 'approvalId must be a non-empty string.' });
+			}
+			const approval = await agentApprovalsDB.findById(approvalId);
+			if (!approval || approval.userId !== initiator.id || approval.action !== 'contract') {
+				return res.status(403).json({ message: 'Invalid approval reference.' });
+			}
+			const existing = (await contractsDB.getAll()).find(
+				(contract) => contract.approvalId === approvalId
+			);
+			if (existing) {
+				return res.status(200).json(existing);
+			}
+		}
 
 		// Validate that the request exists and get request data for participant validation
 		let requestData: any = null;
@@ -310,7 +331,7 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			});
 		}
 		const now = new Date().toISOString();
-		const contractId = crypto.randomUUID();
+		const contractId = approvalId || crypto.randomUUID();
 
 		const initialCustomerSigned = false;
 		const initialExpertSupplierSigned = false;
@@ -349,12 +370,22 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 
 		if (workRequestId) newContract.workRequestId = workRequestId;
 		if (materialRequestId) newContract.materialRequestId = materialRequestId;
+		if (approvalId) newContract.approvalId = approvalId;
 
 		console.log(
 			'[POST /api/contracts] Attempting to create contract with data:',
 			JSON.stringify(newContract, null, 2)
 		);
-		const createdContract = await contractsDB.create(newContract as Contract);
+		let createdContract: Contract;
+		if (approvalId) {
+			const result = await contractsDB.createIfAbsent(newContract as Contract);
+			if (!result.created) {
+				return res.status(200).json(result.item);
+			}
+			createdContract = result.item;
+		} else {
+			createdContract = await contractsDB.create(newContract as Contract);
+		}
 		console.log(
 			'[POST /api/contracts] Successfully created contract in DB, ID:',
 			createdContract.id

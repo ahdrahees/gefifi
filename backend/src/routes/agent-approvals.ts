@@ -85,13 +85,27 @@ router.post(
 					});
 				}
 				if (existing.claimToken === claimToken) {
-					const refreshed = await agentApprovalsDB.update(approvalId, {
-						claimedAt: now,
-						updatedAt: now
-					});
-					return res.status(200).json({
+					const refreshed = await agentApprovalsDB.updateIf(
+						approvalId,
+						(current) => current.status === 'claimed' && current.claimToken === claimToken,
+						{ claimedAt: now, updatedAt: now }
+					);
+					if (refreshed.updated && refreshed.item) {
+						return res.status(200).json({
+							status: 'claimed',
+							record: publicRecord(refreshed.item)
+						});
+					}
+					if (refreshed.item?.status === 'completed') {
+						return res.status(200).json({
+							status: 'completed',
+							href: refreshed.item.href,
+							label: refreshed.item.label
+						});
+					}
+					return res.status(409).json({
 						status: 'claimed',
-						record: publicRecord(refreshed ?? existing)
+						message: 'This approval changed while it was being confirmed.'
 					});
 				}
 				if (!claimIsStale(existing)) {
@@ -100,14 +114,31 @@ router.post(
 						message: 'This approval is already being confirmed in another session.'
 					});
 				}
-				const updated = await agentApprovalsDB.update(approvalId, {
-					claimToken,
-					claimedAt: now,
-					updatedAt: now
-				});
-				return res.status(200).json({
+				const takeover = await agentApprovalsDB.updateIf(
+					approvalId,
+					(current) =>
+						current.status === 'claimed' &&
+						current.claimToken !== claimToken &&
+						claimIsStale(current),
+					{ claimToken, claimedAt: now, updatedAt: now }
+				);
+				if (takeover.updated && takeover.item) {
+					return res.status(200).json({
+						status: 'claimed',
+						record: publicRecord(takeover.item)
+					});
+				}
+				const current = takeover.item ?? (await agentApprovalsDB.findById(approvalId));
+				if (current?.status === 'completed') {
+					return res.status(200).json({
+						status: 'completed',
+						href: current.href,
+						label: current.label
+					});
+				}
+				return res.status(409).json({
 					status: 'claimed',
-					record: publicRecord(updated ?? existing)
+					message: 'This approval was claimed by another session.'
 				});
 			};
 
@@ -171,14 +202,27 @@ router.post(
 			}
 
 			const now = new Date().toISOString();
-			const updated = await agentApprovalsDB.update(req.params.approvalId, {
-				status: 'completed',
-				href: typeof href === 'string' ? href : '',
-				label: typeof label === 'string' && label ? label : 'Completed',
-				completedAt: now,
-				updatedAt: now
+			const result = await agentApprovalsDB.updateIf(
+				req.params.approvalId,
+				(current) => current.status === 'claimed' && current.claimToken === claimToken,
+				{
+					status: 'completed',
+					href: typeof href === 'string' ? href : '',
+					label: typeof label === 'string' && label ? label : 'Completed',
+					completedAt: now,
+					updatedAt: now
+				}
+			);
+			if (result.updated && result.item) {
+				return res.status(200).json(publicRecord(result.item));
+			}
+			const current = result.item ?? (await agentApprovalsDB.findById(req.params.approvalId));
+			if (current?.status === 'completed') {
+				return res.status(200).json(publicRecord(current));
+			}
+			return res.status(409).json({
+				message: 'This approval is claimed by another confirmation attempt.'
 			});
-			res.status(200).json(publicRecord(updated ?? record));
 		} catch (error: unknown) {
 			console.error('Error completing agent approval:', error);
 			res.status(500).json({ message: 'Failed to complete approval.' });
@@ -208,8 +252,18 @@ router.post(
 			if (typeof claimToken !== 'string' || record.claimToken !== claimToken) {
 				return res.status(409).json({ message: 'This approval is claimed elsewhere.' });
 			}
-			await agentApprovalsDB.delete(req.params.approvalId);
-			res.status(200).json({ released: true });
+			const deleted = await agentApprovalsDB.deleteIf(
+				req.params.approvalId,
+				(current) => current.status === 'claimed' && current.claimToken === claimToken
+			);
+			if (deleted) {
+				return res.status(200).json({ released: true });
+			}
+			const latest = await agentApprovalsDB.findById(req.params.approvalId);
+			if (latest?.status === 'completed') {
+				return res.status(200).json(publicRecord(latest));
+			}
+			return res.status(409).json({ message: 'This approval is claimed elsewhere.' });
 		} catch (error: unknown) {
 			console.error('Error releasing agent approval:', error);
 			res.status(500).json({ message: 'Failed to release approval.' });

@@ -364,10 +364,15 @@ const apiClient = {
 		claimToken: string,
 		action: string
 	): Promise<AgentApprovalState> => {
-		return request<AgentApprovalState>(`/agent-approvals/${approvalId}/claim`, 'POST', {
-			claimToken,
-			action
-		});
+		return request<AgentApprovalState>(
+			`/agent-approvals/${approvalId}/claim`,
+			'POST',
+			{
+				claimToken,
+				action
+			},
+			true
+		);
 	},
 	completeAgentApproval: (
 		approvalId: string,
@@ -375,19 +380,29 @@ const apiClient = {
 		href: string,
 		label: string
 	): Promise<AgentApprovalState> => {
-		return request<AgentApprovalState>(`/agent-approvals/${approvalId}/complete`, 'POST', {
-			claimToken,
-			href,
-			label
-		});
+		return request<AgentApprovalState>(
+			`/agent-approvals/${approvalId}/complete`,
+			'POST',
+			{
+				claimToken,
+				href,
+				label
+			},
+			true
+		);
 	},
 	releaseAgentApproval: (
 		approvalId: string,
 		claimToken: string
 	): Promise<{ released: boolean }> => {
-		return request<{ released: boolean }>(`/agent-approvals/${approvalId}/release`, 'POST', {
-			claimToken
-		});
+		return request<{ released: boolean }>(
+			`/agent-approvals/${approvalId}/release`,
+			'POST',
+			{
+				claimToken
+			},
+			true
+		);
 	},
 
 	// --- Work Requests ---

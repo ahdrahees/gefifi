@@ -93,6 +93,7 @@ export interface WorkRequest extends Identifiable {
 	invitedExperts?: string[]; // Array of expert User IDs directly invited by customer
 	// invitedSuppliers?: string[]; // Array of supplier User IDs directly invited by customer
 	quotes?: string[]; // Array of quote IDs
+	approvalId?: string; // Agent approval card that created this request (idempotency)
 }
 
 /**
@@ -128,6 +129,7 @@ export interface MaterialRequest extends Identifiable {
 	interestedSuppliers?: string[]; // List of supplier User IDs who showed interest
 	invitedSuppliers?: string[]; // List of supplier User IDs directly invited by customer
 	quotes?: string[]; // Array of quote IDs
+	approvalId?: string; // Agent approval card that created this request (idempotency)
 }
 
 // --- Communication Types ---
@@ -265,6 +267,7 @@ export interface Contract extends Identifiable {
 		| 'terminated';
 	createdAt: string;
 	updatedAt: string;
+	approvalId?: string; // Agent approval card that created this contract (idempotency)
 }
 
 // --- Quote Management Types ---

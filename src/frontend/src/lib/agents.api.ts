@@ -17,7 +17,8 @@ async function request<T>(
 	endpoint: string,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
 	body?: Record<string, any>,
-	requiresAuth: boolean = true
+	requiresAuth: boolean = true,
+	includeStateDeltaAuth: boolean = true
 ): Promise<T> {
 	const headers: HeadersInit = {};
 
@@ -41,8 +42,10 @@ async function request<T>(
 
 		// For POST/PUT, pass the token in ephemeral ADK state. The `temp:`
 		// prefix keeps it in memory for this turn but out of persisted session
-		// state and event history.
-		if (method !== 'GET') {
+		// state and event history. Session-creation requests skip this: their
+		// body is the session state itself, so adding state_delta would persist
+		// the token under that key.
+		if (method !== 'GET' && includeStateDeltaAuth) {
 			body = {
 				...body,
 				state_delta: {
@@ -179,7 +182,9 @@ const agentApiClient = {
 		return request<AgentSession>(
 			`/apps/${agentName}/users/${userId}/sessions/${sessionId}`,
 			'POST',
-			state
+			state,
+			true,
+			false
 		);
 	},
 	listSessions: (agentName: AgentName, userId: string): Promise<ListSessionsResponse> => {

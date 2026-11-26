@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AgentApproval, ArtifactPart } from '$lib/types/agent-api';
-	import apiClient from '$lib/api';
+	import apiClient, { ApiError } from '$lib/api';
 	import { onMount } from 'svelte';
 
 	interface Props {
@@ -18,20 +18,71 @@
 	let claimToken = '';
 
 	const storageKey = () => `gefifi:approval:${approval.id}`;
+	const claimStorageKey = () => `gefifi:approval-claim:${approval.id}`;
 
-	function readLocalMarker(): { href?: string; label?: string } | null {
+	function readStoredClaim(): string {
+		try {
+			return window.localStorage.getItem(claimStorageKey()) ?? '';
+		} catch {
+			return '';
+		}
+	}
+
+	function storeClaim(token: string) {
+		try {
+			window.localStorage.setItem(claimStorageKey(), token);
+		} catch {
+			// The claim is still valid for this tab; persistence is best-effort.
+		}
+	}
+
+	function clearStoredClaim() {
+		try {
+			window.localStorage.removeItem(claimStorageKey());
+		} catch {
+			// Ignore unavailable storage.
+		}
+	}
+
+	function readLocalMarker(): {
+		href?: string;
+		label?: string;
+		claimToken?: string;
+		pending?: boolean;
+	} | null {
 		try {
 			const saved = window.localStorage.getItem(storageKey());
 			if (!saved) return null;
-			return JSON.parse(saved) as { href?: string; label?: string };
+			return JSON.parse(saved) as {
+				href?: string;
+				label?: string;
+				claimToken?: string;
+				pending?: boolean;
+			};
 		} catch {
 			return null;
 		}
 	}
 
+	async function syncCompletion(token: string, href: string, label: string): Promise<boolean> {
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			try {
+				await apiClient.completeAgentApproval(approval.id, token, href, label);
+				return true;
+			} catch (cause) {
+				// A 4xx will not succeed on retry. Network errors and 5xx may.
+				if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) {
+					return false;
+				}
+				if (attempt === 2) return false;
+				await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+			}
+		}
+		return false;
+	}
+
 	onMount(async () => {
-		// Show a local marker immediately when present, then let the server
-		// record win. The server record is shared across browsers/devices.
+		claimToken = readStoredClaim();
 		const saved = readLocalMarker();
 		if (saved) {
 			doneHref = saved.href ?? '';
@@ -39,32 +90,46 @@
 			done = true;
 		}
 
+		// The server record is shared across browsers/devices. Read it first;
+		// a completed record wins over any stale local marker.
 		try {
 			const record = await apiClient.getAgentApproval(approval.id);
 			if (record.status === 'completed') {
-				doneHref = record.href ?? '';
-				doneLabel = record.label ?? 'Already confirmed';
-				done = true;
-				try {
-					window.localStorage.setItem(
-						storageKey(),
-						JSON.stringify({ href: doneHref, label: doneLabel })
-					);
-				} catch {
-					// Local cache is optional now that the server owns the state.
-				}
+				markDone(record.href ?? '', record.label ?? 'Already confirmed', claimToken, false);
+				return;
 			}
 		} catch {
 			// 404 means this approval has not been confirmed yet.
 		}
+
+		// A previous attempt may have completed the action but failed to sync
+		// the completion. Retry with the same claim token; this never reruns
+		// the action.
+		if (saved?.pending) {
+			const token = saved.claimToken || claimToken;
+			if (token) {
+				const synced = await syncCompletion(token, saved.href ?? '', saved.label ?? 'Done');
+				if (synced) {
+					markDone(saved.href ?? '', saved.label ?? 'Done', token, false);
+				}
+			}
+		}
 	});
 
-	function markDone(href: string, label: string) {
+	function markDone(href: string, label: string, token = claimToken, pending = false) {
 		doneHref = href;
 		doneLabel = label;
 		done = true;
+		if (!pending) {
+			clearStoredClaim();
+		} else if (token) {
+			storeClaim(token);
+		}
 		try {
-			window.localStorage.setItem(storageKey(), JSON.stringify({ href, label }));
+			window.localStorage.setItem(
+				storageKey(),
+				JSON.stringify({ href, label, claimToken: token, pending })
+			);
 		} catch {
 			// Local storage can be unavailable; the server action already succeeded.
 		}
@@ -139,6 +204,7 @@
 		if (approval.action === 'work_request') {
 			const payload = {
 				...approval.payload,
+				approvalId: approval.id,
 				images: await uploadWorkImages(files)
 			} as unknown as WorkRequestPayload;
 			const created = await apiClient.createWorkRequest(payload);
@@ -146,7 +212,10 @@
 		}
 
 		if (approval.action === 'material_request') {
-			const payload = { ...approval.payload } as unknown as MaterialRequestPayload;
+			const payload = {
+				...approval.payload,
+				approvalId: approval.id
+			} as unknown as MaterialRequestPayload;
 			const created = await apiClient.createMaterialRequest(payload);
 			if (files.length > 0) {
 				try {
@@ -161,7 +230,10 @@
 		}
 
 		if (approval.action === 'contract') {
-			const payload = { ...approval.payload } as unknown as ContractPayload;
+			const payload = {
+				...approval.payload,
+				approvalId: approval.id
+			} as unknown as ContractPayload;
 			const created = await apiClient.createContract(payload);
 			return { href: `/contracts/${created.id}`, label: 'Contract drafted' };
 		}
@@ -182,7 +254,10 @@
 
 		const chatId = String(approval.payload.chat_id ?? '');
 		await apiClient.sendChatMessage(chatId, {
-			content: String(approval.payload.content ?? '')
+			content: String(approval.payload.content ?? ''),
+			// The chat route uses messageId as the document ID, so a retry
+			// overwrites the same message instead of posting a duplicate.
+			messageId: approval.id
 		});
 		return { href: `/chat/${chatId}`, label: 'Message sent' };
 	}
@@ -190,7 +265,9 @@
 	async function confirm() {
 		submitting = true;
 		error = '';
-		claimToken = crypto.randomUUID();
+		if (!claimToken) {
+			claimToken = crypto.randomUUID();
+		}
 		let claimed = false;
 
 		try {
@@ -203,34 +280,40 @@
 				approval.action
 			);
 			if (claim.status === 'completed') {
-				markDone(claim.href ?? '', claim.label ?? 'Already confirmed');
+				markDone(claim.href ?? '', claim.label ?? 'Already confirmed', claimToken, false);
 				return;
 			}
 			claimed = true;
+			storeClaim(claimToken);
 
 			const result = await runApprovalAction();
-			try {
-				await apiClient.completeAgentApproval(
-					approval.id,
-					claimToken,
-					result.href,
-					result.label
-				);
-			} catch (syncError) {
-				// The action succeeded; keep the card done and let a retry sync
-				// the server record later.
-				console.warn('Approval completed but server state sync failed:', syncError);
+			const synced = await syncCompletion(claimToken, result.href, result.label);
+			markDone(result.href, result.label, claimToken, !synced);
+			if (!synced) {
+				error =
+					'The action completed, but its shared status could not be saved. Reload this card before retrying anywhere else.';
 			}
-			markDone(result.href, result.label);
 		} catch (cause) {
-			if (claimed) {
+			// A 4xx is a definitive rejection (nothing was created), so the
+			// claim can be released for a clean retry. Network errors, 5xx and
+			// timeouts may have committed; keep the claim so the idempotency
+			// key can resolve the retry instead of creating a duplicate.
+			const mayHaveCommitted =
+				cause instanceof ApiError
+					? cause.status >= 500
+					: cause instanceof TypeError;
+			if (claimed && !mayHaveCommitted) {
 				try {
 					await apiClient.releaseAgentApproval(approval.id, claimToken);
+					clearStoredClaim();
 				} catch {
 					// A stale claim expires after two minutes.
 				}
 			}
-			error = cause instanceof Error ? cause.message : 'Could not complete this action.';
+			const message = cause instanceof Error ? cause.message : 'Could not complete this action.';
+			error = mayHaveCommitted
+				? `${message} The action may still have completed; reload this card before retrying.`
+				: message;
 		} finally {
 			submitting = false;
 		}
