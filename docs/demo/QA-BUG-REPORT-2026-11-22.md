@@ -72,10 +72,10 @@ reproducible).
 | 3   | ✅     | FAB and send/voice bounds no longer overlap on desktop or mobile; click no longer blocked.                                                                                                                                                     |
 | 4   | ✅     | Request → Chat now opens the invitation/request conversation, not the older conversation with the same person. Chat selection prefers `workRequestId`/`materialRequestId`.                                                                     |
 | 5   | ✅     | PDF attachment renders inside the viewer; no CORS error. Viewer now embeds the storage URL directly instead of fetching a blob.                                                                                                                |
-| 6   | ⛔     | Public GCS object access is an IAM/bucket policy issue; no credentials or bucket policy access in this environment. Needs signed URLs or a private bucket + download proxy.                                                                    |
+| 6   | ⛔     | Blocked on bucket IAM. The app still stores and renders public GCS URLs, so removing public access without a signed-URL layer would break attachments. Exact owner steps are in **Making attachments private (#6)** below. |
 | 7   | ✅     | Help loads without errors; search does not loop; console stayed at normal log counts. Firestore analytics write removed. WhatsApp placeholder replaced with email support.                                                                     |
 | 8   | ✅     | Verified against deployed API: a contract POST with `total=1000`, `advance=5000` and completion before start returned `400 “Advance amount cannot be greater than the total amount.”` Unit tests and UI validation also pass. |
-| 9   | 🟡     | Deployed. Draft creation no longer marks the request contracted; signing marks it. Quote submission/acceptance reject terminal/contracted requests; quote UI hides Accept/Reject when no longer sourcing (verified on a cancelled request). Full two-party signing was not executed. |
+| 9   | ✅     | Verified end-to-end on 26 Nov with a disposable material request: customer signed → `awaiting_signatures`, request stayed `open`; supplier signed → `signed`, both signature flags true, request `contracted`. Contract UI shows SIGNED with both signatures. |
 | 10  | ✅     | One submitted quote now shows **Pending Review 1**; Accept/Reject hidden on the cancelled request.                                                                                                                                             |
 | 11  | ✅     | Customer home now shows 14 active requests / 7 active contracts, matching the list pages. Supplier home shows 11 available requests / 5 active contracts.                                                                                      |
 | 12  | ✅     | Verified on production: profile GET returns 200, no JSON parse error, and clearing both phone and location persisted (`Phone Number: Not set`, `Location: Not set`). Follow-up #53/#54 fixed nested-map clearing. |
@@ -93,17 +93,17 @@ reproducible).
 | 24  | ✅     | Quote review now shows Delivery Time and Payment Terms.                                                                                                                                                                                        |
 | 25  | ✅     | Production Google sign-in completed successfully after the async-script wait. Only harmless COOP `postMessage` warnings remain in the console. |
 | 26  | ✅     | Text-only chat send no longer shows “Uploading files… / 0 file selected”.                                                                                                                                                                      |
-| 27  | 🟠     | Not reproduced in the local build (audio uses signed Firebase URLs and local origin cannot fetch them). Needs live re-test with audio.                                                                                                         |
+| 27  | ✅     | Root cause fixed: the Find Professionals effect read the displayed list it had just written. Replaced with a pure `$derived` list and removed the profile/PII logs. Re-tested live: opening Send Interest produced no effect loop or console flood. Some legacy voice messages still return a `MediaError` on play; that is a separate file/data issue. |
 | 28  | ✅     | Escape now closes Link Contract; Escape also closes the PDF viewer.                                                                                                                                                                            |
 | 29  | ✅     | Search with no matches says “No requests match your search and filters.”                                                                                                                                                                       |
 | 30  | ✅     | Changing only Sort by no longer shows “Filters applied.”                                                                                                                                                                                       |
 | 31  | ✅     | Quick Actions card is hidden when a request has no available actions (e.g. in discussion).                                                                                                                                                     |
-| 32  | 🟠     | The explicit `console.error` was removed, but the material page still makes a work-request request first and the browser logs its 404. Needs a union `/requests/:id` endpoint or a type hint to remove the extra request.                      |
+| 32  | ✅     | Added authenticated `GET /api/requests/:id` and switched My Requests, the quote page, and the edit page to it. Verified production: a material request loaded with one `/api/requests/:id` call and no `/work-requests/...` 404. |
 | 33  | 🟠     | Blank deep link was observed once and not reproduced; likely a stale chunk/service-worker state.                                                                                                                                               |
-| 34  | ⛔     | The agent tool-auth design requires the user JWT in ADK session state. Removing it needs an agent-side auth design change (header/context propagation) and coordinated deploy.                                                                 |
+| 34  | ✅     | Frontend sends `temp:auth_token`; ADK keeps temp state for the invocation and trims it from persisted events. Tools read temp with a legacy fallback. Verified a new production session: no raw token and no `auth_token` in state or event deltas (only `auth_data`). |
 | 35  | ✅     | Contract “Request” keeps the current tab and opens only the new tab.                                                                                                                                                                           |
 | 36  | ✅     | Both “AI Agent” and “Dashboard” labels are visible; active state uses styling instead of hiding the label.                                                                                                                                     |
-| 37  | 🟠     | New finding: approval completion is localStorage-only, so another browser can confirm again and duplicate the action. Needs a server-side idempotency key/approval record.                                                                     |
+| 37  | ✅     | Added server-side approval records with atomic claim/complete/release, approval-ID idempotency for created records, and completion retry recovery. Verified production: card completed once, local marker removed, a fresh load showed Completed from the server, and a repeated create returned the same request ID with HTTP 200. |
 | 38  | ✅     | Fixed and verified on production as supplier (ARK Flooring): sidebar shows **Agent**, home shows the **AI Agent / Dashboard** toggle with the embedded panel, the FAB opens on `/my-requests`, and an embedded turn used the supplier-only **Browsing material requests** tool. Welcome copy is now role-specific. Experts share the same role-agnostic render path and `expert_agent`; no expert login was available for a live turn. |
 
 Verification commands run on this branch:
@@ -117,8 +117,10 @@ npm run build          # production build completed
 
 Post-merge production checks: Google sign-in, profile GET/clear, contract-term API validation, Expert
 contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard counts, live agent
-replies, and supplier agent entry points were re-tested on `https://gefifi.at0.app`. Merge commits:
-`749ccad` (follow-ups `c7c8b12`, `f470b49` for profile clearing; `8bc129c` for agent entry points).
+replies, supplier agent entry points, the union request endpoint, Find Professionals interactions,
+temp-token sessions, approval completion/idempotency, and full two-party contract signing were
+re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for
+profile clearing; `8bc129c` for agent entry points; `bd739b6` for the remaining QA items).
 
 ---
 
@@ -697,13 +699,20 @@ customer-only feature.
 - Sent test chat messages and uploaded a test PDF and two tiny PNGs to a chat and to the agent.
 - The customer profile’s phone was set to a fake test number and the location to `Bengaluru` while
   testing. Both were later cleared and verified as **Not set** after the #53/#54 fixes.
-- No quote was accepted and no contract was signed.
+- Created one **QA Approval Test - ignore** work request through the agent approval card
+  (`29a935d7-90c4-4d9f-abc1-dcce635f3ef9`) to verify server-side completion and idempotent retry.
+- Created one **QA Signing Test - ignore** material request (`6351994e-e90d-424c-942f-d1edc2689bed`)
+  and material contract (`8494d882-c701-4216-af49-3b4eff62246d`) for #9. The contract is **signed** by
+  both parties and the request is **contracted**; there is no delete action for contracts.
+- No quote was accepted. One QA contract was signed for verification.
 
 ## Areas not verified
 
 - Quote acceptance end-to-end (the documented “accept one quote, reject the rest” flow) was not
   executed because it moves beyond draft.
-- Contract signing/revision completion and signed-contract PDF behavior.
+- Contract revision completion and signed-contract PDF behavior (signing itself is verified above).
+- Some legacy voice messages return a `MediaError` on play; the reactive loop is fixed, but the audio
+  file/data issue was not investigated.
 - Payment/escrow (not present in the demo scope).
 - Logout and re-login, because the only sessions available are the two Google-authenticated profiles
   and the login page already shows a Google Sign-In initialization error.
@@ -711,3 +720,79 @@ customer-only feature.
 - Supplier/expert Agent entry points: supplier verified live (nav link, home toggle, embedded turn, and
   FAB). Expert uses the same role-agnostic UI path and `expert_agent`, but was not live-tested because
   no expert login was available.
+- Private attachment delivery (#6): the bucket is still publicly readable and the app still uses raw
+  public URLs. Owner steps are below.
+
+---
+
+## Making attachments private (#6)
+
+The bucket is `gs://geffi-demo-app-uploads` in project `gefifi-demo-app` (project number
+`591968131600`). The Cloud Run backend runs as
+`591968131600-compute@developer.gserviceaccount.com` (see `cloudbuild.yaml`).
+
+Do these in order. Step 1 is safe now. Step 3 removes public access and will break any attachment URL
+the app still loads directly, so do it only after the signed-URL app layer ships.
+
+### 1. Grant the backend read + signing permissions (safe now)
+
+Console:
+
+1. **Cloud Storage → Buckets → geffi-demo-app-uploads → Permissions → Grant access**
+   - Principal: `591968131600-compute@developer.gserviceaccount.com`
+   - Role: **Storage Object Viewer**
+2. **IAM → Service Accounts → `591968131600-compute@developer.gserviceaccount.com` → Permissions →
+   Grant access**
+   - Principal: the same service account
+   - Role: **Service Account Token Creator** (needed by `file.getSignedUrl()` when the service account
+     has no private key)
+
+`gcloud` equivalent:
+
+```sh
+gcloud storage buckets add-iam-policy-binding gs://geffi-demo-app-uploads \
+  --member=serviceAccount:591968131600-compute@developer.gserviceaccount.com \
+  --role=roles/storage.objectViewer
+
+gcloud iam service-accounts add-iam-policy-binding \
+  591968131600-compute@developer.gserviceaccount.com \
+  --member=serviceAccount:591968131600-compute@developer.gserviceaccount.com \
+  --role=roles/iam.serviceAccountTokenCreator
+```
+
+### 2. Ship the app-side signed-URL layer (follow-up)
+
+The backend needs an authenticated endpoint that checks access to the chat/request/contract and
+returns a short-lived signed URL for the object. The attachment components then resolve through it.
+This is not implemented yet; do not remove public access before it is deployed.
+
+### 3. Remove public access (after step 2)
+
+Inspect the current bindings:
+
+```sh
+gcloud storage buckets get-iam-policy gs://geffi-demo-app-uploads
+```
+
+Remove every `allUsers` / `allAuthenticatedUsers` binding. The role may be
+`roles/storage.objectViewer`, `roles/storage.legacyObjectReader`, or a custom role:
+
+```sh
+gcloud storage buckets remove-iam-policy-binding gs://geffi-demo-app-uploads \
+  --member=allUsers --role=roles/storage.objectViewer
+
+gcloud storage buckets remove-iam-policy-binding gs://geffi-demo-app-uploads \
+  --member=allAuthenticatedUsers --role=roles/storage.objectViewer
+```
+
+Console: **Permissions** → delete the `allUsers` and `allAuthenticatedUsers` rows.
+
+### 4. Verify
+
+```sh
+curl -i https://storage.googleapis.com/geffi-demo-app-uploads/<known-object>
+# expect 401/403
+```
+
+Then open a chat attachment, a quote PDF, and a contract attachment in the app. If signing fails with
+“Cannot sign data without client_email”, the Token Creator grant in step 1 is missing.
