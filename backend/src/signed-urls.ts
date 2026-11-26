@@ -5,12 +5,7 @@ const MAX_STRING_LENGTH = 4096;
 
 function mightBeObjectUrl(value: string): boolean {
 	if (value.length > MAX_STRING_LENGTH) return false;
-	return (
-		value.includes('storage.googleapis.com') ||
-		/^(attachments|chat-attachments)\/[^/]+\/[^/]+\//.test(value) ||
-		/^users\/[^/]+\/avatar\//.test(value) ||
-		/^[0-9]+-[a-f0-9]+\.[a-z0-9]{1,10}$/i.test(value)
-	);
+	return value.includes('storage.googleapis.com') || value.startsWith('gs://');
 }
 
 async function rewriteValue(value: unknown): Promise<unknown> {
