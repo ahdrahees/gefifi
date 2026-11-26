@@ -5,6 +5,15 @@ const CACHE_MS = 45 * 60 * 1000;
 const MAX_BATCH = 100;
 const cache = new Map<string, { url: string; expiresAt: number }>();
 
+export function isSignedStorageUrl(url: string | undefined): boolean {
+	if (!url) return false;
+	return (
+		url.includes('X-Goog-Signature') ||
+		url.includes('GoogleAccessId') ||
+		url.includes('Signature=')
+	);
+}
+
 export function isGcsUrl(url: string | undefined): boolean {
 	if (!url) return false;
 	return (
