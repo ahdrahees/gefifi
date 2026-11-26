@@ -1,12 +1,192 @@
 import { Router, Request, Response } from 'express';
-import { FirestoreCollection } from '../data';
-import { MaterialRequest, Contract, WorkRequest, Attachment } from '../interfaces';
+import { chatsDB, contractsDB, materialRequestsDB, quotesDB, workRequestsDB } from '../data';
+import { MaterialRequest, Contract, WorkRequest, Attachment, Quote } from '../interfaces';
 import { authenticateToken, AuthenticatedRequest, JwtPayload } from '../auth';
-import { uploadEntityAttachment } from '../file-storage';
+import {
+	extractMainBucketObjectPath,
+	getSignedAttachmentUrl,
+	uploadEntityAttachment
+} from '../file-storage';
 import { attachmentUpload } from './shared/middleware';
 import { ENTITY_CONFIG } from './shared/entity-config';
 
 const router = Router();
+
+function canViewWorkRequest(user: JwtPayload, request: WorkRequest): boolean {
+	return (
+		request.customerId === user.id ||
+		request.interestedExperts?.includes(user.id) ||
+		request.invitedExperts?.includes(user.id) ||
+		(user.userType === 'expert' && request.status === 'open')
+	);
+}
+
+function canViewMaterialRequest(user: JwtPayload, request: MaterialRequest): boolean {
+	return (
+		request.customerId === user.id ||
+		request.interestedSuppliers?.includes(user.id) ||
+		request.invitedSuppliers?.includes(user.id) ||
+		(user.userType === 'supplier' && request.status === 'open')
+	);
+}
+
+const ROOT_INDEX_TTL_MS = 15 * 1000;
+let rootIndexCache:
+	| {
+			expiresAt: number;
+			quotes: Quote[];
+			workRequests: WorkRequest[];
+			materialRequests: MaterialRequest[];
+			contracts: Contract[];
+	  }
+	| undefined;
+
+async function getRootIndex() {
+	if (rootIndexCache && rootIndexCache.expiresAt > Date.now()) return rootIndexCache;
+	const [quotes, workRequests, materialRequests, contracts] = await Promise.all([
+		quotesDB.getAll(),
+		workRequestsDB.getAll(),
+		materialRequestsDB.getAll(),
+		contractsDB.getAll()
+	]);
+	rootIndexCache = {
+		expiresAt: Date.now() + ROOT_INDEX_TTL_MS,
+		quotes,
+		workRequests,
+		materialRequests,
+		contracts
+	};
+	return rootIndexCache;
+}
+
+/**
+ * Root-level uploads (quote files and work-request images) have no entity ID
+ * in their path. Resolve the owning record before signing one.
+ */
+async function canSignRootObject(user: JwtPayload, objectPath: string): Promise<boolean> {
+	const index = await getRootIndex();
+	const quote = index.quotes.find((item: Quote) =>
+		(item.files || []).some((file) => extractMainBucketObjectPath(file.filePath) === objectPath)
+	);
+	if (quote) return quote.customerId === user.id || quote.expertSupplierId === user.id;
+
+	const workRequest = index.workRequests.find((item: WorkRequest) =>
+		(item.images || []).some((image) => extractMainBucketObjectPath(image) === objectPath)
+	);
+	if (workRequest) return canViewWorkRequest(user, workRequest);
+
+	const materialRequest = index.materialRequests.find((item: MaterialRequest) =>
+		(item.attachments || []).some(
+			(attachment) => extractMainBucketObjectPath(attachment.filePath) === objectPath
+		)
+	);
+	if (materialRequest) return canViewMaterialRequest(user, materialRequest);
+
+	const contract = index.contracts.find((item: Contract) =>
+		(item.attachments || []).some(
+			(attachment) => extractMainBucketObjectPath(attachment.filePath) === objectPath
+		)
+	);
+	if (contract) {
+		return contract.customerId === user.id || contract.expertSupplierId === user.id;
+	}
+
+	return false;
+}
+
+/**
+ * POST /api/attachments/sign
+ * Exchanges storage URLs for short-lived signed URLs. Used for media that the
+ * client reads directly from Firestore rather than through an API response.
+ */
+router.post(
+	'/attachments/sign',
+	authenticateToken,
+	async (req: AuthenticatedRequest, res: Response) => {
+		try {
+			const user = req.user as JwtPayload;
+			const input = (req.body as { urls?: unknown })?.urls;
+			if (!Array.isArray(input)) {
+				return res.status(400).json({ message: 'urls must be an array of strings.' });
+			}
+
+			const urls = [
+				...new Set(input.filter((value): value is string => typeof value === 'string'))
+			].slice(0, 100);
+
+			const entries = await Promise.all(
+				urls.map(async (url) => {
+					const objectPath = extractMainBucketObjectPath(url);
+					if (!objectPath) return [url, url] as const;
+
+					// Chat files are only signable by chat participants.
+					const chatMatch = objectPath.match(/^chat-attachments\/([^/]+)\//);
+					if (chatMatch) {
+						const chat = await chatsDB.findById(chatMatch[1]);
+						if (!chat || !chat.participants.includes(user.id)) {
+							return [url, url] as const;
+						}
+					}
+
+					// Entity attachments follow the same visibility rules as the
+					// entity endpoints.
+					const entityMatch = objectPath.match(/^attachments\/([^/]+)\/([^/]+)\//);
+					if (entityMatch) {
+						const [, entityType, entityId] = entityMatch;
+						const config = ENTITY_CONFIG[entityType as keyof typeof ENTITY_CONFIG];
+						if (!config) return [url, url] as const;
+						const entity = (await config.collection.findById(entityId)) as
+							MaterialRequest | Contract | WorkRequest | undefined;
+						if (!entity) return [url, url] as const;
+
+						let allowed = false;
+						if (entityType === 'material-requests') {
+							const request = entity as MaterialRequest;
+							allowed =
+								request.customerId === user.id ||
+								request.interestedSuppliers?.includes(user.id) ||
+								request.invitedSuppliers?.includes(user.id) ||
+								(user.userType === 'supplier' && request.status === 'open');
+						} else if (entityType === 'work-requests') {
+							const request = entity as WorkRequest;
+							allowed =
+								request.customerId === user.id ||
+								request.interestedExperts?.includes(user.id) ||
+								request.invitedExperts?.includes(user.id) ||
+								(user.userType === 'expert' && request.status === 'open');
+						} else if (entityType === 'contracts') {
+							const contract = entity as Contract;
+							allowed = contract.customerId === user.id || contract.expertSupplierId === user.id;
+						}
+						if (!allowed) return [url, url] as const;
+					}
+
+					const isEntityOrChatPath =
+						objectPath.startsWith('attachments/') || objectPath.startsWith('chat-attachments/');
+					if (!isEntityOrChatPath) {
+						if (/^[0-9]+-[a-f0-9]+\.[a-z0-9]{1,10}$/i.test(objectPath)) {
+							if (!(await canSignRootObject(user, objectPath))) return [url, url] as const;
+						} else if (!objectPath.startsWith('users/')) {
+							return [url, url] as const;
+						}
+					}
+
+					try {
+						return [url, (await getSignedAttachmentUrl(url)) ?? url] as const;
+					} catch (error) {
+						console.error('[Attachments] Failed to sign URL:', error);
+						return [url, url] as const;
+					}
+				})
+			);
+
+			res.status(200).json({ urls: Object.fromEntries(entries) });
+		} catch (error: unknown) {
+			console.error('Error signing attachment URLs:', error);
+			res.status(500).json({ message: 'Failed to sign attachment URLs.' });
+		}
+	}
+);
 
 // --- Generic Entity Attachment Endpoint ---
 router.post(

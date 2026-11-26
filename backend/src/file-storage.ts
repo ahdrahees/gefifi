@@ -382,6 +382,117 @@ export const getSignedAudioUrl = async (
 };
 
 /**
+ * Extracts the object path for the main attachments bucket from a public or
+ * signed storage URL, or accepts an already-relative object path.
+ */
+export function extractMainBucketObjectPath(filePath: string): string | null {
+	if (!GCS_BUCKET_NAME || typeof filePath !== 'string') return null;
+	const trimmed = filePath.trim();
+	if (!trimmed) return null;
+
+	if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+		try {
+			const url = new URL(trimmed);
+			if (url.hostname !== 'storage.googleapis.com') return null;
+			const parts = url.pathname.split('/').filter(Boolean);
+			if (parts[0] !== GCS_BUCKET_NAME || parts.length < 2) return null;
+			return decodeURIComponent(parts.slice(1).join('/'));
+		} catch {
+			return null;
+		}
+	}
+
+	if (trimmed.startsWith('gs://')) {
+		const withoutScheme = trimmed.slice(5);
+		const slash = withoutScheme.indexOf('/');
+		if (slash === -1 || withoutScheme.slice(0, slash) !== GCS_BUCKET_NAME) return null;
+		return decodeURIComponent(withoutScheme.slice(slash + 1));
+	}
+
+	// Relative paths are useful when a route wants to store the object key
+	// instead of a full public URL. Require a known folder shape so ordinary
+	// prose that happens to start with "users/" or "attachments/" is not
+	// mistaken for a file.
+	if (/^(attachments|chat-attachments)\/[^/]+\/[^/]+\//.test(trimmed)) return trimmed;
+	if (/^users\/[^/]+\/avatar\//.test(trimmed)) return trimmed;
+	if (/^[0-9]+-[a-f0-9]+\.[a-z0-9]{1,10}$/i.test(trimmed)) return trimmed;
+	return null;
+}
+
+/**
+ * Converts any accepted storage reference into the stable public URL form used
+ * by uploads. This keeps signed query strings out of persisted records.
+ */
+export function toCanonicalStorageUrl(filePath: string): string | null {
+	const objectPath = extractMainBucketObjectPath(filePath);
+	if (!objectPath || !GCS_BUCKET_NAME) return null;
+	return `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${objectPath
+		.split('/')
+		.map(encodeURIComponent)
+		.join('/')}`;
+}
+
+const attachmentUrlCache = new Map<string, { promise: Promise<string>; expiresAt: number }>();
+const ATTACHMENT_URL_TTL_MINUTES = 60;
+const ATTACHMENT_CACHE_MS = 10 * 60 * 1000;
+
+async function signAttachmentObject(
+	objectPath: string,
+	expirationMinutes: number
+): Promise<string> {
+	const bucket = getStorageClient().bucket(GCS_BUCKET_NAME!);
+	const file = bucket.file(objectPath);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error('Timed out signing attachment URL.')), 5000);
+	});
+	try {
+		const [url] = await Promise.race([
+			file.getSignedUrl({
+				action: 'read',
+				expires: Date.now() + expirationMinutes * 60 * 1000
+			}),
+			timeout
+		]);
+		return url;
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
+/**
+ * Generates a short-lived signed URL for an object in the main attachments
+ * bucket. Returns null when the value is not one of our objects.
+ */
+export const getSignedAttachmentUrl = async (
+	filePath: string,
+	expirationMinutes: number = ATTACHMENT_URL_TTL_MINUTES
+): Promise<string | null> => {
+	const objectPath = extractMainBucketObjectPath(filePath);
+	if (!objectPath || !GCS_BUCKET_NAME) return null;
+
+	const now = Date.now();
+	for (const [key, entry] of attachmentUrlCache) {
+		if (entry.expiresAt <= now) attachmentUrlCache.delete(key);
+	}
+
+	const cached = attachmentUrlCache.get(objectPath);
+	if (cached && cached.expiresAt > now) return cached.promise;
+
+	const promise = signAttachmentObject(objectPath, expirationMinutes);
+	attachmentUrlCache.set(objectPath, {
+		promise,
+		expiresAt: now + ATTACHMENT_CACHE_MS
+	});
+	try {
+		return await promise;
+	} catch (error) {
+		attachmentUrlCache.delete(objectPath);
+		throw error;
+	}
+};
+
+/**
  * Uploads a file attachment for chat messages.
  * Files are organized by chatId in separate folders.
  * @param file The file object from multer (Express.Multer.File).
