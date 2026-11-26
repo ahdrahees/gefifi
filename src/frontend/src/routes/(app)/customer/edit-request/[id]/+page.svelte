@@ -57,34 +57,9 @@
 		errorMessage = '';
 
 		try {
-			// Try to fetch as work request first
-			try {
-				console.log('Trying to fetch as work request:', requestId);
-				const workRequest = (await apiClient.getWorkRequestById(requestId)) as WorkRequest;
-				request = workRequest;
-				requestType = 'work';
-				console.log('Successfully fetched work request:', workRequest);
-			} catch (error: any) {
-				console.log('Work request fetch failed:', error.data?.message || error.message);
-
-				// If work request fails, try material request
-				try {
-					console.log('Trying to fetch as material request:', requestId);
-					const materialRequest = (await apiClient.getMaterialRequestById(
-						requestId
-					)) as MaterialRequest;
-					request = materialRequest;
-					requestType = 'material';
-					console.log('Successfully fetched material request:', materialRequest);
-				} catch (error: any) {
-					console.log('Material request fetch failed:', error.data?.message || error.message);
-
-					// Both requests failed
-					throw new Error(
-						'Request not found. It may have been deleted or you may not have access to it.'
-					);
-				}
-			}
+			const resolved = await apiClient.getRequestById(requestId);
+			request = resolved.request as WorkRequest | MaterialRequest;
+			requestType = resolved.type;
 
 			// Check if user can edit this request after successfully fetching it
 			// Note: canEdit is a reactive statement, so we need to check the conditions manually here

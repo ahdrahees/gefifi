@@ -314,3 +314,23 @@ export interface QuoteMessage extends Message {
 	quoteValidity?: string;
 	quoteTitle?: string;
 }
+
+// --- Agent Approval Types ---
+
+/**
+ * Server-side record for a human approval card. The approval card lives in the
+ * agent event, but its confirmation state must be shared across browsers and
+ * devices and must be claimable by only one confirmation attempt at a time.
+ */
+export interface AgentApprovalRecord extends Identifiable {
+	userId: string; // Owner of the approval (from the authenticated request)
+	action: string; // Agent action name, e.g. work_request or chat_message
+	status: 'claimed' | 'completed';
+	claimToken: string; // Per-attempt token, prevents two devices confirming together
+	claimedAt: string;
+	completedAt: string;
+	href: string; // Where the completed card should link
+	label: string; // Completed button/label text
+	createdAt: string;
+	updatedAt: string;
+}

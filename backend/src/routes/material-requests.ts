@@ -13,7 +13,9 @@ const router = Router();
 // --- Material Request Endpoints ---
 
 // Helper function to auto-expire material requests whose deadlines have passed
-async function checkAndExpireMaterialRequests(requests: MaterialRequest[]): Promise<MaterialRequest[]> {
+export async function checkAndExpireMaterialRequests(
+	requests: MaterialRequest[]
+): Promise<MaterialRequest[]> {
 	const now = new Date();
 	const activeStatuses = ['open', 'quoting', 'ordered'];
 
@@ -111,8 +113,15 @@ router.post(
 					.json({ message: 'Forbidden. Only customers can create material requests.' });
 			}
 
-			const { title, description, deliveryLocation, deliveryDate, linkedWorkRequestId, items, expirationDate } =
-				req.body;
+			const {
+				title,
+				description,
+				deliveryLocation,
+				deliveryDate,
+				linkedWorkRequestId,
+				items,
+				expirationDate
+			} = req.body;
 
 			if (
 				!title ||
@@ -138,7 +147,9 @@ router.post(
 
 			if (expirationDate) {
 				if (isNaN(Date.parse(expirationDate))) {
-					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+					return res
+						.status(400)
+						.json({ message: 'Expiration date must be a valid date string if provided.' });
 				}
 				const todayStart = new Date();
 				todayStart.setHours(0, 0, 0, 0);
@@ -207,7 +218,8 @@ router.get(
 			const isCustomer = user.id === materialRequest.customerId;
 			const isInterestedSupplier = materialRequest.interestedSuppliers?.includes(user.id);
 			const isInvitedSupplier = materialRequest.invitedSuppliers?.includes(user.id);
-			const isSupplierViewingOpen = user.userType === 'supplier' && materialRequest.status === 'open';
+			const isSupplierViewingOpen =
+				user.userType === 'supplier' && materialRequest.status === 'open';
 
 			if (!isCustomer && !isInterestedSupplier && !isInvitedSupplier && !isSupplierViewingOpen) {
 				return res
@@ -256,7 +268,9 @@ router.put(
 
 			if (updateData.expirationDate) {
 				if (isNaN(Date.parse(updateData.expirationDate))) {
-					return res.status(400).json({ message: 'Expiration date must be a valid date string if provided.' });
+					return res
+						.status(400)
+						.json({ message: 'Expiration date must be a valid date string if provided.' });
 				}
 				const todayStart = new Date();
 				todayStart.setHours(0, 0, 0, 0);

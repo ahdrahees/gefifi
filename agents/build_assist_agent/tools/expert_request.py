@@ -186,7 +186,7 @@ async def create_expert_request(
     )
 
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
 
         images_urls: list[str] = []
 
@@ -397,7 +397,7 @@ async def get_user_expert_requests(tool_context: ToolContext) -> dict[str, Any]:
     """
     logger.info("TOOL[get_user_expert_requests]: fetching user's expert requests")
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
@@ -517,7 +517,7 @@ async def get_active_user_expert_requests(tool_context: ToolContext) -> dict[str
         "TOOL[get_active_user_expert_requests]: fetching user's expert requests"
     )
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
@@ -628,7 +628,7 @@ async def get_a_expert_request_of_user_with_request_id(
         request_id,
     )
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -808,7 +808,7 @@ async def update_expert_request(
     """
     logger.info("TOOL[update_expert_request]: called with request_id: %s", request_id)
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
 
         updated_expert_request: dict[str, str | list[str] | float] = {}
 
@@ -914,7 +914,7 @@ async def update_expert_request_image(
         "TOOL[update_expert_request_image]: called with request_id: %s", request_id
     )
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
 
         if url_of_images_to_remove is None and filenames_of_images_to_add is None:
             available = await tool_context.list_artifacts()
@@ -1214,7 +1214,7 @@ async def update_expert_request_status(
         status,
     )
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
                 "Content-Type": "application/json",

@@ -16,7 +16,6 @@
 
 	let allExperts: AuthUser[] = $state([]);
 	let allSuppliers: AuthUser[] = $state([]);
-	let displayedProfessionals: AuthUser[] = $state([]);
 
 	let searchTerm: string = $state('');
 	let selectedType: 'all' | 'expert' | 'supplier' = $state('all');
@@ -55,19 +54,6 @@
 
 			allExperts = expertsData;
 			allSuppliers = suppliersData;
-
-			console.log(
-				'ALL EXPERTS (first 2 for brevity):',
-				JSON.stringify(allExperts.slice(0, 2), null, 2)
-			);
-			console.log(
-				'ALL SUPPLIERS (first 2 for brevity):',
-				JSON.stringify(allSuppliers.slice(0, 2), null, 2)
-			);
-
-			// Initial filter call after data is fetched
-			// searchTerm is '' and selectedType is 'all' at this point
-			filterAndSortProfessionals(searchTerm, selectedType, allExperts, allSuppliers, currentUser);
 		} catch (err: unknown) {
 			console.error('Error fetching professionals:', err);
 			errorMessage = err instanceof Error ? err.message : 'Failed to load professionals list.';
@@ -82,16 +68,9 @@
 		currentExperts: AuthUser[],
 		currentSuppliers: AuthUser[],
 		currentLocalUser: AuthUser | null
-	) {
-		console.log(
-			`filterAndSortProfessionals CALLED with: searchTerm='${currentSearchTerm}', selectedType='${currentSelectedType}', Experts: ${currentExperts.length}, Suppliers: ${currentSuppliers.length}`
-		);
-
+	): AuthUser[] {
 		if (currentExperts.length === 0 && currentSuppliers.length === 0 && !isLoading) {
-			// If there's no data after loading, don't try to filter.
-			console.log('Filter skipped: No expert or supplier data available.');
-			displayedProfessionals = [];
-			return;
+			return [];
 		}
 
 		let combinedList: AuthUser[] = [];
@@ -102,20 +81,13 @@
 		} else if (currentSelectedType === 'supplier') {
 			combinedList = currentSuppliers;
 		}
-		console.log(
-			`Step 1 - Combined list based on selectedType='${currentSelectedType}', count: ${combinedList.length}`
-		);
 
 		let filteredList = combinedList;
 		if (currentSearchTerm.trim() !== '') {
 			const lowerSearchTerm = currentSearchTerm.toLowerCase().trim();
 			filteredList = combinedList.filter((prof) => {
-				if (!prof || !prof.profile) {
-					console.warn('Professional object or profile is missing:', prof);
-					return false;
-				}
+				if (!prof || !prof.profile) return false;
 				const profile = prof.profile;
-
 				const name = String(profile.fullName || profile.companyName || '').toLowerCase();
 				const expertise = String(
 					prof.userType === 'expert' ? profile.expertise || '' : ''
@@ -125,16 +97,13 @@
 				).toLowerCase();
 				const location = String(profile.location || '').toLowerCase();
 
-				const matchesName = name.includes(lowerSearchTerm);
-				const matchesExpertise = prof.userType === 'expert' && expertise.includes(lowerSearchTerm);
-				const matchesCategory = prof.userType === 'supplier' && category.includes(lowerSearchTerm);
-				const matchesLocation = location.includes(lowerSearchTerm);
-
-				return matchesName || matchesExpertise || matchesCategory || matchesLocation;
+				return (
+					name.includes(lowerSearchTerm) ||
+					(prof.userType === 'expert' && expertise.includes(lowerSearchTerm)) ||
+					(prof.userType === 'supplier' && category.includes(lowerSearchTerm)) ||
+					location.includes(lowerSearchTerm)
+				);
 			});
-			console.log(
-				`Step 2 - After search term filter ('${currentSearchTerm}'), count: ${filteredList.length}`
-			);
 		}
 
 		if (
@@ -153,42 +122,26 @@
 				}
 			});
 
-			const uniqueNearbyIds = new Set<string>();
-			const uniqueNearbyFiltered = nearby.filter((p) => {
-				if (p && p.id && !uniqueNearbyIds.has(p.id)) {
-					uniqueNearbyIds.add(p.id);
-					return true;
-				}
-				return false;
+			const seen = new Set<string>();
+			const uniqueNearby = nearby.filter((p) => {
+				if (!p?.id || seen.has(p.id)) return false;
+				seen.add(p.id);
+				return true;
 			});
+			const uniqueOthers = others.filter((p) => p?.id && !seen.has(p.id));
 
-			const uniqueOthersFiltered = others.filter((p) => p && p.id && !uniqueNearbyIds.has(p.id));
-
-			displayedProfessionals = [...uniqueNearbyFiltered, ...uniqueOthersFiltered];
-			console.log(
-				`Step 3a - Nearby prioritization applied, count: ${displayedProfessionals.length}`
-			);
-		} else {
-			displayedProfessionals = filteredList;
-			console.log(
-				`Step 3b - Nearby skipped or search active, count: ${displayedProfessionals.length}`
-			);
+			return [...uniqueNearby, ...uniqueOthers];
 		}
 
-		console.log(
-			'Final displayedProfessionals (first 2 for brevity):',
-			JSON.stringify(displayedProfessionals.slice(0, 2), null, 2)
-		);
+		return filteredList;
 	}
 
-	$effect(() => {
-		if (!isLoading) {
-			console.log(
-				`Reactive EFFECT TRIGGERED by change: Term='${searchTerm}', Type='${selectedType}'`
-			);
-			filterAndSortProfessionals(searchTerm, selectedType, allExperts, allSuppliers, currentUser);
-		}
-	});
+	// This is derived rather than written by an $effect: the old effect called
+	// a function that assigned displayedProfessionals, so the effect depended
+	// on its own output and looped with effect_update_depth_exceeded.
+	let displayedProfessionals = $derived(
+		filterAndSortProfessionals(searchTerm, selectedType, allExperts, allSuppliers, currentUser)
+	);
 
 	let showInterestModal = $state(false);
 	let currentTargetProfessionalId: string | null = $state(null);

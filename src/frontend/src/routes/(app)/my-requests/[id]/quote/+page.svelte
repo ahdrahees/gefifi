@@ -67,25 +67,9 @@
 
 		try {
 			assertNonNullish(requestId, 'Request ID is required');
-			// Try to fetch as work request first
-			try {
-				const workRequest = (await apiClient.getWorkRequestById(requestId)) as WorkRequest;
-				request = workRequest;
-				requestType = 'work';
-			} catch {
-				// Expected for material requests: fall through without logging a
-				// 404 as an error.
-				try {
-					const materialRequest = (await apiClient.getMaterialRequestById(
-						requestId
-					)) as MaterialRequest;
-					request = materialRequest;
-					requestType = 'material';
-				} catch (materialError) {
-					console.error('Error fetching material request:', materialError);
-					throw new Error('Request not found');
-				}
-			}
+			const resolved = await apiClient.getRequestById(requestId);
+			request = resolved.request as WorkRequest | MaterialRequest;
+			requestType = resolved.type;
 
 			// Fetch quotes for this request
 			await fetchQuotes();

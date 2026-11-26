@@ -33,6 +33,16 @@ export class ApiError extends Error {
 	}
 }
 
+export interface AgentApprovalState {
+	id?: string;
+	status: 'claimed' | 'completed';
+	href?: string;
+	label?: string;
+	claimedAt?: string;
+	completedAt?: string;
+	updatedAt?: string;
+}
+
 // Core request function
 async function request<T = any>( // Default T to any if not specified by caller
 	endpoint: string,
@@ -345,6 +355,41 @@ const apiClient = {
 		return request(`/attachments/${entityType}/${entityId}`, 'POST', formData, true, true);
 	},
 
+	// --- Agent Approvals ---
+	getAgentApproval: (approvalId: string): Promise<AgentApprovalState> => {
+		return request<AgentApprovalState>(`/agent-approvals/${approvalId}`, 'GET', undefined, true);
+	},
+	claimAgentApproval: (
+		approvalId: string,
+		claimToken: string,
+		action: string
+	): Promise<AgentApprovalState> => {
+		return request<AgentApprovalState>(`/agent-approvals/${approvalId}/claim`, 'POST', {
+			claimToken,
+			action
+		});
+	},
+	completeAgentApproval: (
+		approvalId: string,
+		claimToken: string,
+		href: string,
+		label: string
+	): Promise<AgentApprovalState> => {
+		return request<AgentApprovalState>(`/agent-approvals/${approvalId}/complete`, 'POST', {
+			claimToken,
+			href,
+			label
+		});
+	},
+	releaseAgentApproval: (
+		approvalId: string,
+		claimToken: string
+	): Promise<{ released: boolean }> => {
+		return request<{ released: boolean }>(`/agent-approvals/${approvalId}/release`, 'POST', {
+			claimToken
+		});
+	},
+
 	// --- Work Requests ---
 	getWorkRequests: (): Promise<WorkRequestResponse[]> => {
 		return request<WorkRequestResponse[]>('/work-requests', 'GET', undefined, true);
@@ -362,6 +407,17 @@ const apiClient = {
 	},
 	getWorkRequestById: (id: string): Promise<WorkRequestResponse> => {
 		return request<WorkRequestResponse>(`/work-requests/${id}`, 'GET', undefined, true);
+	},
+	getRequestById: (
+		id: string
+	): Promise<{
+		type: 'work' | 'material';
+		request: WorkRequestResponse | MaterialRequestResponse;
+	}> => {
+		return request<{
+			type: 'work' | 'material';
+			request: WorkRequestResponse | MaterialRequestResponse;
+		}>(`/requests/${id}`, 'GET', undefined, true);
 	},
 
 	// --- Material Requests ---

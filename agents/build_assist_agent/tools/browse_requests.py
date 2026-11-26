@@ -48,7 +48,7 @@ async def browse_expert_requests(
     """
     logger.info("TOOL[browse_expert_requests]: fetching open expert requests for expert")
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data", {})
         user_id = auth_data.get("user_id")
 
@@ -188,7 +188,7 @@ async def browse_material_requests(
     """
     logger.info("TOOL[browse_material_requests]: fetching open material requests for supplier")
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = tool_context.state.get("temp:auth_token")
         auth_data: AuthData = tool_context.state.get("auth_data", {})
         user_id = auth_data.get("user_id")
 

@@ -11,7 +11,7 @@ const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
 const router = Router();
 
 // Helper function to auto-expire work requests whose deadlines have passed
-async function checkAndExpireWorkRequests(requests: WorkRequest[]): Promise<WorkRequest[]> {
+export async function checkAndExpireWorkRequests(requests: WorkRequest[]): Promise<WorkRequest[]> {
 	const now = new Date();
 	const activeStatuses = ['open', 'in_discussion', 'awaiting_quotes'];
 
