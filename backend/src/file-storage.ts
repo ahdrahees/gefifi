@@ -419,8 +419,46 @@ export function extractMainBucketObjectPath(filePath: string): string | null {
 	return null;
 }
 
-const attachmentUrlCache = new Map<string, { url: string; expiresAt: number }>();
+/**
+ * Converts any accepted storage reference into the stable public URL form used
+ * by uploads. This keeps signed query strings out of persisted records.
+ */
+export function toCanonicalStorageUrl(filePath: string): string | null {
+	const objectPath = extractMainBucketObjectPath(filePath);
+	if (!objectPath || !GCS_BUCKET_NAME) return null;
+	return `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${objectPath
+		.split('/')
+		.map(encodeURIComponent)
+		.join('/')}`;
+}
+
+const attachmentUrlCache = new Map<string, { promise: Promise<string>; expiresAt: number }>();
 const ATTACHMENT_URL_TTL_MINUTES = 60;
+const ATTACHMENT_CACHE_MS = 10 * 60 * 1000;
+
+async function signAttachmentObject(
+	objectPath: string,
+	expirationMinutes: number
+): Promise<string> {
+	const bucket = getStorageClient().bucket(GCS_BUCKET_NAME!);
+	const file = bucket.file(objectPath);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error('Timed out signing attachment URL.')), 5000);
+	});
+	try {
+		const [url] = await Promise.race([
+			file.getSignedUrl({
+				action: 'read',
+				expires: Date.now() + expirationMinutes * 60 * 1000
+			}),
+			timeout
+		]);
+		return url;
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
 
 /**
  * Generates a short-lived signed URL for an object in the main attachments
@@ -433,24 +471,25 @@ export const getSignedAttachmentUrl = async (
 	const objectPath = extractMainBucketObjectPath(filePath);
 	if (!objectPath || !GCS_BUCKET_NAME) return null;
 
-	const cached = attachmentUrlCache.get(objectPath);
-	if (cached && cached.expiresAt > Date.now()) return cached.url;
+	const now = Date.now();
+	for (const [key, entry] of attachmentUrlCache) {
+		if (entry.expiresAt <= now) attachmentUrlCache.delete(key);
+	}
 
-	const bucket = getStorageClient().bucket(GCS_BUCKET_NAME);
-	const file = bucket.file(objectPath);
-	const signing = file.getSignedUrl({
-		action: 'read',
-		expires: Date.now() + expirationMinutes * 60 * 1000
-	});
-	const timeout = new Promise<never>((_, reject) =>
-		setTimeout(() => reject(new Error('Timed out signing attachment URL.')), 5000)
-	);
-	const [url] = await Promise.race([signing, timeout]);
+	const cached = attachmentUrlCache.get(objectPath);
+	if (cached && cached.expiresAt > now) return cached.promise;
+
+	const promise = signAttachmentObject(objectPath, expirationMinutes);
 	attachmentUrlCache.set(objectPath, {
-		url,
-		expiresAt: Date.now() + Math.max(1, expirationMinutes - 5) * 60 * 1000
+		promise,
+		expiresAt: now + ATTACHMENT_CACHE_MS
 	});
-	return url;
+	try {
+		return await promise;
+	} catch (error) {
+		attachmentUrlCache.delete(objectPath);
+		throw error;
+	}
 };
 
 /**

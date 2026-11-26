@@ -5,7 +5,7 @@ import path from 'path';
 import multer from 'multer';
 import fs from 'fs';
 import admin from 'firebase-admin';
-import { secureResponseUrls } from './signed-urls';
+import { secureResponseUrls, normalizeStorageRequestUrls } from './signed-urls';
 
 // --- Firebase Admin SDK Initialization ---
 // This needs to be done once when the server starts.
@@ -137,6 +137,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
+app.use(normalizeStorageRequestUrls);
 app.use(secureResponseUrls);
 
 // --- File Upload Setup (Multer) ---

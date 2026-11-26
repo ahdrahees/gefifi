@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { FirestoreCollection, chatsDB } from '../data';
-import { MaterialRequest, Contract, WorkRequest, Attachment } from '../interfaces';
+import { chatsDB, contractsDB, materialRequestsDB, quotesDB, workRequestsDB } from '../data';
+import { MaterialRequest, Contract, WorkRequest, Attachment, Quote } from '../interfaces';
 import { authenticateToken, AuthenticatedRequest, JwtPayload } from '../auth';
 import {
 	extractMainBucketObjectPath,
@@ -11,6 +11,88 @@ import { attachmentUpload } from './shared/middleware';
 import { ENTITY_CONFIG } from './shared/entity-config';
 
 const router = Router();
+
+function canViewWorkRequest(user: JwtPayload, request: WorkRequest): boolean {
+	return (
+		request.customerId === user.id ||
+		request.interestedExperts?.includes(user.id) ||
+		request.invitedExperts?.includes(user.id) ||
+		(user.userType === 'expert' && request.status === 'open')
+	);
+}
+
+function canViewMaterialRequest(user: JwtPayload, request: MaterialRequest): boolean {
+	return (
+		request.customerId === user.id ||
+		request.interestedSuppliers?.includes(user.id) ||
+		request.invitedSuppliers?.includes(user.id) ||
+		(user.userType === 'supplier' && request.status === 'open')
+	);
+}
+
+const ROOT_INDEX_TTL_MS = 15 * 1000;
+let rootIndexCache:
+	| {
+			expiresAt: number;
+			quotes: Quote[];
+			workRequests: WorkRequest[];
+			materialRequests: MaterialRequest[];
+			contracts: Contract[];
+	  }
+	| undefined;
+
+async function getRootIndex() {
+	if (rootIndexCache && rootIndexCache.expiresAt > Date.now()) return rootIndexCache;
+	const [quotes, workRequests, materialRequests, contracts] = await Promise.all([
+		quotesDB.getAll(),
+		workRequestsDB.getAll(),
+		materialRequestsDB.getAll(),
+		contractsDB.getAll()
+	]);
+	rootIndexCache = {
+		expiresAt: Date.now() + ROOT_INDEX_TTL_MS,
+		quotes,
+		workRequests,
+		materialRequests,
+		contracts
+	};
+	return rootIndexCache;
+}
+
+/**
+ * Root-level uploads (quote files and work-request images) have no entity ID
+ * in their path. Resolve the owning record before signing one.
+ */
+async function canSignRootObject(user: JwtPayload, objectPath: string): Promise<boolean> {
+	const index = await getRootIndex();
+	const quote = index.quotes.find((item: Quote) =>
+		(item.files || []).some((file) => extractMainBucketObjectPath(file.filePath) === objectPath)
+	);
+	if (quote) return quote.customerId === user.id || quote.expertSupplierId === user.id;
+
+	const workRequest = index.workRequests.find((item: WorkRequest) =>
+		(item.images || []).some((image) => extractMainBucketObjectPath(image) === objectPath)
+	);
+	if (workRequest) return canViewWorkRequest(user, workRequest);
+
+	const materialRequest = index.materialRequests.find((item: MaterialRequest) =>
+		(item.attachments || []).some(
+			(attachment) => extractMainBucketObjectPath(attachment.filePath) === objectPath
+		)
+	);
+	if (materialRequest) return canViewMaterialRequest(user, materialRequest);
+
+	const contract = index.contracts.find((item: Contract) =>
+		(item.attachments || []).some(
+			(attachment) => extractMainBucketObjectPath(attachment.filePath) === objectPath
+		)
+	);
+	if (contract) {
+		return contract.customerId === user.id || contract.expertSupplierId === user.id;
+	}
+
+	return false;
+}
 
 /**
  * POST /api/attachments/sign
@@ -77,6 +159,16 @@ router.post(
 							allowed = contract.customerId === user.id || contract.expertSupplierId === user.id;
 						}
 						if (!allowed) return [url, url] as const;
+					}
+
+					const isEntityOrChatPath =
+						objectPath.startsWith('attachments/') || objectPath.startsWith('chat-attachments/');
+					if (!isEntityOrChatPath) {
+						if (/^[0-9]+-[a-f0-9]+\.[a-z0-9]{1,10}$/i.test(objectPath)) {
+							if (!(await canSignRootObject(user, objectPath))) return [url, url] as const;
+						} else if (!objectPath.startsWith('users/')) {
+							return [url, url] as const;
+						}
 					}
 
 					try {

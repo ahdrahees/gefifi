@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { getSignedAttachmentUrl } from './file-storage';
+import { getSignedAttachmentUrl, toCanonicalStorageUrl } from './file-storage';
 
 const MAX_STRING_LENGTH = 4096;
 
@@ -36,6 +36,45 @@ async function rewriteValue(value: unknown): Promise<unknown> {
 		return Object.fromEntries(entries);
 	}
 	return value;
+}
+
+function normalizeValue(value: unknown): unknown {
+	if (typeof value === 'string') {
+		if (!mightBeObjectUrl(value)) return value;
+		return toCanonicalStorageUrl(value) ?? value;
+	}
+	if (Array.isArray(value)) {
+		return value.map((item) => normalizeValue(item));
+	}
+	if (value && typeof value === 'object') {
+		return Object.fromEntries(
+			Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+				key,
+				normalizeValue(item)
+			])
+		);
+	}
+	return value;
+}
+
+/**
+ * Removes signed query strings from storage URLs in JSON mutation bodies.
+ * The app stores the stable public URL and signs again when reading.
+ */
+export function normalizeStorageRequestUrls(req: Request, res: Response, next: NextFunction): void {
+	const isJson = req.is('application/json') || req.is('application/x-www-form-urlencoded');
+	if (req.method === 'GET' || !req.body || !isJson) {
+		next();
+		return;
+	}
+	// The signing endpoint needs the exact keys the client sent so it can
+	// return a map keyed by those values.
+	if (req.originalUrl.split('?')[0].endsWith('/attachments/sign')) {
+		next();
+		return;
+	}
+	req.body = normalizeValue(req.body);
+	next();
 }
 
 /**

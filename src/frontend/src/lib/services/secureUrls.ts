@@ -1,7 +1,7 @@
 import apiClient from '$lib/api';
 import type { Message } from '$lib/types';
 
-const CACHE_MS = 50 * 60 * 1000;
+const CACHE_MS = 45 * 60 * 1000;
 const MAX_BATCH = 100;
 const cache = new Map<string, { url: string; expiresAt: number }>();
 

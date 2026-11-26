@@ -18,29 +18,79 @@
 	let currentAuth = $derived($authStore);
 
 	// The login response is a mutation, so the API response rewriter does not
-	// sign its avatar URL. Resolve it here; later profile reads already arrive
-	// with signed URLs.
-	let lastAvatarSource = '';
+	// sign its avatar URL. Resolve it here and keep the public source URL so it
+	// can be renewed before the signed URL expires.
+	let avatarSourceUrl = '';
+	let lastAvatarKey = '';
+	let pendingAvatarKey = '';
+
+	async function refreshAvatar(successKey?: string): Promise<void> {
+		const userId = currentAuth.user?.id;
+		const currentUrl = currentAuth.user?.profile?.avatarUrl;
+		if (!userId || !currentUrl) {
+			if (successKey) pendingAvatarKey = '';
+			return;
+		}
+
+		if (currentUrl.includes('X-Goog-Signature')) {
+			avatarSourceUrl ||= currentUrl.split('?')[0];
+		} else {
+			avatarSourceUrl = currentUrl;
+		}
+		const source = avatarSourceUrl;
+		if (!source) {
+			if (successKey) pendingAvatarKey = '';
+			return;
+		}
+
+		const signed = await secureUrls([source]);
+		const next = signed[source];
+		if (!next || next === source) {
+			if (successKey) pendingAvatarKey = '';
+			return;
+		}
+
+		authStore.update((state) =>
+			state.user?.id === userId && state.user.profile?.avatarUrl === currentUrl
+				? {
+						...state,
+						user: {
+							...state.user,
+							profile: { ...state.user.profile, avatarUrl: next }
+						}
+					}
+				: state
+		);
+		if (successKey) {
+			lastAvatarKey = successKey;
+			pendingAvatarKey = '';
+		}
+	}
+
 	$effect(() => {
+		const userId = currentAuth.user?.id;
 		const url = currentAuth.user?.profile?.avatarUrl;
-		if (!url || url.includes('X-Goog-Signature') || url === lastAvatarSource) return;
-		lastAvatarSource = url;
-		secureUrls([url]).then((signed) => {
-			const next = signed[url];
-			if (next && next !== url) {
-				authStore.update((state) =>
-					state.user
-						? {
-								...state,
-								user: {
-									...state.user,
-									profile: { ...state.user.profile, avatarUrl: next }
-								}
-							}
-						: state
-				);
-			}
-		});
+		if (!userId || !url) {
+			avatarSourceUrl = '';
+			lastAvatarKey = '';
+			pendingAvatarKey = '';
+			return;
+		}
+		const source = url.includes('X-Goog-Signature')
+			? avatarSourceUrl || url.split('?')[0]
+			: url;
+		if (!source) return;
+		const key = `${userId}:${source}`;
+		if (key === lastAvatarKey || key === pendingAvatarKey) return;
+		pendingAvatarKey = key;
+		void refreshAvatar(key);
+	});
+
+	onMount(() => {
+		// Signed URLs last one hour; refresh well before expiry, and again if
+		// the browser reports a load failure.
+		const timer = setInterval(() => void refreshAvatar(), 45 * 60 * 1000);
+		return () => clearInterval(timer);
 	});
 
 	let showAgentFAB = $derived(
@@ -179,6 +229,7 @@
 						src={currentAuth.user.profile?.avatarUrl || '/images/default-avatar.png'}
 						alt="User Avatar"
 						class="mr-3 h-10 w-10 shrink-0 rounded-full border-2 border-emerald-500 object-cover"
+						onerror={() => void refreshAvatar()}
 					/>
 					<div class="overflow-hidden">
 						<p class="truncate text-sm font-semibold text-white">

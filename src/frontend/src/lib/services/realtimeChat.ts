@@ -67,10 +67,13 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 	): Unsubscribe {
 		const messagesRef = collection(db, `chats/${chatId}/messages`);
 		const messagesQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(messageLimit));
+		let closed = false;
+		let generation = 0;
 
-		return onSnapshot(
+		const unsubscribe = onSnapshot(
 			messagesQuery,
 			async (snapshot) => {
+				const currentGeneration = ++generation;
 				const messages: Message[] = [];
 				snapshot.forEach((doc) => {
 					const data = doc.data();
@@ -82,17 +85,29 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 				});
 
 				// Chat media is read straight from Firestore, so resolve private
-				// storage URLs before handing it to the UI.
-				await secureMessageUrls(messages);
+				// storage URLs before handing it to the UI. A newer snapshot or
+				// an unsubscribe must win over this async work.
+				try {
+					await secureMessageUrls(messages);
+				} catch (error) {
+					console.error('[RealtimeChat] Failed to secure message URLs:', error);
+				}
+				if (closed || currentGeneration !== generation) return;
 
 				// Reverse to show oldest first (UI expects this order)
 				callback(messages.reverse());
 			},
 			(error) => {
+				if (closed) return;
 				console.error('[RealtimeChat] Error in message subscription:', error);
 				callback([]); // Return empty array on error
 			}
 		);
+
+		return () => {
+			closed = true;
+			unsubscribe();
+		};
 	}
 
 	/**
