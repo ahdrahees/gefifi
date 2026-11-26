@@ -5,6 +5,7 @@ import path from 'path';
 import multer from 'multer';
 import fs from 'fs';
 import admin from 'firebase-admin';
+import { secureResponseUrls } from './signed-urls';
 
 // --- Firebase Admin SDK Initialization ---
 // This needs to be done once when the server starts.
@@ -77,7 +78,10 @@ const PORT = process.env.PORT || 3000;
 // Middlewares
 // CORS configuration that works for both development and production
 const corsOptions = {
-	origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+	origin: function (
+		origin: string | undefined,
+		callback: (err: Error | null, allow?: boolean) => void
+	) {
 		// Allow requests with no origin (mobile apps, curl, etc.)
 		if (!origin) return callback(null, true);
 
@@ -92,17 +96,20 @@ const corsOptions = {
 		// Production origins - from environment variables or hardcoded
 		const productionOrigins = [
 			// Add your production frontend URL here, e.g.:
-			'https://gefifi.at0.app',
+			'https://gefifi.at0.app'
 			// 'https://your-app-name.web.app', // If using Firebase Hosting
 		];
 
 		// Add origins from environment variable (comma-separated)
 		if (process.env.ALLOWED_ORIGINS) {
-			const envOrigins = process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim());
+			const envOrigins = process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim());
 			productionOrigins.push(...envOrigins);
 		}
 
-		const allowedOrigins = process.env.NODE_ENV === 'production' ? productionOrigins : [...developmentOrigins, ...productionOrigins];
+		const allowedOrigins =
+			process.env.NODE_ENV === 'production'
+				? productionOrigins
+				: [...developmentOrigins, ...productionOrigins];
 
 		// Check if origin is allowed
 		if (allowedOrigins.includes(origin)) {
@@ -130,6 +137,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
+app.use(secureResponseUrls);
 
 // --- File Upload Setup (Multer) ---
 // We use memoryStorage() because our file-storage service handles uploading to GCS
@@ -260,17 +268,29 @@ app.post(
 			const { chatId } = req.params;
 			const { messageId } = req.body;
 
-			console.log('🔍 [DEBUG] Chat file upload - chatId:', chatId, 'messageId from body:', messageId);
+			console.log(
+				'🔍 [DEBUG] Chat file upload - chatId:',
+				chatId,
+				'messageId from body:',
+				messageId
+			);
 
 			if (!chatId) {
-				return res
-					.status(400)
-					.json({ message: 'ChatId is required for file upload.' });
+				return res.status(400).json({ message: 'ChatId is required for file upload.' });
 			}
 
 			// Upload the file to the chat attachments bucket
-			const { filePath, fileName, messageId: generatedMessageId } = await uploadChatAttachment(req.file, chatId, messageId);
-			console.log('🔍 [DEBUG] Upload result - generatedMessageId:', generatedMessageId, 'fileName:', fileName);
+			const {
+				filePath,
+				fileName,
+				messageId: generatedMessageId
+			} = await uploadChatAttachment(req.file, chatId, messageId);
+			console.log(
+				'🔍 [DEBUG] Upload result - generatedMessageId:',
+				generatedMessageId,
+				'fileName:',
+				fileName
+			);
 
 			res.status(200).json({
 				message: 'File uploaded successfully!',

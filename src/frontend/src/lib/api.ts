@@ -354,6 +354,9 @@ const apiClient = {
 	}> => {
 		return request(`/attachments/${entityType}/${entityId}`, 'POST', formData, true, true);
 	},
+	signAttachmentUrls: (urls: string[]): Promise<{ urls: Record<string, string> }> => {
+		return request<{ urls: Record<string, string> }>('/attachments/sign', 'POST', { urls }, true);
+	},
 
 	// --- Agent Approvals ---
 	getAgentApproval: (approvalId: string): Promise<AgentApprovalState> => {

@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '$lib/firebase';
 import type { Message, Chat } from '$lib/types';
+import { secureMessageUrls } from '$lib/services/secureUrls';
 
 export interface RealtimeChatService {
 	// Message listeners
@@ -69,7 +70,7 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 
 		return onSnapshot(
 			messagesQuery,
-			(snapshot) => {
+			async (snapshot) => {
 				const messages: Message[] = [];
 				snapshot.forEach((doc) => {
 					const data = doc.data();
@@ -79,6 +80,10 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 						timestamp: data.timestamp?.toDate?.()?.toISOString() || data.timestamp
 					} as Message);
 				});
+
+				// Chat media is read straight from Firestore, so resolve private
+				// storage URLs before handing it to the UI.
+				await secureMessageUrls(messages);
 
 				// Reverse to show oldest first (UI expects this order)
 				callback(messages.reverse());
@@ -165,6 +170,7 @@ class RealtimeChatServiceImpl implements RealtimeChatService {
 			});
 
 			// Reverse to maintain chronological order (oldest first)
+			await secureMessageUrls(olderMessages);
 			callback(olderMessages.reverse());
 		} catch (error) {
 			console.error('[RealtimeChat] Error loading older messages:', error);

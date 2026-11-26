@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 	import PWAInstallPrompt from '$lib/components/ui/PWAInstallPrompt.svelte';
 	import AgentChatFAB from '$lib/components/agent/AgentChatFAB.svelte';
+	import { secureUrls } from '$lib/services/secureUrls';
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
@@ -15,6 +16,32 @@
 	console.log('[Debug] (app)/+layout.svelte script is executing.');
 
 	let currentAuth = $derived($authStore);
+
+	// The login response is a mutation, so the API response rewriter does not
+	// sign its avatar URL. Resolve it here; later profile reads already arrive
+	// with signed URLs.
+	let lastAvatarSource = '';
+	$effect(() => {
+		const url = currentAuth.user?.profile?.avatarUrl;
+		if (!url || url.includes('X-Goog-Signature') || url === lastAvatarSource) return;
+		lastAvatarSource = url;
+		secureUrls([url]).then((signed) => {
+			const next = signed[url];
+			if (next && next !== url) {
+				authStore.update((state) =>
+					state.user
+						? {
+								...state,
+								user: {
+									...state.user,
+									profile: { ...state.user.profile, avatarUrl: next }
+								}
+							}
+						: state
+				);
+			}
+		});
+	});
 
 	let showAgentFAB = $derived(
 		currentAuth.isAuthenticated &&
