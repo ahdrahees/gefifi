@@ -6,7 +6,7 @@
 	import { onMount } from 'svelte';
 	import PWAInstallPrompt from '$lib/components/ui/PWAInstallPrompt.svelte';
 	import AgentChatFAB from '$lib/components/agent/AgentChatFAB.svelte';
-	import { secureUrls } from '$lib/services/secureUrls';
+	import { secureUrls, isSignedStorageUrl } from '$lib/services/secureUrls';
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
@@ -32,7 +32,7 @@
 			return;
 		}
 
-		if (currentUrl.includes('X-Goog-Signature')) {
+		if (isSignedStorageUrl(currentUrl)) {
 			avatarSourceUrl ||= currentUrl.split('?')[0];
 		} else {
 			avatarSourceUrl = currentUrl;
@@ -76,7 +76,7 @@
 			pendingAvatarKey = '';
 			return;
 		}
-		const source = url.includes('X-Goog-Signature')
+		const source = isSignedStorageUrl(url)
 			? avatarSourceUrl || url.split('?')[0]
 			: url;
 		if (!source) return;
