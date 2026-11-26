@@ -66,7 +66,10 @@ async def get_user_chats(tool_context: ToolContext) -> dict[str, Any]:
     """
     logger.info("TOOL[get_user_chats]: fetching user's active chats")
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         current_user_id = tool_context.state.get("auth_data", {}).get("user_id")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -242,7 +245,10 @@ async def get_chat_messages(
     """
     logger.info("TOOL[get_chat_messages]: fetching messages for chat %s", chat_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         current_user_id = tool_context.state.get("auth_data", {}).get("user_id")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -362,7 +368,10 @@ async def send_chat_message(
     """
     logger.info("TOOL[send_chat_message]: sending message to chat %s", chat_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         body = {
             "content": content,

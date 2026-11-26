@@ -29,7 +29,10 @@ async def express_interest_in_expert_request(
     """
     logger.info("TOOL[express_interest_in_expert_request]: expressing interest in work request %s", work_request_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         auth_data: AuthData = tool_context.state.get("auth_data", {})
         user_id = auth_data.get("user_id")
 
@@ -100,7 +103,10 @@ async def express_interest_in_material_request(
     """
     logger.info("TOOL[express_interest_in_material_request]: expressing interest in material request %s", material_request_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         auth_data: AuthData = tool_context.state.get("auth_data", {})
         user_id = auth_data.get("user_id")
 

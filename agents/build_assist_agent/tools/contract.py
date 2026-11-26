@@ -50,7 +50,10 @@ async def draft_contract(
     """
     print(f"TOOL[draft_contract]: validation checking active contracts for request {request_id}")
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         customer_id: str = tool_context.state.get("auth_data", {}).get("user_id")
 
         if not customer_id:
@@ -194,7 +197,10 @@ async def request_contract_revision(
     """
     print(f"TOOL[request_contract_revision]: posting revision request comment for contract {contract_id}")
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         body = {
             "comment": comment.strip(),

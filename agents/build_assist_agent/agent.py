@@ -117,12 +117,15 @@ async def auth_before_agent_callback(
     )  # Get the name of the agent whose model call is being intercepted
     logger.debug("auth_before_agent_callback: running for agent: %s", agent_name)
 
-    # The token is passed per turn as a temp state value so ADK keeps it in
-    # memory for this invocation only and never persists it in the session.
+    # The token is normally passed per turn as temp state so ADK keeps it in
+    # memory for this invocation only. The legacy persisted key is a read-only
+    # fallback for sessions created before this migration; new turns never
+    # write it.
     auth_token: str | None = (
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
         else callback_context.state.get("temp:auth_token")
+        or callback_context.state.get("auth_token")
     )
 
     if not auth_token:
@@ -178,6 +181,7 @@ async def auth_before_model_callback(
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
         else callback_context.state.get("temp:auth_token")
+        or callback_context.state.get("auth_token")
     )
 
     if not auth_token:
@@ -228,6 +232,7 @@ async def before_tool_callback(
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
         else tool_context.state.get("temp:auth_token")
+        or tool_context.state.get("auth_token")
     )
 
     logger.info(

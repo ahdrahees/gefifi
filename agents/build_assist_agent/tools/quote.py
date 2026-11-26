@@ -32,7 +32,10 @@ async def get_quotes_for_request(
     """
     logger.info("TOOL[get_quotes_for_request]: fetching quotes for request %s (type: %s)", request_id, request_type)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
@@ -119,7 +122,10 @@ async def submit_expert_quote(
     """
     logger.info("TOOL[submit_expert_quote]: submitting quote for work request %s", work_request_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         body = {
             "requestId": work_request_id,
             "requestType": "work",
@@ -184,7 +190,10 @@ async def submit_material_quote(
     """
     logger.info("TOOL[submit_material_quote]: submitting quote for material request %s", material_request_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         body = {
             "requestId": material_request_id,
             "requestType": "material",
@@ -255,7 +264,10 @@ async def accept_quote(
     """
     logger.info("TOOL[accept_quote]: accepting quote %s", quote_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
             response = await client.put(

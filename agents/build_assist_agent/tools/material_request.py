@@ -130,7 +130,10 @@ async def create_material_request(
                     "error_message": "Expiration date must be a valid date in YYYY-MM-DD format.",
                 }
 
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         items: list[dict[str, str]] = [
             {
@@ -376,7 +379,10 @@ async def get_user_material_requests(tool_context: ToolContext) -> dict[str, Any
     """
     logger.info("TOOL[get_user_material_requests]: fetching user's material requests")
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
@@ -470,7 +476,10 @@ async def get_active_material_requests_of_user(
         "TOOL[get_active_material_requests_of_user]: fetching user's material requests"
     )
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
@@ -577,7 +586,10 @@ async def get_a_material_request_of_user_with_request_id(
         request_id,
     )
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -673,7 +685,10 @@ async def update_material_request(
     """
     logger.info("TOOL[update_material_request]: called with request_id: %s", request_id)
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         updated_material_request: dict[str, str | list[dict[str, str]]] = {}
 
@@ -789,7 +804,10 @@ async def update_material_request_attachments(
 
     updated_material_request: MaterialRequest | None = None
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         if (
             url_or_path_of_attachments_to_remove is None
@@ -1234,7 +1252,10 @@ async def update_material_request_status(
         status,
     )
     try:
-        token: str = tool_context.state.get("temp:auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {
                 "Content-Type": "application/json",
