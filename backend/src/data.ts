@@ -1,6 +1,14 @@
 // gefifi-2/backend/src/data.ts
 import { Firestore } from '@google-cloud/firestore';
-import type { User, WorkRequest, Chat, Contract, MaterialRequest, Quote } from './interfaces';
+import type {
+	User,
+	WorkRequest,
+	Chat,
+	Contract,
+	MaterialRequest,
+	Quote,
+	AgentApprovalRecord
+} from './interfaces';
 
 // --- Lazy Initializer for Firestore Client ---
 
@@ -48,7 +56,8 @@ const COLLECTIONS = {
 	CHATS: 'chats',
 	MESSAGES: 'messages',
 	CONTRACTS: 'contracts',
-	QUOTES: 'quotes'
+	QUOTES: 'quotes',
+	AGENT_APPROVALS: 'agentApprovals'
 };
 
 // Generic type for our data items, ensuring they all have an ID.
@@ -228,6 +237,66 @@ export class FirestoreCollection<T extends Identifiable> {
 	}
 
 	/**
+	 * Conditionally updates a document in a Firestore transaction.
+	 * The predicate is evaluated against the latest stored document; the write
+	 * only happens if it returns true. Returns the resulting item (or the
+	 * current item when the predicate did not match).
+	 */
+	public async updateIf(
+		id: string,
+		predicate: (current: T) => boolean,
+		dataToUpdate: Partial<Omit<T, 'id'>>
+	): Promise<{ updated: boolean; item: T | undefined }> {
+		const docRef = this.collection.doc(id);
+		return docRef.firestore.runTransaction(async (transaction) => {
+			const doc = await transaction.get(docRef);
+			if (!doc.exists) return { updated: false, item: undefined };
+			const current = doc.data() as T;
+			if (!predicate(current)) return { updated: false, item: current };
+			transaction.set(docRef, dataToUpdate, { merge: true });
+			return { updated: true, item: { ...current, ...dataToUpdate } as T };
+		});
+	}
+
+	/**
+	 * Conditionally deletes a document in a Firestore transaction.
+	 */
+	public async deleteIf(id: string, predicate: (current: T) => boolean): Promise<boolean> {
+		const docRef = this.collection.doc(id);
+		return docRef.firestore.runTransaction(async (transaction) => {
+			const doc = await transaction.get(docRef);
+			if (!doc.exists) return false;
+			if (!predicate(doc.data() as T)) return false;
+			transaction.delete(docRef);
+			return true;
+		});
+	}
+
+	/**
+	 * Creates a document only if no document with the same ID exists.
+	 * Firestore's create() is atomic, so two concurrent callers cannot both
+	 * win. Returns whether this caller created the document.
+	 */
+	public async createIfAbsent(item: T): Promise<{ created: boolean; item: T }> {
+		if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
+			throw new Error('Item must have a non-empty string id to be created.');
+		}
+		const docRef = this.collection.doc(item.id);
+		try {
+			await docRef.create(item);
+			return { created: true, item };
+		} catch (error: unknown) {
+			const code = (error as { code?: number | string }).code;
+			if (code === 6 || code === 'already-exists' || code === 'ALREADY_EXISTS') {
+				const existing = await this.findById(item.id);
+				if (!existing) throw error;
+				return { created: false, item: existing };
+			}
+			throw error;
+		}
+	}
+
+	/**
 	 * Deletes a document from the collection by its ID.
 	 * @param id The ID of the document to delete.
 	 * @returns A promise that resolves to true if deletion was successful, false if not found.
@@ -255,5 +324,8 @@ export const chatsDB = new FirestoreCollection<Chat>(COLLECTIONS.CHATS);
 // messagesDB removed - messages are now stored in subcollections under chats
 export const contractsDB = new FirestoreCollection<Contract>(COLLECTIONS.CONTRACTS);
 export const quotesDB = new FirestoreCollection<Quote>(COLLECTIONS.QUOTES);
+export const agentApprovalsDB = new FirestoreCollection<AgentApprovalRecord>(
+	COLLECTIONS.AGENT_APPROVALS
+);
 
 console.log('[Firestore] Data handlers configured with lazy initialization.');

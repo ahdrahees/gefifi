@@ -117,11 +117,15 @@ async def auth_before_agent_callback(
     )  # Get the name of the agent whose model call is being intercepted
     logger.debug("auth_before_agent_callback: running for agent: %s", agent_name)
 
-    # The token should be passed from your app as state_delta in api call. If it is a development environment we will get token from environment variable
+    # The token is normally passed per turn as temp state so ADK keeps it in
+    # memory for this invocation only. The legacy persisted key is a read-only
+    # fallback for sessions created before this migration; new turns never
+    # write it.
     auth_token: str | None = (
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
-        else callback_context.state.get("auth_token")
+        else callback_context.state.get("temp:auth_token")
+        or callback_context.state.get("auth_token")
     )
 
     if not auth_token:
@@ -149,9 +153,10 @@ async def auth_before_agent_callback(
     # store auth_data in persistent state
     callback_context.state["auth_data"] = auth_data
 
-    # In development mode, we need to persist the auth token in the state
+    # In development mode the token comes from the environment, so put it in
+    # temp state for the tools. Temp state is discarded when the turn ends.
     if DEV_MODE and auth_token:
-        callback_context.state["auth_token"] = auth_token
+        callback_context.state["temp:auth_token"] = auth_token
 
     logger.info(
         "auth_before_agent_callback: User %s authenticated successfully", auth_data['user_id']
@@ -175,7 +180,8 @@ async def auth_before_model_callback(
     auth_token: str | None = (
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
-        else callback_context.state.get("auth_token")
+        else callback_context.state.get("temp:auth_token")
+        or callback_context.state.get("auth_token")
     )
 
     if not auth_token:
@@ -225,7 +231,8 @@ async def before_tool_callback(
     auth_token: str | None = (
         os.getenv("ADK_TEST_AUTH_TOKEN")
         if DEV_MODE
-        else tool_context.state.get("auth_token")
+        else tool_context.state.get("temp:auth_token")
+        or tool_context.state.get("auth_token")
     )
 
     logger.info(

@@ -11,7 +11,11 @@ vi.mock('$lib/api', () => ({
 		sendChatMessage: vi.fn(),
 		updateQuoteStatus: vi.fn(),
 		uploadFile: vi.fn(),
-		uploadEntityAttachments: vi.fn()
+		uploadEntityAttachments: vi.fn(),
+		getAgentApproval: vi.fn(),
+		claimAgentApproval: vi.fn(),
+		completeAgentApproval: vi.fn(),
+		releaseAgentApproval: vi.fn()
 	}
 }));
 
@@ -52,6 +56,10 @@ describe('AgentApprovalCard', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		window.localStorage.clear();
+		vi.mocked(apiClient.getAgentApproval).mockRejectedValue(new Error('not found'));
+		vi.mocked(apiClient.claimAgentApproval).mockResolvedValue({ status: 'claimed' });
+		vi.mocked(apiClient.completeAgentApproval).mockResolvedValue({ status: 'completed' });
+		vi.mocked(apiClient.releaseAgentApproval).mockResolvedValue({ released: true });
 		vi.mocked(apiClient.createWorkRequest).mockResolvedValue({
 			id: 'request-1',
 			status: 'open',
@@ -96,5 +104,21 @@ describe('AgentApprovalCard', () => {
 			expect(apiClient.updateQuoteStatus).toHaveBeenCalledWith('quote-1', 'accepted');
 			expect(screen.getByText('Quote accepted')).toBeTruthy();
 		});
+	});
+
+	it('shows a server-completed approval without running the action again', async () => {
+		vi.mocked(apiClient.getAgentApproval).mockResolvedValue({
+			status: 'completed',
+			href: '/my-requests/request-1',
+			label: 'Request created'
+		});
+
+		render(AgentApprovalCard, { approval, artifacts: {} });
+
+		await waitFor(() => {
+			expect(screen.getByText('Request created')).toBeTruthy();
+		});
+		expect(screen.queryByRole('button', { name: 'Create request' })).toBeNull();
+		expect(apiClient.createWorkRequest).not.toHaveBeenCalled();
 	});
 });

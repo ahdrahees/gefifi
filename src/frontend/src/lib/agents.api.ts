@@ -17,7 +17,8 @@ async function request<T>(
 	endpoint: string,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
 	body?: Record<string, any>,
-	requiresAuth: boolean = true
+	requiresAuth: boolean = true,
+	includeStateDeltaAuth: boolean = true
 ): Promise<T> {
 	const headers: HeadersInit = {};
 
@@ -39,12 +40,16 @@ async function request<T>(
 		// Set standard Authorization header
 		headers['Authorization'] = `Bearer ${token}`;
 
-		// For POST/PUT, we also include the token in state_delta as expected by the Agent API
-		if (method !== 'GET') {
+		// For POST/PUT, pass the token in ephemeral ADK state. The `temp:`
+		// prefix keeps it in memory for this turn but out of persisted session
+		// state and event history. Session-creation requests skip this: their
+		// body is the session state itself, so adding state_delta would persist
+		// the token under that key.
+		if (method !== 'GET' && includeStateDeltaAuth) {
 			body = {
 				...body,
 				state_delta: {
-					auth_token: token
+					'temp:auth_token': token
 				}
 			};
 		}
@@ -106,7 +111,7 @@ async function* streamRequest<T>(
 		if (!token) throw new ApiError('Authentication token is missing. Please log in.', 401);
 		headers['Authorization'] = `Bearer ${token}`;
 		if (method !== 'GET') {
-			body = { ...body, state_delta: { auth_token: token } };
+			body = { ...body, state_delta: { 'temp:auth_token': token } };
 		}
 	}
 
@@ -123,7 +128,7 @@ async function* streamRequest<T>(
 		try {
 			const errJson = await response.json();
 			message = errJson.message || message;
-		} catch (e) { }
+		} catch (e) {}
 		throw new ApiError(message, response.status);
 	}
 
@@ -177,7 +182,9 @@ const agentApiClient = {
 		return request<AgentSession>(
 			`/apps/${agentName}/users/${userId}/sessions/${sessionId}`,
 			'POST',
-			state
+			state,
+			true,
+			false
 		);
 	},
 	listSessions: (agentName: AgentName, userId: string): Promise<ListSessionsResponse> => {

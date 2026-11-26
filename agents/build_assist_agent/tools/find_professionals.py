@@ -79,7 +79,10 @@ async def find_experts(
     """
     # fix add authentication header
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {"Authorization": f"Bearer {token}"}
             response = await client.get(f"{API_BASE_URL}/api/users/experts", headers=headers)
@@ -214,7 +217,10 @@ async def find_suppliers(
     """
     # fix add authentication header
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             headers = {"Authorization": f"Bearer {token}"}
             response = await client.get(f"{API_BASE_URL}/api/users/suppliers", headers=headers)
@@ -346,7 +352,10 @@ async def find_a_user_by_id(user_id: str, tool_context: ToolContext) -> dict[str
             If 'status' is 'error', includes an 'error_message' key.
     """
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -464,7 +473,10 @@ async def find_users_by_ids(
             The 'failed_users' key is included if fetching details for any user fails, even if other users are retrieved successfully.
     """
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             tasks = [
@@ -557,7 +569,10 @@ async def invite_expert_to_expert_request(
             If 'status' is 'error', includes an 'error_message' key.
     """
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         if not invitation_message:
             return {
@@ -679,7 +694,10 @@ async def invite_supplier_to_material_request(
             If 'status' is 'error', includes an 'error_message' key.
     """
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
 
         if not invitation_message:
             return {
@@ -790,7 +808,10 @@ async def get_my_profile(tool_context: ToolContext) -> dict[str, Any]:
             If 'status' is 'error', includes an 'error_message' key.
     """
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         auth_data: AuthData = tool_context.state.get("auth_data")
         user_id = auth_data["user_id"]
 
@@ -844,7 +865,10 @@ async def update_my_profile(
     """
     logger.info("TOOL[update_my_profile]: updating user profile")
     try:
-        token: str = tool_context.state.get("auth_token")
+        token: str = (
+            tool_context.state.get("temp:auth_token")
+            or tool_context.state.get("auth_token")
+        )
         auth_data: AuthData = tool_context.state.get("auth_data", {})
 
         body = {}

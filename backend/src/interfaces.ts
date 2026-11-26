@@ -93,6 +93,7 @@ export interface WorkRequest extends Identifiable {
 	invitedExperts?: string[]; // Array of expert User IDs directly invited by customer
 	// invitedSuppliers?: string[]; // Array of supplier User IDs directly invited by customer
 	quotes?: string[]; // Array of quote IDs
+	approvalId?: string; // Agent approval card that created this request (idempotency)
 }
 
 /**
@@ -128,6 +129,7 @@ export interface MaterialRequest extends Identifiable {
 	interestedSuppliers?: string[]; // List of supplier User IDs who showed interest
 	invitedSuppliers?: string[]; // List of supplier User IDs directly invited by customer
 	quotes?: string[]; // Array of quote IDs
+	approvalId?: string; // Agent approval card that created this request (idempotency)
 }
 
 // --- Communication Types ---
@@ -265,6 +267,7 @@ export interface Contract extends Identifiable {
 		| 'terminated';
 	createdAt: string;
 	updatedAt: string;
+	approvalId?: string; // Agent approval card that created this contract (idempotency)
 }
 
 // --- Quote Management Types ---
@@ -313,4 +316,24 @@ export interface QuoteMessage extends Message {
 	quoteAmount?: number;
 	quoteValidity?: string;
 	quoteTitle?: string;
+}
+
+// --- Agent Approval Types ---
+
+/**
+ * Server-side record for a human approval card. The approval card lives in the
+ * agent event, but its confirmation state must be shared across browsers and
+ * devices and must be claimable by only one confirmation attempt at a time.
+ */
+export interface AgentApprovalRecord extends Identifiable {
+	userId: string; // Owner of the approval (from the authenticated request)
+	action: string; // Agent action name, e.g. work_request or chat_message
+	status: 'claimed' | 'completed';
+	claimToken: string; // Per-attempt token, prevents two devices confirming together
+	claimedAt: string;
+	completedAt: string;
+	href: string; // Where the completed card should link
+	label: string; // Completed button/label text
+	createdAt: string;
+	updatedAt: string;
 }

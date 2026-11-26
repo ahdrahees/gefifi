@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
+import { agentApprovalsDB } from '../data';
 import { WorkRequest } from '../interfaces';
 import { authenticateToken, AuthenticatedRequest, JwtPayload } from '../auth';
 import { sendSystemMessage } from './shared/system-messages';
@@ -11,7 +12,7 @@ const workRequestsDB = new FirestoreCollection<WorkRequest>('workRequests');
 const router = Router();
 
 // Helper function to auto-expire work requests whose deadlines have passed
-async function checkAndExpireWorkRequests(requests: WorkRequest[]): Promise<WorkRequest[]> {
+export async function checkAndExpireWorkRequests(requests: WorkRequest[]): Promise<WorkRequest[]> {
 	const now = new Date();
 	const activeStatuses = ['open', 'in_discussion', 'awaiting_quotes'];
 
@@ -116,10 +117,30 @@ router.post(
 				timeline,
 				materialsSuggested,
 				category,
-				expirationDate
+				expirationDate,
+				approvalId
 			} = req.body;
 			if (!title || !description || !location) {
 				return res.status(400).json({ message: 'Title, description, and location are required.' });
+			}
+
+			// Agent approval cards supply an idempotency key. A retry after a
+			// lost response must return the already-created request instead of
+			// creating a second one.
+			if (approvalId !== undefined) {
+				if (typeof approvalId !== 'string' || !approvalId) {
+					return res.status(400).json({ message: 'approvalId must be a non-empty string.' });
+				}
+				const approval = await agentApprovalsDB.findById(approvalId);
+				if (!approval || approval.userId !== user.id || approval.action !== 'work_request') {
+					return res.status(403).json({ message: 'Invalid approval reference.' });
+				}
+				const existing = (await workRequestsDB.getAll()).find(
+					(request) => request.approvalId === approvalId
+				);
+				if (existing) {
+					return res.status(200).json(existing);
+				}
 			}
 			if (
 				images &&
@@ -145,7 +166,7 @@ router.post(
 				}
 			}
 			const now = new Date().toISOString();
-			const workRequestId = crypto.randomUUID();
+			const workRequestId = approvalId || crypto.randomUUID();
 			const newWorkRequest: WorkRequest = {
 				id: workRequestId,
 				customerId: user.id,
@@ -166,8 +187,16 @@ router.post(
 			if (expirationDate) {
 				newWorkRequest.expirationDate = new Date(expirationDate).toISOString();
 			}
-			const createdWorkRequest = await workRequestsDB.create(newWorkRequest);
-			res.status(201).json(createdWorkRequest);
+			if (approvalId) {
+				newWorkRequest.approvalId = approvalId;
+			}
+			const result = approvalId
+				? await workRequestsDB.createIfAbsent(newWorkRequest)
+				: { created: true, item: await workRequestsDB.create(newWorkRequest) };
+			if (!result.created) {
+				return res.status(200).json(result.item);
+			}
+			res.status(201).json(result.item);
 		} catch (error: unknown) {
 			console.error('Error creating work request:', error);
 			const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AgentApproval, ArtifactPart } from '$lib/types/agent-api';
-	import apiClient from '$lib/api';
+	import apiClient, { ApiError } from '$lib/api';
 	import { onMount } from 'svelte';
 
 	interface Props {
@@ -15,28 +15,121 @@
 	let doneHref = $state('');
 	let doneLabel = $state('Done');
 	let error = $state('');
+	let claimToken = '';
 
 	const storageKey = () => `gefifi:approval:${approval.id}`;
+	const claimStorageKey = () => `gefifi:approval-claim:${approval.id}`;
 
-	onMount(() => {
-		const saved = window.localStorage.getItem(storageKey());
-		if (!saved) return;
+	function readStoredClaim(): string {
 		try {
-			const parsed = JSON.parse(saved) as { href?: string; label?: string };
-			doneHref = parsed.href ?? '';
-			doneLabel = parsed.label ?? 'Already confirmed';
-			done = true;
+			return window.localStorage.getItem(claimStorageKey()) ?? '';
 		} catch {
-			// Ignore a corrupt local marker; the user can confirm again.
+			return '';
+		}
+	}
+
+	function storeClaim(token: string) {
+		try {
+			window.localStorage.setItem(claimStorageKey(), token);
+		} catch {
+			// The claim is still valid for this tab; persistence is best-effort.
+		}
+	}
+
+	function clearStoredClaim() {
+		try {
+			window.localStorage.removeItem(claimStorageKey());
+		} catch {
+			// Ignore unavailable storage.
+		}
+	}
+
+	function readLocalMarker(): {
+		href?: string;
+		label?: string;
+		claimToken?: string;
+		pending?: boolean;
+	} | null {
+		try {
+			const saved = window.localStorage.getItem(storageKey());
+			if (!saved) return null;
+			return JSON.parse(saved) as {
+				href?: string;
+				label?: string;
+				claimToken?: string;
+				pending?: boolean;
+			};
+		} catch {
+			return null;
+		}
+	}
+
+	async function syncCompletion(token: string, href: string, label: string): Promise<boolean> {
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			try {
+				await apiClient.completeAgentApproval(approval.id, token, href, label);
+				return true;
+			} catch (cause) {
+				// A 4xx will not succeed on retry. Network errors and 5xx may.
+				if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) {
+					return false;
+				}
+				if (attempt === 2) return false;
+				await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+			}
+		}
+		return false;
+	}
+
+	onMount(async () => {
+		claimToken = readStoredClaim();
+		const saved = readLocalMarker();
+		if (saved) {
+			doneHref = saved.href ?? '';
+			doneLabel = saved.label ?? 'Already confirmed';
+			done = true;
+		}
+
+		// The server record is shared across browsers/devices. Read it first;
+		// a completed record wins over any stale local marker.
+		try {
+			const record = await apiClient.getAgentApproval(approval.id);
+			if (record.status === 'completed') {
+				markDone(record.href ?? '', record.label ?? 'Already confirmed', claimToken, false);
+				return;
+			}
+		} catch {
+			// 404 means this approval has not been confirmed yet.
+		}
+
+		// A previous attempt may have completed the action but failed to sync
+		// the completion. Retry with the same claim token; this never reruns
+		// the action.
+		if (saved?.pending) {
+			const token = saved.claimToken || claimToken;
+			if (token) {
+				const synced = await syncCompletion(token, saved.href ?? '', saved.label ?? 'Done');
+				if (synced) {
+					markDone(saved.href ?? '', saved.label ?? 'Done', token, false);
+				}
+			}
 		}
 	});
 
-	function markDone(href: string, label: string) {
+	function markDone(href: string, label: string, token = claimToken, pending = false) {
 		doneHref = href;
 		doneLabel = label;
 		done = true;
+		if (!pending) {
+			clearStoredClaim();
+		} else if (token) {
+			storeClaim(token);
+		}
 		try {
-			window.localStorage.setItem(storageKey(), JSON.stringify({ href, label }));
+			window.localStorage.setItem(
+				storageKey(),
+				JSON.stringify({ href, label, claimToken: token, pending })
+			);
 		} catch {
 			// Local storage can be unavailable; the server action already succeeded.
 		}
@@ -99,64 +192,128 @@
 	type MaterialRequestPayload = Parameters<typeof apiClient.createMaterialRequest>[0];
 	type ContractPayload = Parameters<typeof apiClient.createContract>[0];
 
+	async function runApprovalAction(): Promise<{ href: string; label: string }> {
+		const files = attachmentFiles();
+		const expectedAttachments = approval.attachments?.length ?? 0;
+		if (files.length < expectedAttachments) {
+			throw new Error(
+				'Some chat attachments are no longer available. Ask the agent to resend the draft.'
+			);
+		}
+
+		if (approval.action === 'work_request') {
+			const payload = {
+				...approval.payload,
+				approvalId: approval.id,
+				images: await uploadWorkImages(files)
+			} as unknown as WorkRequestPayload;
+			const created = await apiClient.createWorkRequest(payload);
+			return { href: `/my-requests/${created.id}`, label: 'Request created' };
+		}
+
+		if (approval.action === 'material_request') {
+			const payload = {
+				...approval.payload,
+				approvalId: approval.id
+			} as unknown as MaterialRequestPayload;
+			const created = await apiClient.createMaterialRequest(payload);
+			if (files.length > 0) {
+				try {
+					const form = new FormData();
+					files.forEach((file) => form.append('files', file));
+					await apiClient.uploadEntityAttachments('material-requests', created.id, form);
+				} catch {
+					error = 'Request created, but attachments failed. Open it to retry.';
+				}
+			}
+			return { href: `/material-requests/${created.id}`, label: 'Request created' };
+		}
+
+		if (approval.action === 'contract') {
+			const payload = {
+				...approval.payload,
+				approvalId: approval.id
+			} as unknown as ContractPayload;
+			const created = await apiClient.createContract(payload);
+			return { href: `/contracts/${created.id}`, label: 'Contract drafted' };
+		}
+
+		if (approval.action === 'quote_accept') {
+			const quoteId = String(approval.payload.quoteId ?? '');
+			await apiClient.updateQuoteStatus(quoteId, 'accepted');
+			const requestId = String(approval.payload.requestId ?? '');
+			const requestType = String(approval.payload.requestType ?? '');
+			if (requestId && requestType === 'material') {
+				return { href: `/material-requests/${requestId}`, label: 'Quote accepted' };
+			}
+			if (requestId) {
+				return { href: `/my-requests/${requestId}`, label: 'Quote accepted' };
+			}
+			return { href: '', label: 'Quote accepted' };
+		}
+
+		const chatId = String(approval.payload.chat_id ?? '');
+		await apiClient.sendChatMessage(chatId, {
+			content: String(approval.payload.content ?? ''),
+			// The chat route uses messageId as the document ID, so a retry
+			// overwrites the same message instead of posting a duplicate.
+			messageId: approval.id
+		});
+		return { href: `/chat/${chatId}`, label: 'Message sent' };
+	}
+
 	async function confirm() {
 		submitting = true;
 		error = '';
-		try {
-			const files = attachmentFiles();
-			const expectedAttachments = approval.attachments?.length ?? 0;
-			if (files.length < expectedAttachments) {
-				throw new Error(
-					'Some chat attachments are no longer available. Ask the agent to resend the draft.'
-				);
-			}
+		if (!claimToken) {
+			claimToken = crypto.randomUUID();
+		}
+		let claimed = false;
 
-			if (approval.action === 'work_request') {
-				const payload = {
-					...approval.payload,
-					images: await uploadWorkImages(files)
-				} as unknown as WorkRequestPayload;
-				const created = await apiClient.createWorkRequest(payload);
-				markDone(`/my-requests/${created.id}`, 'Request created');
-			} else if (approval.action === 'material_request') {
-				const payload = { ...approval.payload } as unknown as MaterialRequestPayload;
-				const created = await apiClient.createMaterialRequest(payload);
-				markDone(`/material-requests/${created.id}`, 'Request created');
-				if (files.length > 0) {
-					try {
-						const form = new FormData();
-						files.forEach((file) => form.append('files', file));
-						await apiClient.uploadEntityAttachments('material-requests', created.id, form);
-					} catch {
-						error = 'Request created, but attachments failed. Open it to retry.';
-					}
-				}
-			} else if (approval.action === 'contract') {
-				const payload = { ...approval.payload } as unknown as ContractPayload;
-				const created = await apiClient.createContract(payload);
-				markDone(`/contracts/${created.id}`, 'Contract drafted');
-			} else if (approval.action === 'quote_accept') {
-				const quoteId = String(approval.payload.quoteId ?? '');
-				await apiClient.updateQuoteStatus(quoteId, 'accepted');
-				const requestId = String(approval.payload.requestId ?? '');
-				const requestType = String(approval.payload.requestType ?? '');
-				if (requestId && requestType === 'material') {
-					markDone(`/material-requests/${requestId}`, 'Quote accepted');
-				} else if (requestId) {
-					markDone(`/my-requests/${requestId}`, 'Quote accepted');
-				} else {
-					markDone('', 'Quote accepted');
-				}
-			} else {
-				const chatId = String(approval.payload.chat_id ?? '');
-				await apiClient.sendChatMessage(chatId, {
-					content: String(approval.payload.content ?? '')
-				});
-				markDone(`/chat/${chatId}`, 'Message sent');
+		try {
+			// The backend record is the source of truth. Only one browser or
+			// device can claim the card, and a completed record is returned to
+			// every later opener instead of running the action again.
+			const claim = await apiClient.claimAgentApproval(
+				approval.id,
+				claimToken,
+				approval.action
+			);
+			if (claim.status === 'completed') {
+				markDone(claim.href ?? '', claim.label ?? 'Already confirmed', claimToken, false);
+				return;
 			}
-			done = true;
+			claimed = true;
+			storeClaim(claimToken);
+
+			const result = await runApprovalAction();
+			const synced = await syncCompletion(claimToken, result.href, result.label);
+			markDone(result.href, result.label, claimToken, !synced);
+			if (!synced) {
+				error =
+					'The action completed, but its shared status could not be saved. Reload this card before retrying anywhere else.';
+			}
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Could not complete this action.';
+			// A 4xx is a definitive rejection (nothing was created), so the
+			// claim can be released for a clean retry. Network errors, 5xx and
+			// timeouts may have committed; keep the claim so the idempotency
+			// key can resolve the retry instead of creating a duplicate.
+			const mayHaveCommitted =
+				cause instanceof ApiError
+					? cause.status >= 500
+					: cause instanceof TypeError;
+			if (claimed && !mayHaveCommitted) {
+				try {
+					await apiClient.releaseAgentApproval(approval.id, claimToken);
+					clearStoredClaim();
+				} catch {
+					// A stale claim expires after two minutes.
+				}
+			}
+			const message = cause instanceof Error ? cause.message : 'Could not complete this action.';
+			error = mayHaveCommitted
+				? `${message} The action may still have completed; reload this card before retrying.`
+				: message;
 		} finally {
 			submitting = false;
 		}

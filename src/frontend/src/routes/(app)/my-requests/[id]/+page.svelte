@@ -48,19 +48,9 @@
 		errorMessage = '';
 
 		try {
-			// Try to fetch as work request first
-			try {
-				const workRequest = (await apiClient.getWorkRequestById(requestId)) as WorkRequest;
-				request = workRequest;
-				requestType = 'work';
-			} catch {
-				// If work request fails, try material request
-				const materialRequest = (await apiClient.getMaterialRequestById(
-					requestId
-				)) as MaterialRequest;
-				request = materialRequest;
-				requestType = 'material';
-			}
+			const resolved = await apiClient.getRequestById(requestId);
+			request = resolved.request as WorkRequest | MaterialRequest;
+			requestType = resolved.type;
 
 			if (request) {
 				// Fetch additional data
