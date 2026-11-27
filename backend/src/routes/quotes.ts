@@ -135,7 +135,10 @@ router.post(
 			// Get request details
 			const { request } = await validateRequestAccess(requestId, requestType, userId, userType);
 
-			const parsedValidityDays = validityDays ? parseInt(String(validityDays), 10) : 30;
+			const parsedValidityDays =
+				validityDays === undefined || validityDays === null || validityDays === ''
+					? 30
+					: parseInt(String(validityDays), 10);
 			if (!Number.isFinite(parsedValidityDays) || parsedValidityDays < 1) {
 				return res.status(400).json({ message: 'validityDays must be a positive number.' });
 			}
