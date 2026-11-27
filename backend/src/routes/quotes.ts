@@ -135,9 +135,22 @@ router.post(
 			// Get request details
 			const { request } = await validateRequestAccess(requestId, requestType, userId, userType);
 
+			const parsedValidityDays =
+				validityDays === undefined || validityDays === null || validityDays === ''
+					? 30
+					: parseInt(String(validityDays), 10);
+			if (!Number.isFinite(parsedValidityDays) || parsedValidityDays < 1) {
+				return res.status(400).json({ message: 'validityDays must be a positive number.' });
+			}
+			const parsedAmount =
+				amount !== undefined && amount !== null && amount !== '' ? Number(amount) : undefined;
+			if (parsedAmount !== undefined && (!Number.isFinite(parsedAmount) || parsedAmount < 0)) {
+				return res.status(400).json({ message: 'amount must be a non-negative number.' });
+			}
+
 			// Calculate validity date
 			const validityDate = new Date();
-			validityDate.setDate(validityDate.getDate() + parseInt(validityDays));
+			validityDate.setDate(validityDate.getDate() + parsedValidityDays);
 
 			// Process uploaded files
 			const files = [];
@@ -163,17 +176,20 @@ router.post(
 				customerId: request.customerId,
 				status: 'submitted',
 				title: title.trim(),
-				description: description?.trim(),
-				amount: amount ? parseFloat(amount) : undefined,
 				currency,
-				validityDays: parseInt(validityDays),
+				validityDays: parsedValidityDays,
 				validityDate: validityDate.toISOString(),
-				additionalTerms: additionalTerms?.trim(),
 				files,
 				submittedAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 				version: 1
 			};
+
+			const trimmedDescription = typeof description === 'string' ? description.trim() : '';
+			if (trimmedDescription) quote.description = trimmedDescription;
+			if (parsedAmount !== undefined) quote.amount = parsedAmount;
+			const trimmedTerms = typeof additionalTerms === 'string' ? additionalTerms.trim() : '';
+			if (trimmedTerms) quote.additionalTerms = trimmedTerms;
 
 			// Save quote to database
 			await quotesDB.create(quote);
@@ -814,12 +830,9 @@ router.post(
 				customerId: request.customerId,
 				status: 'submitted',
 				title: title.trim(),
-				description: description?.trim(),
-				amount: amount ? parseFloat(amount) : undefined,
 				currency,
 				validityDays: parseInt(validityDays),
 				validityDate: validityDate.toISOString(),
-				additionalTerms: additionalTerms?.trim(),
 				files,
 				submittedAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
@@ -827,6 +840,13 @@ router.post(
 				chatId,
 				messageId: uuidv4() // Will be set when message is created
 			};
+			const trimmedDescription = typeof description === 'string' ? description.trim() : '';
+			if (trimmedDescription) quote.description = trimmedDescription;
+			const parsedAmount =
+				amount !== undefined && amount !== null && amount !== '' ? Number(amount) : undefined;
+			if (parsedAmount !== undefined) quote.amount = parsedAmount;
+			const trimmedTerms = typeof additionalTerms === 'string' ? additionalTerms.trim() : '';
+			if (trimmedTerms) quote.additionalTerms = trimmedTerms;
 
 			// Save quote to database
 			await quotesDB.create(quote);
