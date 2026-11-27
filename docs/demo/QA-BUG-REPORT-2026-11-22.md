@@ -72,7 +72,7 @@ reproducible).
 | 3   | ✅     | FAB and send/voice bounds no longer overlap on desktop or mobile; click no longer blocked.                                                                                                                                                     |
 | 4   | ✅     | Request → Chat now opens the invitation/request conversation, not the older conversation with the same person. Chat selection prefers `workRequestId`/`materialRequestId`.                                                                     |
 | 5   | ✅     | PDF attachment renders inside the viewer; no CORS error. Viewer now embeds the storage URL directly instead of fetching a blob.                                                                                                                |
-| 6   | ⛔     | Blocked on bucket IAM. The app still stores and renders public GCS URLs, so removing public access without a signed-URL layer would break attachments. Exact owner steps are in **Making attachments private (#6)** below. |
+| 6   | ✅     | Verified 27 Nov: public bucket bindings removed, direct object URL returns 403, and signed URLs load chat images/PDFs, material-request attachments, root work-request images, and GCS avatars. |
 | 7   | ✅     | Help loads without errors; search does not loop; console stayed at normal log counts. Firestore analytics write removed. WhatsApp placeholder replaced with email support.                                                                     |
 | 8   | ✅     | Verified against deployed API: a contract POST with `total=1000`, `advance=5000` and completion before start returned `400 “Advance amount cannot be greater than the total amount.”` Unit tests and UI validation also pass. |
 | 9   | ✅     | Verified end-to-end on 26 Nov with a disposable material request: customer signed → `awaiting_signatures`, request stayed `open`; supplier signed → `signed`, both signature flags true, request `contracted`. Contract UI shows SIGNED with both signatures. |
@@ -118,9 +118,10 @@ npm run build          # production build completed
 Post-merge production checks: Google sign-in, profile GET/clear, contract-term API validation, Expert
 contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard counts, live agent
 replies, supplier agent entry points, the union request endpoint, Find Professionals interactions,
-temp-token sessions, approval completion/idempotency, and full two-party contract signing were
-re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for
-profile clearing; `8bc129c` for agent entry points; `bd739b6` for the remaining QA items).
+temp-token sessions, approval completion/idempotency, full two-party contract signing, and private
+attachment delivery were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups
+`c7c8b12`, `f470b49` for profile clearing; `8bc129c` for agent entry points; `bd739b6` for the
+remaining QA items; `07f3dd4`/`d9726ec` for signed attachments).
 
 ---
 
@@ -720,21 +721,21 @@ customer-only feature.
 - Supplier/expert Agent entry points: supplier verified live (nav link, home toggle, embedded turn, and
   FAB). Expert uses the same role-agnostic UI path and `expert_agent`, but was not live-tested because
   no expert login was available.
-- Private attachment delivery (#6): the bucket is still publicly readable and the app still uses raw
-  public URLs. Owner steps are below.
 
 ---
 
-## Making attachments private (#6)
+## Making attachments private (#6) — completed 27 Nov
+
+Completed: the public `allUsers` binding was removed and a direct object URL now returns 403. The app
+uses the signed-URL layer merged in PRs #61/#62 and all sampled attachment surfaces load successfully.
 
 The bucket is `gs://geffi-demo-app-uploads` in project `gefifi-demo-app` (project number
 `591968131600`). The Cloud Run backend runs as
 `591968131600-compute@developer.gserviceaccount.com` (see `cloudbuild.yaml`).
 
-Do these in order. Step 1 is safe now. Step 3 removes public access and will break any attachment URL
-the app still loads directly, so do it only after the signed-URL app layer ships.
+The steps below were completed on 27 Nov and remain as a recovery reference. Do not re-add public bindings.
 
-### 1. Grant the backend read + signing permissions (safe now)
+### 1. Grant the backend read + signing permissions (completed)
 
 Console:
 
@@ -760,13 +761,13 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role=roles/iam.serviceAccountTokenCreator
 ```
 
-### 2. Ship the app-side signed-URL layer (follow-up)
+### 2. Ship the app-side signed-URL layer (completed in PRs #61/#62)
 
 The backend needs an authenticated endpoint that checks access to the chat/request/contract and
 returns a short-lived signed URL for the object. The attachment components then resolve through it.
-This is not implemented yet; do not remove public access before it is deployed.
+This is implemented and deployed; the app resolves storage URLs through it.
 
-### 3. Remove public access (after step 2)
+### 3. Remove public access (completed 27 Nov)
 
 Inspect the current bindings:
 
@@ -787,7 +788,7 @@ gcloud storage buckets remove-iam-policy-binding gs://geffi-demo-app-uploads \
 
 Console: **Permissions** → delete the `allUsers` and `allAuthenticatedUsers` rows.
 
-### 4. Verify
+### 4. Verify (completed)
 
 ```sh
 curl -i https://storage.googleapis.com/geffi-demo-app-uploads/<known-object>
