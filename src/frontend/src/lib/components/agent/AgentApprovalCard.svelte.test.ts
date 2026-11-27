@@ -52,6 +52,31 @@ const quoteApproval = {
 	payload_hash: 'def456'
 };
 
+const materialApproval = {
+	id: 'approval-material',
+	action: 'material_request' as const,
+	title: 'Create material request',
+	summary: ['Cement', 'HSR Layout', '1 item(s)', '1 attachment(s)'],
+	payload: {
+		title: 'Cement',
+		description: '5 bags of cement',
+		deliveryLocation: 'HSR Layout',
+		items: [{ itemName: 'Cement', quantity: '5 bags' }]
+	},
+	attachments: ['image.png'],
+	payload_hash: 'ghi789'
+};
+
+const artifacts = {
+	'actual-photo.png': {
+		inlineData: {
+			displayName: 'actual-photo.png',
+			mimeType: 'image/png',
+			data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zq9sAAAAASUVORK5CYII='
+		}
+	}
+};
+
 describe('AgentApprovalCard', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -120,5 +145,31 @@ describe('AgentApprovalCard', () => {
 		});
 		expect(screen.queryByRole('button', { name: 'Create request' })).toBeNull();
 		expect(apiClient.createWorkRequest).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the uploaded artifact when the agent guessed the filename', async () => {
+		vi.mocked(apiClient.createMaterialRequest).mockResolvedValue({
+			id: 'request-1',
+			status: 'open',
+			createdAt: '2026-11-27T00:00:00.000Z'
+		});
+		vi.mocked(apiClient.uploadEntityAttachments).mockResolvedValue({
+			message: 'Uploaded',
+			attachments: [],
+			totalAttachments: 1
+		});
+
+		render(AgentApprovalCard, { approval: materialApproval, artifacts });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Create request' }));
+
+		await waitFor(() => {
+			expect(apiClient.createMaterialRequest).toHaveBeenCalled();
+			expect(apiClient.uploadEntityAttachments).toHaveBeenCalledWith(
+				'material-requests',
+				'request-1',
+				expect.any(FormData)
+			);
+		});
 	});
 });

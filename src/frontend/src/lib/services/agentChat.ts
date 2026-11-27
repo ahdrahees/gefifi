@@ -37,6 +37,7 @@ export async function newChat(userId: string, message: string, files: File[]) {
 	sessionEventsState[newSessionId] = [];
 
 	// Navigate to new chat page first, then send message
+	// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session route
 	await goto(`/agent/${newSessionId}`);
 
 	// Delegate message sending to sendChat
@@ -52,7 +53,10 @@ export async function sendChat(sessionId: string, userId: string, message: strin
 
 	if (files.length === 1) {
 		const part = await fileToInlineData(files[0]);
-		partsInput.push(part);
+		// Give the agent the exact filename in the message text. The artifact
+		// list can be empty in the session, and a guessed name (image.png /
+		// unknown) breaks approval-card attachment uploads.
+		partsInput.push(part, { text: `[Uploaded Artifact: "${part.inlineData.displayName}"]` });
 
 		// for UI state update
 		partsUI.push({ text: `[Uploaded Artifact: "${part.inlineData.displayName}"]` });
@@ -62,7 +66,10 @@ export async function sendChat(sessionId: string, userId: string, message: strin
 	} else if (files.length > 1) {
 		// Convert multiple files to inline data
 		const fileParts = await Promise.all(files.map(fileToInlineData));
-		partsInput.push(...fileParts);
+		const artifactLabels = fileParts.map((part) => ({
+			text: `[Uploaded Artifact: "${part.inlineData.displayName}"]`
+		}));
+		partsInput.push(...fileParts, ...artifactLabels);
 
 		// for UI state update
 		partsUI.push(

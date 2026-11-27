@@ -40,8 +40,10 @@ APPROVAL_INSTRUCTION = (
     "— the card shows the current status.' Do not say the action is "
     "pending, not submitted, or ask the user to press Confirm in prose; the "
     "card owns that state. A chat message is a draft until the human sends it. "
-    "Never say a request, quote, contract, or message was created, accepted, or "
-    "sent unless the tool returned status='success'."
+    "When the user message contains [Uploaded Artifact: \"filename\"], use that "
+    "exact filename in attachment fields; never guess names like image.png or "
+    "unknown. Never say a request, quote, contract, or message was created, "
+    "accepted, or sent unless the tool returned status='success'."
 )
 
 

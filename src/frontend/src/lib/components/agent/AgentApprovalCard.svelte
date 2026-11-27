@@ -172,9 +172,26 @@
 	}
 
 	function attachmentFiles(): File[] {
-		return (approval.attachments ?? [])
-			.map((name) => artifactToFile(name))
-			.filter((file): file is File => file !== null);
+		const requested = approval.attachments ?? [];
+		const available = Object.keys(artifacts);
+		const used: string[] = [];
+		const files: File[] = [];
+
+		for (const name of requested) {
+			// The agent may guess a filename (image.png / unknown) because the
+			// session artifact list can be empty. Fall back to the uploaded
+			// artifacts in order before giving up.
+			const actual = artifacts[name]
+				? name
+				: available.find((candidate) => !used.includes(candidate));
+			if (!actual) continue;
+			const file = artifactToFile(actual);
+			if (!file) continue;
+			used.push(actual);
+			files.push(file);
+		}
+
+		return files;
 	}
 
 	async function uploadWorkImages(files: File[]): Promise<string[]> {
