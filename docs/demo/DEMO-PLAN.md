@@ -1,6 +1,7 @@
 # Gefifi V2 Demo — Contractor MVP (Track 1, active)
 
 > **Active track.** 8–12 weeks, demo to 3 construction contractors. Build on V2, no rewrite, no new stack.
+> **Runbook:** [DEMO-SCRIPT.md](DEMO-SCRIPT.md) — 12-minute flow, roles, contractor slots, accepted risks, reset.
 > V3 rewrite is parked: `../plan/made-by-opencode/OPERATING-PLAN.md`. Do not load V3 docs for demo work.
 
 ## 1. Goal
@@ -76,7 +77,7 @@ Manual demo check:
 
 ### Quote acceptance verification
 
-**Prerequisite:** one open request with two formal quote records from two expert accounts. Production currently has no formal quote documents, so use staging/emulator or a dedicated test expert.
+**Prerequisite:** one open request with two formal quote records. Verified 27 Nov on production with a disposable material request and two quotes from the same supplier.
 
 1. Ask the agent to compare the quotes.
 2. Verify the card shows quote title, provider, and amount.
@@ -84,7 +85,7 @@ Manual demo check:
 4. Verify one quote is accepted, the others are rejected, and the request is contracted.
 5. Do not claim atomicity: the V2 route performs these updates sequentially.
 
-**Known bug found in production (2026-11-22):** accepting one quote rejected only quotes from *other* suppliers. A second quote from the same supplier stayed `submitted`. The route now rejects every other quote for the same request and request type (`backend/src/routes/quotes.ts`). Re-test after deploy.
+**Known bug found in production (2026-11-22):** accepting one quote rejected only quotes from *other* suppliers. A second quote from the same supplier stayed `submitted`. The route now rejects every other quote for the same request and request type (`backend/src/routes/quotes.ts`). Fixed and verified 27 Nov: the second same-supplier quote became `rejected`.
 
 Implementation map:
 

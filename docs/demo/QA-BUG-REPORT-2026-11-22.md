@@ -820,3 +820,17 @@ curl -i https://storage.googleapis.com/geffi-demo-app-uploads/<known-object>
 
 Then open a chat attachment, a quote PDF, and a contract attachment in the app. If signing fails with
 “Cannot sign data without client_email”, the Token Creator grant in step 1 is missing.
+
+---
+
+## Same-supplier quote rejection — verified 27 Nov
+
+The acceptance route previously skipped quotes from the same supplier. After the fix in
+`backend/src/routes/quotes.ts`, a disposable material request with two quotes from the **same supplier**
+was accepted through the production API:
+
+- ₹4,500 quote → `accepted`
+- ₹4,800 quote → `rejected`
+- material request → `contracted`
+
+The test request was cancelled and both quotes were removed after verification.
