@@ -834,3 +834,23 @@ was accepted through the production API:
 - material request → `contracted`
 
 The test request was cancelled and both quotes were removed after verification.
+
+---
+
+## Photo upload through approval card — found 27 Nov
+
+Uploading one photo in the agent chat produced an approval card with
+`attachments: ["image.png"]`, but the session artifact key was
+`gefifi-photo-test.png`. Confirming failed with “Some chat attachments are no longer
+available.” The agent had guessed the filename because the uploaded filename was only in the UI
+message, not in the message sent to ADK.
+
+Fix (awaiting deploy verification):
+
+- the frontend now sends `[Uploaded Artifact: "<filename>"]` in the agent message text;
+- the agent instruction says to use that exact filename, never guess `image.png`/`unknown`;
+- the approval card falls back to the uploaded session artifacts when a guessed name does not match.
+
+Code: `src/frontend/src/lib/services/agentChat.ts`,
+`src/frontend/src/lib/components/agent/AgentApprovalCard.svelte`,
+`agents/build_assist_agent/approval.py`.
