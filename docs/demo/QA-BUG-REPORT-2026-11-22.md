@@ -57,6 +57,7 @@
 | 36  | **P3**   | Navigation       | Home dashboard/Agent toggle label is ambiguous when Agent view is active                       |
 | 37  | **P1**   | Agent            | Approval cards can be confirmed again on another browser/device and create duplicates          |
 | 38  | **P1**   | Agent/Roles      | Supplier and expert accounts have no Agent link or floating button, so their dedicated agents are undiscoverable |
+| 39  | **P1**   | Quotes           | Quote submission returns 500 when the optional additional-terms field is omitted                |
 
 ## Fix status — branch `fix/demo-ui-bugs-2026-11-23`
 
@@ -105,6 +106,7 @@ reproducible).
 | 36  | ✅     | Both “AI Agent” and “Dashboard” labels are visible; active state uses styling instead of hiding the label.                                                                                                                                     |
 | 37  | ✅     | Added server-side approval records with atomic claim/complete/release, approval-ID idempotency for created records, and completion retry recovery. Verified production: card completed once, local marker removed, a fresh load showed Completed from the server, and a repeated create returned the same request ID with HTTP 200. |
 | 38  | ✅     | Fixed and verified on production as supplier (ARK Flooring): sidebar shows **Agent**, home shows the **AI Agent / Dashboard** toggle with the embedded panel, the FAB opens on `/my-requests`, and an embedded turn used the supplier-only **Browsing material requests** tool. Welcome copy is now role-specific. Experts share the same role-agnostic render path and `expert_agent`; no expert login was available for a live turn. |
+| 39  | ✅     | Found during quote-acceptance testing. The quote object included undefined optional fields, which Firestore rejects. The backend now validates amount/validityDays and omits absent description/amount/additionalTerms; the revision route uses the same handling. Verified production: a quote without additional terms returns 201; `validityDays=0` returns 400. |
 
 Verification commands run on this branch:
 
@@ -118,7 +120,8 @@ npm run build          # production build completed
 Post-merge production checks: Google sign-in, profile GET/clear, contract-term API validation, Expert
 contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard counts, live agent
 replies, supplier agent entry points, the union request endpoint, Find Professionals interactions,
-temp-token sessions, approval completion/idempotency, full two-party contract signing, and private
+temp-token sessions, approval completion/idempotency, full two-party contract signing, quote
+acceptance (accepted one, rejected the other, request contracted), optional quote fields, and private
 attachment delivery were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups
 `c7c8b12`, `f470b49` for profile clearing; `8bc129c` for agent entry points; `bd739b6` for the
 remaining QA items; `07f3dd4`/`d9726ec` for signed attachments).
@@ -689,6 +692,25 @@ customer-only feature.
 
 ---
 
+### 39. Quote submission 500 when optional fields are omitted
+
+**Role:** supplier/expert
+
+**Repro:** Submit a quote and leave **Additional Terms** empty (or call the API without the field).
+
+**Actual:** HTTP 500 `Failed to submit quote`. The quote object included
+`additionalTerms: undefined`, which Firestore rejects.
+
+**Expected:** the quote is created with only the supplied fields.
+
+**Fix:** PR #64. `amount` and `validityDays` are validated, and `description`, `amount`, and
+`additionalTerms` are added only when present. The revision route uses the same handling.
+
+**Verified 27 Nov:** a quote submitted without `additionalTerms` returned 201; `validityDays=0`
+returned 400.
+
+---
+
 ## Test data created / artefacts to clean up
 
 - Created and then **cancelled** two QA work requests and one QA material request (titles contain
@@ -705,12 +727,13 @@ customer-only feature.
 - Created one **QA Signing Test - ignore** material request (`6351994e-e90d-424c-942f-d1edc2689bed`)
   and material contract (`8494d882-c701-4216-af49-3b4eff62246d`) for #9. The contract is **signed** by
   both parties and the request is **contracted**; there is no delete action for contracts.
-- No quote was accepted. One QA contract was signed for verification.
+- Quote acceptance verified on **QA Quote Acceptance Test - ignore** (`0dc6dd06-e0ab-4a69-8ef8-7a225f10900f`): one quote accepted, the other rejected, request contracted.
+- Optional-field quote verified on **QA Quote Optional Fields - ignore** (`2903dac7-7a08-48b8-a453-e02e1a7517c3`), then the request was cancelled.
+- Validity validation verified on **QA Quote Validation - ignore** (`cc0bf564-1356-4e5c-a3d9-ab71c850e0c8`): `validityDays=0` returned 400, then the request was cancelled.
+- One QA contract was signed for verification.
 
 ## Areas not verified
 
-- Quote acceptance end-to-end (the documented “accept one quote, reject the rest” flow) was not
-  executed because it moves beyond draft.
 - Contract revision completion and signed-contract PDF behavior (signing itself is verified above).
 - Some legacy voice messages return a `MediaError` on play; the reactive loop is fixed, but the audio
   file/data issue was not investigated.
