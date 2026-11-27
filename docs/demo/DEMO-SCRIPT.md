@@ -89,6 +89,7 @@ Do not reuse a contracted request. Do not edit Firestore by hand.
 - [ ] 3 contractor slots filled.
 - [ ] 3 project descriptions + photos.
 - [ ] 3 dry runs completed (one per contractor).
+- [x] Functional dry run with test data completed 27 Nov: request → two quotes → accept → contracted → cleanup.
 - [ ] Customer and supplier profiles logged in.
 - [ ] Agent reply latency acceptable on the demo network.
 - [ ] Fallback quotes prepared (if supplier flow is slow).
