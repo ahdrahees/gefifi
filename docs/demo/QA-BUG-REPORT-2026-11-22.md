@@ -114,7 +114,7 @@ reproducible).
 | 40  | ✅     | Fixed in PR #71. Contract creation now allows `contracted` requests when no active contract exists; the existing active-contract check still returns 409 for duplicates. Verified on production: accepted an expert quote → request contracted → created an Expert Contract (201, draft). |
 | 41  | ✅     | Fixed in PR #72. Work requests had no duplicate-interest check and neither type checked request status. Verified production: duplicate expert interest → 409; interest on a cancelled work request → 400. |
 | 42  | 🟡     | Fixed in PR #73: quote acceptance returns 400 when an active contract exists for a different provider. The guard is code-reviewed but not live-tested because only one provider login was available. |
-| 43  | 🟠     | Open UX gap. The backend now rejects a non-accepted provider with 403, but the request detail still renders a Contract link for every interested/invited provider on a contracted request. Needs quote-aware rendering. |
+| 43  | ✅     | Fixed in PR #75. The request detail loads the accepted quote provider and only renders the Contract action for that provider when a quote has been accepted; if no quote is accepted, eligible providers still see it. Verified the accepted provider (Ganesh) still gets the link on the contracted expert request; no second provider login was available to observe the hidden case. |
 
 Verification commands run on this branch:
 
