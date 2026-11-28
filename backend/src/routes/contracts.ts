@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { FirestoreCollection } from '../data';
-import { agentApprovalsDB } from '../data';
+import { agentApprovalsDB, quotesDB } from '../data';
 import {
 	Contract,
 	ContractComment,
@@ -309,6 +309,24 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 			return res.status(403).json({
 				message: `The ${provider.userType} must be either interested in or invited to this ${requestType} request to create a contract.`
 			});
+		}
+
+		// If a quote was accepted, the request is contracted for that provider.
+		// A rejected/interested provider must not be able to draft a competing
+		// contract and block the accepted provider.
+		if (requestData.status === 'contracted') {
+			const acceptedQuote = (await quotesDB.getAll()).find(
+				(quote) =>
+					quote.requestId === requestId &&
+					quote.requestType === requestType &&
+					quote.status === 'accepted'
+			);
+			if (acceptedQuote && acceptedQuote.expertSupplierId !== expertSupplierId) {
+				return res.status(403).json({
+					message:
+						'This request was contracted with a different provider. The accepted quote provider must create the contract.'
+				});
+			}
 		}
 
 		// Authorization check - contract creator must be either customer or the eligible provider
