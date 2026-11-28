@@ -131,8 +131,8 @@ replies, supplier agent entry points, the union request endpoint, Find Professio
 temp-token sessions, approval completion/idempotency, full two-party contract signing, quote
 acceptance (accepted one, rejected the other, request contracted), optional quote fields, private
 attachment delivery, contract print/Save PDF, logout/fresh Google re-login, the native-audio fallback,
-the live expert agent, and the customer↔expert request/interest/quote/contract flow were re-tested on
-`https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for profile
+the live expert agent, the customer↔expert request/interest/quote/contract flow, and the contract
+revision request/edit were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for profile
 clearing; `8bc129c` for agent entry points; `bd739b6` for the
 remaining QA items; `07f3dd4`/`d9726ec` for signed attachments; `44ac755`/`0d33262` for voice
 messages; `a911149` for contract print/Save PDF).
@@ -785,11 +785,12 @@ The link should be hidden or explained for non-accepted providers.
 - Validity validation verified on **QA Quote Validation - ignore** (`cc0bf564-1356-4e5c-a3d9-ab71c850e0c8`): `validityDays=0` returned 400, then the request was cancelled.
 - Customer↔expert flow verified on **QA Customer Expert Flow - ignore** (`f61c74b0-2dc9-4d97-9ce2-e922ae76008f`): expert quote `bf4a6836-7aef-4be6-be02-7c4dabc16077` accepted, request contracted, draft Expert Contract `f4231e96-8e38-42e8-a201-021d69d49f70` created. The contract remains draft.
 - The duplicate-interest test posted two identical interest messages to chat `0c7c1d43-aebe-40b1-b7e2-bdc422e2aa87`; they remain as test artefacts.
+- Contract `f4231e96-8e38-42e8-a201-021d69d49f70` was revised by the expert and edited by the customer (revision_requested → draft, total ₹4,600, warranty 1 year); no signature was added.
 - One QA contract was signed for verification.
 
 ## Areas not verified
 
-- Contract revision completion (signing, print/Save PDF, and signature display are verified).
+- Contract revision re-signing: revision request and contract edit are verified on the expert contract; re-signing after revision was not executed to avoid another signed contract.
 - Expert contract signing was not separately executed; the signature endpoint is shared and was verified with the supplier. The expert contract remains draft.
 - Payment/escrow (not present in the demo scope).
 - Firestore security-rule enforcement under a hostile client; testing used the UI only.
