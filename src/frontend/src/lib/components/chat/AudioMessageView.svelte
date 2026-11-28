@@ -16,31 +16,95 @@
 	let waveformEl: HTMLElement | undefined = $state();
 	let waveSurfer: WaveSurfer | null = null;
 	let isPlaying = $state(false);
-	let isLoading = $state(true);
+	let isLoading = $state(false);
 	let errorMessage = $state('');
 	let currentTime = $state('0:00');
 	let totalDuration = $state('0:00');
+	let needsTap = $state(false);
+	let autoplayOnReady = false;
+	let destroyed = false;
 
-	onMount(async () => {
+	onMount(() => {
 		if (!message.audioUrl) {
 			errorMessage = 'No audio source provided.';
-			isLoading = false;
 			return;
 		}
+		totalDuration = formatTime(message.audioDuration ?? 0);
+	});
 
-		let signedUrl: string | null = null;
+	onDestroy(() => {
+		destroyed = true;
+		waveSurfer?.destroy();
+		waveSurfer = null;
+	});
+
+	async function createWaveSurfer(): Promise<boolean> {
+		if (waveSurfer) return true;
+		if (!message.audioUrl) {
+			errorMessage = 'No audio source provided.';
+			return false;
+		}
+
+		isLoading = true;
+		errorMessage = '';
 
 		try {
-			// Use the imported 'functions' instance which is already initialized and emulator-aware
 			const getSignedAudioUrl = httpsCallable(functions, 'getSignedAudioUrl');
-
-			console.log(`[AudioMessageView] Requesting signed URL for path: ${message.audioUrl}`);
 			const result = await getSignedAudioUrl({ path: message.audioUrl });
+			const signedUrl = (result.data as { url: string }).url;
 
-			signedUrl = (result.data as { url: string }).url;
-			console.log(`[AudioMessageView] Successfully received signed URL.`);
+			if (destroyed) return false;
+			if (!waveformEl) throw new Error('Waveform container is unavailable.');
+
+			const instance = WaveSurfer.create({
+				container: waveformEl,
+				waveColor: '#475569',
+				progressColor: '#10b981',
+				barWidth: 2.5,
+				barGap: 1.5,
+				barRadius: 30,
+				height: 32,
+				url: signedUrl,
+				cursorWidth: 2
+			});
+			waveSurfer = instance;
+
+			instance.on('ready', async (duration) => {
+				if (destroyed) return;
+				totalDuration = formatTime(message.audioDuration ?? duration);
+				isLoading = false;
+				if (autoplayOnReady) {
+					autoplayOnReady = false;
+					try {
+						await instance.play();
+						needsTap = false;
+					} catch {
+						// Safari/WebKit can reject playback from a readiness callback
+						// because it is outside the original click gesture.
+						needsTap = true;
+						isPlaying = false;
+					}
+				}
+			});
+			instance.on('play', () => {
+				isPlaying = true;
+				needsTap = false;
+			});
+			instance.on('pause', () => (isPlaying = false));
+			instance.on('finish', () => (isPlaying = false));
+			instance.on('timeupdate', (time) => {
+				currentTime = formatTime(time);
+			});
+			instance.on('error', (err) => {
+				console.error('[AudioMessageView] Wavesurfer error:', err);
+				errorMessage = 'Error playing audio.';
+				isLoading = false;
+				autoplayOnReady = false;
+			});
+
+			return true;
 		} catch (error: unknown) {
-			console.error('[AudioMessageView] Failed to get signed URL:', error);
+			console.error('[AudioMessageView] Failed to load audio:', error);
 			const errorCode =
 				typeof error === 'object' && error !== null && 'code' in error
 					? (error as { code?: string }).code
@@ -53,54 +117,31 @@
 				errorMessage = 'Could not load audio.';
 			}
 			isLoading = false;
+			autoplayOnReady = false;
+			return false;
+		}
+	}
+
+	async function togglePlay() {
+		if (waveSurfer) {
+			if (waveSurfer.isPlaying()) {
+				waveSurfer.pause();
+			} else {
+				try {
+					await waveSurfer.play();
+					needsTap = false;
+				} catch {
+					// The browser may still block playback outside a direct gesture.
+					needsTap = true;
+					isPlaying = false;
+				}
+			}
 			return;
 		}
 
-		if (waveformEl && signedUrl) {
-			waveSurfer = WaveSurfer.create({
-				container: waveformEl,
-				waveColor: '#475569', // slate-600 - subtle but visible on dark background
-				progressColor: '#10b981', // emerald-500 - bright emerald for progress
-				barWidth: 2.5,
-				barGap: 1.5,
-				barRadius: 30,
-				height: 32,
-				url: signedUrl,
-				cursorWidth: 2
-			});
-
-			waveSurfer.on('ready', (duration) => {
-				totalDuration = formatTime(duration);
-				isLoading = false;
-			});
-
-			waveSurfer.on('play', () => (isPlaying = true));
-			waveSurfer.on('pause', () => (isPlaying = false));
-			waveSurfer.on('finish', () => (isPlaying = false));
-
-			waveSurfer.on('timeupdate', (time) => {
-				currentTime = formatTime(time);
-			});
-
-			waveSurfer.on('error', (err) => {
-				console.error('[AudioMessageView] Wavesurfer error:', err);
-				errorMessage = 'Error playing audio.';
-				isLoading = false;
-			});
-		}
-	});
-
-	onDestroy(() => {
-		waveSurfer?.destroy();
-	});
-
-	function togglePlay() {
-		if (!waveSurfer) return;
-		if (waveSurfer.isPlaying()) {
-			waveSurfer.pause();
-		} else {
-			waveSurfer.play();
-		}
+		autoplayOnReady = true;
+		const ready = await createWaveSurfer();
+		if (!ready) autoplayOnReady = false;
 	}
 
 	function formatTime(seconds: number): string {
@@ -116,7 +157,8 @@
 		onclick={togglePlay}
 		disabled={isLoading || !!errorMessage}
 		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white transition-all duration-200 hover:bg-emerald-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
-		aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+		aria-label={needsTap ? 'Play audio (tap to start)' : isPlaying ? 'Pause audio' : 'Play audio'}
+		title={needsTap ? 'Ready — tap to play' : undefined}
 	>
 		{#if isLoading}
 			<!-- Spinner -->
@@ -162,7 +204,9 @@
 
 	<div class="min-w-[2.5rem] text-right font-mono text-xs text-slate-300 tabular-nums">
 		{#if !isLoading && !errorMessage}
-			{#if isPlaying}{currentTime}{:else}{totalDuration}{/if}
+			{#if needsTap}
+				<span class="text-[10px] text-amber-400">Tap play</span>
+			{:else if isPlaying}{currentTime}{:else}{totalDuration}{/if}
 		{/if}
 	</div>
 </div>
