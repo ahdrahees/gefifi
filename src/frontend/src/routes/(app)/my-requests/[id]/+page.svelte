@@ -24,6 +24,7 @@
 	let chatMap = $state(new Map<string, string>());
 	let activeTab: 'details' | 'quotations' = $state('details');
 	let quotesCount: number = $state(0);
+	let acceptedProviderId: string | null = $state(null);
 
 	authStore.subscribe((auth) => {
 		currentUser = auth.user;
@@ -179,9 +180,13 @@
 		try {
 			const response = await apiClient.getQuotesForRequest(request.id, requestType);
 			quotesCount = response.quotes?.length || 0;
+			acceptedProviderId =
+				response.quotes?.find((quote: { status: string; expertSupplierId: string }) => quote.status === 'accepted')
+					?.expertSupplierId ?? null;
 		} catch (error) {
 			console.error('Failed to fetch quotes count:', error);
 			quotesCount = 0;
+			acceptedProviderId = null;
 		}
 	}
 
@@ -316,7 +321,7 @@
 			<div class="grid gap-6 lg:grid-cols-3">
 				<!-- Left Column: Main Content -->
 				<div class="lg:col-span-2">
-					<RequestDetailContent {request} {requestType} {currentUser} {chatMap} />
+					<RequestDetailContent {request} {requestType} {currentUser} {chatMap} {acceptedProviderId} />
 				</div>
 
 				<!-- Right Column: Actions and Info -->
