@@ -105,7 +105,7 @@ reproducible).
 | 35  | ✅     | Contract “Request” keeps the current tab and opens only the new tab.                                                                                                                                                                           |
 | 36  | ✅     | Both “AI Agent” and “Dashboard” labels are visible; active state uses styling instead of hiding the label.                                                                                                                                     |
 | 37  | ✅     | Added server-side approval records with atomic claim/complete/release, approval-ID idempotency for created records, and completion retry recovery. Verified production: card completed once, local marker removed, a fresh load showed Completed from the server, and a repeated create returned the same request ID with HTTP 200. |
-| 38  | ✅     | Fixed and verified on production as supplier (ARK Flooring): sidebar shows **Agent**, home shows the **AI Agent / Dashboard** toggle with the embedded panel, the FAB opens on `/my-requests`, and an embedded turn used the supplier-only **Browsing material requests** tool. Welcome copy is now role-specific. Experts share the same role-agnostic render path and `expert_agent`; no expert login was available for a live turn. |
+| 38  | ✅     | Fixed and verified on production as supplier (ARK Flooring): sidebar shows **Agent**, home shows the **AI Agent / Dashboard** toggle with the embedded panel, the FAB opens on `/my-requests`, and an embedded turn used the supplier-only **Browsing material requests** tool. Welcome copy is now role-specific. Experts share the same role-agnostic render path and `expert_agent`; live-tested 28 Nov as Ganesh (geminirahees): nav, home toggle, FAB, expert welcome copy, and `Browsing expert requests` with the Plumbing/Bangalore profile. |
 | 39  | ✅     | Found during quote-acceptance testing. The quote object included undefined optional fields, which Firestore rejects. The backend now validates amount/validityDays and omits absent description/amount/additionalTerms; the revision route uses the same handling. Verified production: a quote without additional terms returns 201; `validityDays=0` returns 400. |
 
 Verification commands run on this branch:
@@ -122,8 +122,8 @@ contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard 
 replies, supplier agent entry points, the union request endpoint, Find Professionals interactions,
 temp-token sessions, approval completion/idempotency, full two-party contract signing, quote
 acceptance (accepted one, rejected the other, request contracted), optional quote fields, private
-attachment delivery, contract print/Save PDF, logout/fresh Google re-login, and the native-audio
-fallback were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for profile
+attachment delivery, contract print/Save PDF, logout/fresh Google re-login, the native-audio fallback,
+and the live expert agent were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for profile
 clearing; `8bc129c` for agent entry points; `bd739b6` for the
 remaining QA items; `07f3dd4`/`d9726ec` for signed attachments; `44ac755`/`0d33262` for voice
 messages; `a911149` for contract print/Save PDF).
@@ -684,8 +684,9 @@ for each role. Role-specific empty-state copy would also help.
 - The floating **Open Assistant** button now opens on `/my-requests`.
 - The welcome title, subtitle, and suggestion chips are now role-specific for customer, expert, and
   supplier (`AgentChatPanel.svelte`).
-- The expert role uses the same role-agnostic render path and the existing `expert_agent`; it was not
-  live-tested because no expert login was available.
+- The expert role was live-tested on 28 Nov as Ganesh: sidebar **Agent**, home toggle, FAB, expert
+  welcome copy, and a prompt returned **Browsing expert requests** using the Plumbing/Bangalore
+  profile.
 
 **Impact**
 
@@ -739,9 +740,6 @@ returned 400.
 - Contract revision completion (signing, print/Save PDF, and signature display are verified).
 - Payment/escrow (not present in the demo scope).
 - Firestore security-rule enforcement under a hostile client; testing used the UI only.
-- Supplier/expert Agent entry points: supplier verified live (nav link, home toggle, embedded turn, and
-  FAB). Expert uses the same role-agnostic UI path and `expert_agent`, but was not live-tested because
-  no expert login was available.
 
 ---
 
