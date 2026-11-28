@@ -681,7 +681,7 @@
 	<title>{contract ? `Contract: ${contract.requestTitle}` : 'Contract Details'} - GEFIFI</title>
 </svelte:head>
 
-<div class="mx-auto max-w-6xl space-y-6 pb-12">
+<div class="print-area mx-auto max-w-6xl space-y-6 pb-12">
 	{#if isLoading}
 		<div class="flex h-96 items-center justify-center">
 			<div class="flex items-center space-x-3">
@@ -764,7 +764,7 @@
 						>
 							{contract.status.replace(/_/g, ' ').toUpperCase()}
 						</span>
-						<div class="flex flex-wrap items-center gap-2">
+						<div class="flex flex-wrap items-center gap-2 print:hidden">
 							{#if relatedRequestUrl}
 								<a
 									href={relatedRequestUrl}
@@ -798,6 +798,20 @@
 									Continue Chat
 								</a>
 							{/if}
+							<button
+								onclick={() => window.print()}
+								class="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30"
+							>
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"
+									/>
+								</svg>
+								Print / Save PDF
+							</button>
 						</div>
 					</div>
 				</div>
