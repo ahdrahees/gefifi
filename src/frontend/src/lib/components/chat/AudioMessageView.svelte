@@ -21,6 +21,7 @@
 	let currentTime = $state('0:00');
 	let totalDuration = $state('0:00');
 	let needsTap = $state(false);
+	let fallbackAudioUrl = $state('');
 	let autoplayOnReady = false;
 	let destroyed = false;
 
@@ -97,9 +98,19 @@
 			});
 			instance.on('error', (err) => {
 				console.error('[AudioMessageView] Wavesurfer error:', err);
-				errorMessage = 'Error playing audio.';
+				// Some legacy MediaRecorder WebM files fail inside WaveSurfer while
+				// a native audio element can still play them.
+				fallbackAudioUrl = signedUrl;
+				errorMessage = '';
 				isLoading = false;
 				autoplayOnReady = false;
+				needsTap = false;
+				try {
+					instance.destroy();
+				} catch {
+					// Ignore teardown errors from the failed instance.
+				}
+				if (waveSurfer === instance) waveSurfer = null;
 			});
 
 			return true;
@@ -153,60 +164,64 @@
 </script>
 
 <div class="flex max-w-sm min-w-[280px] items-center gap-3 p-0 pt-1">
-	<button
-		onclick={togglePlay}
-		disabled={isLoading || !!errorMessage}
-		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white transition-all duration-200 hover:bg-emerald-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
-		aria-label={needsTap ? 'Play audio (tap to start)' : isPlaying ? 'Pause audio' : 'Play audio'}
-		title={needsTap ? 'Ready — tap to play' : undefined}
-	>
-		{#if isLoading}
-			<!-- Spinner -->
-			<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-				></circle>
-				<path
-					class="opacity-75"
-					fill="currentColor"
-					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-				></path>
-			</svg>
-		{:else if errorMessage}
-			<!-- Error Icon -->
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="2"
-					d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-				></path>
-			</svg>
-		{:else if isPlaying}
-			<!-- Pause Icon -->
-			<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-				<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-			</svg>
-		{:else}
-			<!-- Play Icon -->
-			<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-				<path d="M8 5v14l11-7z" />
-			</svg>
-		{/if}
-	</button>
+	{#if fallbackAudioUrl}
+		<audio controls preload="metadata" src={fallbackAudioUrl} class="h-10 w-full"></audio>
+	{:else}
+		<button
+			onclick={togglePlay}
+			disabled={isLoading || !!errorMessage}
+			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white transition-all duration-200 hover:bg-emerald-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
+			aria-label={needsTap ? 'Play audio (tap to start)' : isPlaying ? 'Pause audio' : 'Play audio'}
+			title={needsTap ? 'Ready — tap to play' : undefined}
+		>
+			{#if isLoading}
+				<!-- Spinner -->
+				<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+					></circle>
+					<path
+						class="opacity-75"
+						fill="currentColor"
+						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+					></path>
+				</svg>
+			{:else if errorMessage}
+				<!-- Error Icon -->
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+					></path>
+				</svg>
+			{:else if isPlaying}
+				<!-- Pause Icon -->
+				<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+				</svg>
+			{:else}
+				<!-- Play Icon -->
+				<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M8 5v14l11-7z" />
+				</svg>
+			{/if}
+		</button>
 
-	<div class="min-w-0 flex-1">
-		{#if errorMessage}
-			<p class="text-sm text-red-400">{errorMessage}</p>
-		{:else}
-			<div bind:this={waveformEl} class="h-8 w-full"></div>
-		{/if}
-	</div>
+		<div class="min-w-0 flex-1">
+			{#if errorMessage}
+				<p class="text-sm text-red-400">{errorMessage}</p>
+			{:else}
+				<div bind:this={waveformEl} class="h-8 w-full"></div>
+			{/if}
+		</div>
 
-	<div class="min-w-[2.5rem] text-right font-mono text-xs text-slate-300 tabular-nums">
-		{#if !isLoading && !errorMessage}
-			{#if needsTap}
-				<span class="text-[10px] text-amber-400">Tap play</span>
-			{:else if isPlaying}{currentTime}{:else}{totalDuration}{/if}
-		{/if}
-	</div>
+		<div class="min-w-[2.5rem] text-right font-mono text-xs text-slate-300 tabular-nums">
+			{#if !isLoading && !errorMessage}
+				{#if needsTap}
+					<span class="text-[10px] text-amber-400">Tap play</span>
+				{:else if isPlaying}{currentTime}{:else}{totalDuration}{/if}
+			{/if}
+		</div>
+	{/if}
 </div>
