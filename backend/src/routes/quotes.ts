@@ -6,7 +6,7 @@ import { uploadFile } from '../file-storage';
 import { attachmentUpload } from './shared/middleware';
 import { v4 as uuidv4 } from 'uuid';
 // Import the existing db instance from data.ts
-import { usersDB, workRequestsDB, materialRequestsDB, quotesDB, chatsDB } from '../data';
+import { usersDB, workRequestsDB, materialRequestsDB, quotesDB, chatsDB, contractsDB } from '../data';
 
 const router = Router();
 
@@ -506,6 +506,29 @@ router.put(
 					if (!['submitted', 'under_review'].includes(existingQuote.status)) {
 						return res.status(400).json({
 							message: 'Only submitted quotes can be accepted.'
+						});
+					}
+
+					// Do not contract the request for a provider while an active
+					// contract with another provider exists: the accepted provider
+					// would then be blocked by the duplicate-contract check.
+					const activeContract = (await contractsDB.getAll()).find((contract) => {
+						const linkedRequestId =
+							existingQuote.requestType === 'work'
+								? contract.workRequestId
+								: contract.materialRequestId;
+						return (
+							linkedRequestId === existingQuote.requestId &&
+							!['cancelled', 'terminated'].includes(contract.status)
+						);
+					});
+					if (
+						activeContract &&
+						activeContract.expertSupplierId !== existingQuote.expertSupplierId
+					) {
+						return res.status(400).json({
+							message:
+								'An active contract already exists with a different provider. Resolve it before accepting this quote.'
 						});
 					}
 				}
