@@ -20,6 +20,7 @@
 	let errorMessage = $state('');
 	let currentTime = $state('0:00');
 	let totalDuration = $state('0:00');
+	let needsTap = $state(false);
 	let autoplayOnReady = false;
 	let destroyed = false;
 
@@ -68,18 +69,27 @@
 			});
 			waveSurfer = instance;
 
-			instance.on('ready', (duration) => {
+			instance.on('ready', async (duration) => {
 				if (destroyed) return;
 				totalDuration = formatTime(message.audioDuration ?? duration);
 				isLoading = false;
 				if (autoplayOnReady) {
 					autoplayOnReady = false;
-					void instance.play().catch(() => {
+					try {
+						await instance.play();
+						needsTap = false;
+					} catch {
+						// Safari/WebKit can reject playback from a readiness callback
+						// because it is outside the original click gesture.
+						needsTap = true;
 						isPlaying = false;
-					});
+					}
 				}
 			});
-			instance.on('play', () => (isPlaying = true));
+			instance.on('play', () => {
+				isPlaying = true;
+				needsTap = false;
+			});
 			instance.on('pause', () => (isPlaying = false));
 			instance.on('finish', () => (isPlaying = false));
 			instance.on('timeupdate', (time) => {
@@ -117,7 +127,14 @@
 			if (waveSurfer.isPlaying()) {
 				waveSurfer.pause();
 			} else {
-				waveSurfer.play();
+				try {
+					await waveSurfer.play();
+					needsTap = false;
+				} catch {
+					// The browser may still block playback outside a direct gesture.
+					needsTap = true;
+					isPlaying = false;
+				}
 			}
 			return;
 		}
@@ -140,7 +157,8 @@
 		onclick={togglePlay}
 		disabled={isLoading || !!errorMessage}
 		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white transition-all duration-200 hover:bg-emerald-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-50"
-		aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+		aria-label={needsTap ? 'Play audio (tap to start)' : isPlaying ? 'Pause audio' : 'Play audio'}
+		title={needsTap ? 'Ready — tap to play' : undefined}
 	>
 		{#if isLoading}
 			<!-- Spinner -->
@@ -186,7 +204,9 @@
 
 	<div class="min-w-[2.5rem] text-right font-mono text-xs text-slate-300 tabular-nums">
 		{#if !isLoading && !errorMessage}
-			{#if isPlaying}{currentTime}{:else}{totalDuration}{/if}
+			{#if needsTap}
+				<span class="text-[10px] text-amber-400">Tap play</span>
+			{:else if isPlaying}{currentTime}{:else}{totalDuration}{/if}
 		{/if}
 	</div>
 </div>
