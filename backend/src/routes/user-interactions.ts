@@ -44,6 +44,21 @@ router.post(
 				if (!workRequest) {
 					return res.status(404).json({ message: 'Associated work request not found.' });
 				}
+				if (sender.userType !== 'expert') {
+					return res.status(403).json({
+						message: 'Only experts can express interest in a work request.'
+					});
+				}
+				if (workRequest.interestedExperts?.includes(sender.id)) {
+					return res.status(409).json({
+						message: 'You have already expressed interest in this work request.'
+					});
+				}
+				if (!['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status)) {
+					return res.status(400).json({
+						message: `This work request is not accepting interest (status: ${workRequest.status}).`
+					});
+				}
 			}
 
 			let materialRequest: MaterialRequest | undefined;
@@ -52,14 +67,21 @@ router.post(
 				if (!materialRequest) {
 					return res.status(404).json({ message: 'Associated material request not found.' });
 				}
+				if (sender.userType !== 'supplier') {
+					return res.status(403).json({
+						message: 'Only suppliers can express interest in a material request.'
+					});
+				}
 				// Check if the sender has already expressed interest
-				if (
-					sender.userType === 'supplier' &&
-					materialRequest.interestedSuppliers?.includes(sender.id)
-				) {
+				if (materialRequest.interestedSuppliers?.includes(sender.id)) {
 					return res
 						.status(409) // 409 Conflict is a good status code for this
 						.json({ message: 'You have already expressed interest in this material request.' });
+				}
+				if (!['open', 'quoting'].includes(materialRequest.status)) {
+					return res.status(400).json({
+						message: `This material request is not accepting interest (status: ${materialRequest.status}).`
+					});
 				}
 			}
 
