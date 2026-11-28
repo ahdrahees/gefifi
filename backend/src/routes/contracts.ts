@@ -220,10 +220,12 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 					message: 'Mismatch: workRequest.customerId does not match provided customerId.'
 				});
 			}
-			// Check if request is in valid status for contract creation
-			if (!['open', 'in_discussion', 'awaiting_quotes'].includes(workRequest.status)) {
+			// Accepting a quote moves the request to 'contracted' before the
+			// contract record exists. Allow that state; the existing active
+			// contract check below still prevents duplicates.
+			if (!['open', 'in_discussion', 'awaiting_quotes', 'contracted'].includes(workRequest.status)) {
 				return res.status(400).json({
-					message: `Work request must be in 'open', 'in_discussion', or 'awaiting_quotes' status to create a contract. Current status: ${workRequest.status}`
+					message: `Work request must be in 'open', 'in_discussion', 'awaiting_quotes', or 'contracted' status to create a contract. Current status: ${workRequest.status}`
 				});
 			}
 			requestData = workRequest;
@@ -239,10 +241,12 @@ router.post('/contracts', authenticateToken, async (req: AuthenticatedRequest, r
 					message: 'Mismatch: materialRequest.customerId does not match provided customerId.'
 				});
 			}
-			// Check if request is in valid status for contract creation
-			if (!['open', 'quoting'].includes(materialRequest.status)) {
+			// Accepting a quote moves the request to 'contracted' before the
+			// contract record exists. Allow that state; the existing active
+			// contract check below still prevents duplicates.
+			if (!['open', 'quoting', 'contracted'].includes(materialRequest.status)) {
 				return res.status(400).json({
-					message: `Material request must be in 'open' or 'quoting' status to create a contract. Current status: ${materialRequest.status}`
+					message: `Material request must be in 'open', 'quoting', or 'contracted' status to create a contract. Current status: ${materialRequest.status}`
 				});
 			}
 			requestData = materialRequest;
