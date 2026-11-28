@@ -94,7 +94,7 @@ reproducible).
 | 24  | ✅     | Quote review now shows Delivery Time and Payment Terms.                                                                                                                                                                                        |
 | 25  | ✅     | Production Google sign-in completed successfully after the async-script wait. Only harmless COOP `postMessage` warnings remain in the console. |
 | 26  | ✅     | Text-only chat send no longer shows “Uploading files… / 0 file selected”.                                                                                                                                                                      |
-| 27  | ✅     | Root cause fixed: the Find Professionals effect read the displayed list it had just written. Replaced with a pure `$derived` list and removed the profile/PII logs. Re-tested live: opening Send Interest produced no effect loop or console flood. Some legacy voice messages still return a `MediaError` on play; that is a separate file/data issue. |
+| 27  | ✅     | Root cause fixed: the Find Professionals effect read the displayed list it had just written. Replaced with a pure `$derived` list and removed the profile/PII logs. Re-tested live: opening Send Interest produced no effect loop or console flood. Some legacy WebM files still trigger a WaveSurfer `MediaError`, but the component now falls back to a native audio player; playback was verified. |
 | 28  | ✅     | Escape now closes Link Contract; Escape also closes the PDF viewer.                                                                                                                                                                            |
 | 29  | ✅     | Search with no matches says “No requests match your search and filters.”                                                                                                                                                                       |
 | 30  | ✅     | Changing only Sort by no longer shows “Filters applied.”                                                                                                                                                                                       |
@@ -121,10 +121,12 @@ Post-merge production checks: Google sign-in, profile GET/clear, contract-term A
 contract labels, PDF viewer, Help page, quote counters/action hiding, dashboard counts, live agent
 replies, supplier agent entry points, the union request endpoint, Find Professionals interactions,
 temp-token sessions, approval completion/idempotency, full two-party contract signing, quote
-acceptance (accepted one, rejected the other, request contracted), optional quote fields, and private
-attachment delivery were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups
-`c7c8b12`, `f470b49` for profile clearing; `8bc129c` for agent entry points; `bd739b6` for the
-remaining QA items; `07f3dd4`/`d9726ec` for signed attachments).
+acceptance (accepted one, rejected the other, request contracted), optional quote fields, private
+attachment delivery, contract print/Save PDF, logout/fresh Google re-login, and the native-audio
+fallback were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for profile
+clearing; `8bc129c` for agent entry points; `bd739b6` for the
+remaining QA items; `07f3dd4`/`d9726ec` for signed attachments; `44ac755`/`0d33262` for voice
+messages; `a911149` for contract print/Save PDF).
 
 ---
 
@@ -734,12 +736,8 @@ returned 400.
 
 ## Areas not verified
 
-- Contract revision completion and signed-contract PDF behavior (signing itself is verified above).
-- Some legacy voice messages return a `MediaError` on play; the reactive loop is fixed, but the audio
-  file/data issue was not investigated.
+- Contract revision completion (signing, print/Save PDF, and signature display are verified).
 - Payment/escrow (not present in the demo scope).
-- Logout and re-login, because the only sessions available are the two Google-authenticated profiles
-  and the login page already shows a Google Sign-In initialization error.
 - Firestore security-rule enforcement under a hostile client; testing used the UI only.
 - Supplier/expert Agent entry points: supplier verified live (nav link, home toggle, embedded turn, and
   FAB). Expert uses the same role-agnostic UI path and `expert_agent`, but was not live-tested because
