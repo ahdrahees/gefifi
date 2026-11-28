@@ -174,7 +174,7 @@
 	<aside
 		class:translate-x-0={sidebarOpen}
 		class:!-translate-x-full={!sidebarOpen}
-		class="fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col bg-slate-900 shadow-lg transition-transform duration-300 ease-in-out lg:static lg:inset-auto lg:translate-x-0"
+		class="fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col bg-slate-900 shadow-lg transition-transform duration-300 ease-in-out print:hidden lg:static lg:inset-auto lg:translate-x-0"
 	>
 		<div class="flex h-20 shrink-0 items-center justify-center border-b border-slate-700/50 px-4">
 			<a href="/home">
@@ -265,7 +265,7 @@
 	<!-- Main Content -->
 	<div class="flex flex-1 flex-col overflow-hidden">
 		<header
-			class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between bg-slate-900 p-4 shadow-md lg:hidden"
+			class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between bg-slate-900 p-4 shadow-md print:hidden lg:hidden"
 		>
 			<a href="/home">
 				<img src="/images/Gefifi-Logo.png" alt="GEFIFI Logo" class="h-9 w-auto" />
