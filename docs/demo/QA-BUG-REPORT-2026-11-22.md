@@ -58,6 +58,10 @@
 | 37  | **P1**   | Agent            | Approval cards can be confirmed again on another browser/device and create duplicates          |
 | 38  | **P1**   | Agent/Roles      | Supplier and expert accounts have no Agent link or floating button, so their dedicated agents are undiscoverable |
 | 39  | **P1**   | Quotes           | Quote submission returns 500 when the optional additional-terms field is omitted                |
+| 40  | **P1**   | Contracts        | Contract creation is blocked after accepting a quote because the request is already contracted  |
+| 41  | **P2**   | Interests        | Duplicate and closed-request interest is accepted and posts duplicate chat messages             |
+| 42  | **P2**   | Quotes/contracts | Quote acceptance can contract for one provider while another provider has an active contract    |
+| 43  | **P3**   | Requests         | Contract links are shown for every interested/invited provider on a contracted request          |
 
 ## Fix status — branch `fix/demo-ui-bugs-2026-11-23`
 
@@ -107,6 +111,10 @@ reproducible).
 | 37  | ✅     | Added server-side approval records with atomic claim/complete/release, approval-ID idempotency for created records, and completion retry recovery. Verified production: card completed once, local marker removed, a fresh load showed Completed from the server, and a repeated create returned the same request ID with HTTP 200. |
 | 38  | ✅     | Fixed and verified on production as supplier (ARK Flooring): sidebar shows **Agent**, home shows the **AI Agent / Dashboard** toggle with the embedded panel, the FAB opens on `/my-requests`, and an embedded turn used the supplier-only **Browsing material requests** tool. Welcome copy is now role-specific. Experts share the same role-agnostic render path and `expert_agent`; live-tested 28 Nov as Ganesh (geminirahees): nav, home toggle, FAB, expert welcome copy, and `Browsing expert requests` with the Plumbing/Bangalore profile. |
 | 39  | ✅     | Found during quote-acceptance testing. The quote object included undefined optional fields, which Firestore rejects. The backend now validates amount/validityDays and omits absent description/amount/additionalTerms; the revision route uses the same handling. Verified production: a quote without additional terms returns 201; `validityDays=0` returns 400. |
+| 40  | ✅     | Fixed in PR #71. Contract creation now allows `contracted` requests when no active contract exists; the existing active-contract check still returns 409 for duplicates. Verified on production: accepted an expert quote → request contracted → created an Expert Contract (201, draft). |
+| 41  | ✅     | Fixed in PR #72. Work requests had no duplicate-interest check and neither type checked request status. Verified production: duplicate expert interest → 409; interest on a cancelled work request → 400. |
+| 42  | 🟡     | Fixed in PR #73: quote acceptance returns 400 when an active contract exists for a different provider. The guard is code-reviewed but not live-tested because only one provider login was available. |
+| 43  | 🟠     | Open UX gap. The backend now rejects a non-accepted provider with 403, but the request detail still renders a Contract link for every interested/invited provider on a contracted request. Needs quote-aware rendering. |
 
 Verification commands run on this branch:
 
@@ -123,7 +131,8 @@ replies, supplier agent entry points, the union request endpoint, Find Professio
 temp-token sessions, approval completion/idempotency, full two-party contract signing, quote
 acceptance (accepted one, rejected the other, request contracted), optional quote fields, private
 attachment delivery, contract print/Save PDF, logout/fresh Google re-login, the native-audio fallback,
-and the live expert agent were re-tested on `https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for profile
+the live expert agent, and the customer↔expert request/interest/quote/contract flow were re-tested on
+`https://gefifi.at0.app`. Merge commits: `749ccad` (follow-ups `c7c8b12`, `f470b49` for profile
 clearing; `8bc129c` for agent entry points; `bd739b6` for the
 remaining QA items; `07f3dd4`/`d9726ec` for signed attachments; `44ac755`/`0d33262` for voice
 messages; `a911149` for contract print/Save PDF).
@@ -714,6 +723,47 @@ returned 400.
 
 ---
 
+### 40. Contract creation blocked after quote acceptance
+
+**Roles:** customer and expert/supplier
+
+**Repro:** Accept a quote, then use the **Contract** link on the request detail.
+
+**Actual:** HTTP 400 — the request is already `contracted`, but contract creation only allowed
+`open`/`in_discussion`/`awaiting_quotes` (work) or `open`/`quoting` (material).
+
+**Fix:** PR #71 allows `contracted` when no active contract exists; the duplicate-contract check
+remains. Verified: expert quote accepted → request contracted → Expert Contract created.
+
+### 41. Duplicate and closed-request interest
+
+**Repro:** Click **Express Interest** twice as an expert, or express interest in a cancelled request.
+
+**Actual:** The work-request path had no duplicate check (material did), and neither path checked the
+request status. The duplicate call returned 201 and posted another chat message; closed requests also
+accepted interest.
+
+**Fix:** PR #72 adds role checks, duplicate 409s for both types, and 400s for non-sourcing requests.
+Verified: duplicate expert interest → 409; interest on a cancelled work request → 400.
+
+### 42. Quote acceptance with another provider’s active contract
+
+**Repro:** Create a draft contract with provider A, then accept a quote from provider B.
+
+**Actual:** The request is contracted for B, but A’s active draft blocks B at the duplicate-contract
+check.
+
+**Fix:** PR #73 rejects acceptance with 400 when an active contract exists for a different provider.
+Same-provider drafts remain allowed. Code-reviewed; not live-tested with two providers.
+
+### 43. Contract links for non-accepted providers
+
+On a contracted request, the request detail still shows a **Contract** link for every interested or
+invited provider. Only the accepted quote provider can create the contract (other providers get 403).
+The link should be hidden or explained for non-accepted providers.
+
+---
+
 ## Test data created / artefacts to clean up
 
 - Created and then **cancelled** two QA work requests and one QA material request (titles contain
@@ -733,11 +783,14 @@ returned 400.
 - Quote acceptance verified on **QA Quote Acceptance Test - ignore** (`0dc6dd06-e0ab-4a69-8ef8-7a225f10900f`): one quote accepted, the other rejected, request contracted.
 - Optional-field quote verified on **QA Quote Optional Fields - ignore** (`2903dac7-7a08-48b8-a453-e02e1a7517c3`), then the request was cancelled.
 - Validity validation verified on **QA Quote Validation - ignore** (`cc0bf564-1356-4e5c-a3d9-ab71c850e0c8`): `validityDays=0` returned 400, then the request was cancelled.
+- Customer↔expert flow verified on **QA Customer Expert Flow - ignore** (`f61c74b0-2dc9-4d97-9ce2-e922ae76008f`): expert quote `bf4a6836-7aef-4be6-be02-7c4dabc16077` accepted, request contracted, draft Expert Contract `f4231e96-8e38-42e8-a201-021d69d49f70` created. The contract remains draft.
+- The duplicate-interest test posted two identical interest messages to chat `0c7c1d43-aebe-40b1-b7e2-bdc422e2aa87`; they remain as test artefacts.
 - One QA contract was signed for verification.
 
 ## Areas not verified
 
 - Contract revision completion (signing, print/Save PDF, and signature display are verified).
+- Expert contract signing was not separately executed; the signature endpoint is shared and was verified with the supplier. The expert contract remains draft.
 - Payment/escrow (not present in the demo scope).
 - Firestore security-rule enforcement under a hostile client; testing used the UI only.
 
